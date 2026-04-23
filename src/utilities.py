@@ -20,6 +20,7 @@ SGP_EARTH = 3.986012e5 # [km^3/s^2] mass of earth times gravitational constant
 
 SGP_SUN = 1.32712e11 # [km^3/s^2]
 AU = 149_597_870.7 # [km]
+YEAR = 60*60*24*365.25 # [s] (Julian Year)
 
 # canonical units (from BMW, a set of units that make values around 1 for normal orbits (+- some magnitude))
 # based around the earth radius and mass

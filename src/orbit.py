@@ -479,6 +479,33 @@ class Orbit():
             continue
         # now we return the improved measurements
         return Orbit.orbit_from_rv(r2, v2, sgp, t2)
+    
+    @staticmethod
+    def from_ephemeris(a:float, e:float, i:float, L:float, long_p:float, RAAN:float, sgp:float)->"Orbit":
+        '''creates an orbit from ephemeris numbers instead.
+        a: semi-major axis
+        e: eccentricity
+        i: inclination
+        L: mean longitude
+        long_p: longitude of perihelion
+        RAAN: longitude of ascending node.
+        only works with elliptical orbits'''
+
+        if e >= 1: raise ValueError("Hyperbolic ephemeris not implemented")
+        # to convert:
+        # L = long_p + M
+        # arg_p = long_p - RAAN
+        # M = 2pi/P * t (P = period)
+        # P = 2*pi*sqrt(a^3/sgp)
+        # t = M * sqrt(a^3/sgp) (time *since* periapsis)
+        # p = a(1-e^2)
+        p = a*(1-e*e)
+        M = L - long_p
+        arg_p = long_p - RAAN
+        t_p = -M * m.sqrt(a**3/sgp)
+        return Orbit(p,e,i,RAAN,arg_p,t_p,sgp)
+
+
 
     @staticmethod
     def point_to_point(p1:np.ndarray, p2:np.ndarray, radius:float, start_time:float, end_time:float, sgp:float, angular_speed:float, epoch_angle:float)->"Orbit":
@@ -760,6 +787,51 @@ def orbit_within_1_precent(ob1:Orbit,ob2:Orbit):
     if not within(ob1.arg_p, ob2.arg_p): return False
     if not within(ob1.t_p, ob2.t_p): return False
     return True
+
+
+def plot_orbit(ax,ob:Orbit,time:float=0,trail:float=2*m.pi, ThreeDee:bool=True,hyper_predict:bool=False, max_alt:float=m.inf, **kwargs)->None:
+    '''Plot orbit in the given axis, trail determines how far behind the orbit is plotted (defaults to entire orbit)
+    hyperbolic orbits will only be plotted up to the current point, if hyper_predict is true, a dashed line will be plotted ahead,
+    max_size determines how far out to plot'''
+
+    theta = ob.time_to_theta(time)
+
+    if trail != 2*m.pi:
+        # add trail:
+        end_theta = theta
+        start_theta = theta-trail
+    else: # no trail, 
+        end_theta = m.pi
+        start_theta = -m.pi
+    if ob.e >= 1: end_theta = theta
+
+    cross = ob.crosses_altitude(max_alt)
+    if cross is None and ob.periapsis > max_alt: return # don't render anything
+    elif not cross is None:
+        start_theta = max(start_theta,-cross)
+        end_theta = min(end_theta,cross)
+    
+    locus = ob.point_locus(start_theta,end_theta)
+    point = ob.theta_to_rv(theta)[0]
+
+    if not 'color' in kwargs:
+        kwargs['color'] = np.random.random(3)
+    if ThreeDee: ax.plot(locus[:,0],locus[:,1],locus[:,2], **kwargs)
+    else: ax.plot(locus[:,0],locus[:,1], **kwargs)
+        
+    kwargs.pop('label',None) # to not duplicate labels
+    if np.linalg.norm(point) <= max_alt:
+        if ThreeDee: ax.scatter(point[0],point[1],point[2], **kwargs)
+        else: ax.scatter(point[0],point[1], **kwargs)
+    
+    if hyper_predict and ob.e >= 1:
+        start_theta = end_theta
+        end_theta = cross
+        locus = ob.point_locus(start_theta,end_theta) # type:ignore
+        if ThreeDee: ax.plot(locus[:,0],locus[:,1],locus[:,2], ls='--', **kwargs)
+        else: ax.plot(locus[:,0],locus[:,1], **kwargs)
+    return;
+
 
 # ==== DEBUG TESTING =====
 

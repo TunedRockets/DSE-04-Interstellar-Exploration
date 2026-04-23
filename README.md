@@ -10,3 +10,5 @@ use this to generate a probability distribution of required dv for either just f
 this should give a dv needed for the 90% criteria
 
 (start without gravity assists, perhaps add that to the optimizer later)
+
+Perhaps change from Nelder-mead to iterated local search, see: [this KSP KOS code](https://github.com/maneatingape/rsvp/tree/main/src)

@@ -759,6 +759,41 @@ class Orbit():
                     idx_best = (i,j)
         
         return array, idx_best
+    
+    @staticmethod
+    def porkchop_plot2(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
+                      rv2_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
+                      start_range:list[float], end_range:list[float],
+                      sgp:float, short_way:bool = True, rendezvous = True, min_alt=0)->tuple[np.ndarray, tuple[int,int]]:
+        '''
+        result is so that dv = dv_arr[start,end]
+        '''
+        def F(s,e,rv1,rv2)->float:
+            if e <= s: return np.inf
+            try:
+                vinit, vfin = Orbit.lambert_vectors(rv1[0], rv2[0], (e-s), sgp, short_way)
+            except: return np.inf
+            dv1 = np.linalg.norm(vinit-rv1[1])
+            dv2 = np.linalg.norm(vfin - rv2[1])
+            if rendezvous: return float(dv1 + dv2)
+            else: return float(dv1)
+
+        dvv = np.zeros((len(start_range),len(end_range)))
+
+        mindv = np.inf
+        minidx = 0,0
+        for i, s in enumerate(start_range):
+            rv1 = rv1_fn(s)
+            for j, e in enumerate(end_range):
+                rv2 = rv2_fn(e)
+                dv = F(s,e,rv1,rv2)
+                dvv[i,j] = dv
+                if dv < mindv:
+                    mindv = dv
+                    minidx = i,j
+
+
+        return dvv, minidx
 
     @staticmethod
     def porkchop_intercept(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
@@ -771,6 +806,91 @@ class Orbit():
 
         return Orbit.porkchop_plot(ob1.time_to_rv,ob2.time_to_rv, start_range,end_range,ob1.sgp,short_way,rendezvous,min_alt)
 
+
+
+def trajectory_optimizer(
+        origin:Orbit,
+        destination:Orbit,
+        start_time:float,
+        end_time:float,
+        w_insertion:float = 1,
+        w_relv:float = 0,
+        w_travel_time:float = 0,
+        w_intercept_distance:float=0,
+        w_intercept_time:float=0
+)->tuple[float,float,float,float,float]:
+    '''
+    Function to optimize the trajectory between two keplerian orbits.
+    Uses Nelder-Mead method to find optimum given the optimization weights
+
+    :param origin: Origin orbit
+    :type: Orbit
+    :param destination: Destination orbit
+    :type: Orbit
+    :param start_time: Earliest time to leave from origin
+    :type: float
+    :param end_time: Latest time to arrive at destination
+    :type: float
+    :param w_insertion: how much the insertion dV is weighted in the optimizer (per km/s)
+    :type: float:
+    :param w_relv: how much the rendezvous relative velocity is weighted in the optimizer (per km/s)
+    :type: float:
+    :param w_travel_time: how much the travel time is weighted in the optimizer (per day)
+    :type: float:
+    :param w_intercept_distance: how much distance from barycenter at intercept is weighted in the optimizer (per day)
+    :type: float:
+    :param w_intercept_time: how much the time after start_time intercept occurs is weighted in the optimizer (per day)
+    :type: float:
+
+    
+    :returns insertion dV:
+    :returns rendezvouz dV:
+    :returns start time:
+    :returns end time:
+    :returns end distance:
+    
+    '''
+
+    # 2D optimization using Nelder-Mead
+    # first define optimizer function:
+    def F(s:float,t:float)->float: # start + travel time
+        if s < start_time: return m.inf
+        if s + t > end_time: return m.inf # ensure we're not outside bounds
+        r1,v1 = origin.time_to_rv(s)
+        r2,v2 = destination.time_to_rv(s+t)
+        try:
+            vl1,vl2 = Orbit.lambert_vectors(r1,r2,t,origin.sgp)
+        except: return m.inf # doesn't work
+        weight = float(
+            np.linalg.norm(vl1-v1) * w_insertion +
+            np.linalg.norm(vl2-v2) * w_relv + 
+            t/DAY * w_travel_time +
+            np.linalg.norm(r2)/AU * w_intercept_distance +
+            (s+t)/DAY * w_intercept_time
+        )
+        return weight
+    
+    
+    # find starting point with sampling the range:
+    sample_range = np.linspace(start_time,end_time,20)
+    ss,ee = np.meshgrid(sample_range,sample_range)
+    tt = ee - ss
+    FF = np.vectorize(F,otypes=[float])(ss,tt)
+    idx = np.unravel_index(FF.argmin(), FF.shape)
+    s = ss[idx]
+    t = tt[idx]
+    dt = sample_range[1]-sample_range[0]
+
+
+
+
+    s_opt,t_opt = nelder_mead_2d(F,np.array([s,t]),-dt/2, 1e-6)
+
+    # compute properties:
+    r1,v1 = origin.time_to_rv(s_opt)
+    r2,v2 = destination.time_to_rv(s_opt+t_opt)
+    vl1,vl2 = Orbit.lambert_vectors(r1,r2,t_opt,origin.sgp)
+    return np.linalg.norm(vl1-v1), np.linalg.norm(vl2-v2), s_opt, s_opt+t_opt, np.linalg.norm(r2) # type: ignore
 
 def orbit_within_1_precent(ob1:Orbit,ob2:Orbit):
     '''are the orbits within 1% on the 6 elements?

@@ -20,7 +20,8 @@ SGP_EARTH = 3.986012e5 # [km^3/s^2] mass of earth times gravitational constant
 
 SGP_SUN = 1.32712e11 # [km^3/s^2]
 AU = 149_597_870.7 # [km]
-YEAR = 60*60*24*365.25 # [s] (Julian Year)
+DAY = 60*60*24 # [s]
+YEAR = DAY*365.25 # [s] (Julian Year)
 
 # canonical units (from BMW, a set of units that make values around 1 for normal orbits (+- some magnitude))
 # based around the earth radius and mass
@@ -78,6 +79,76 @@ def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:
         x0 = x0 - dx
         if not np.isfinite(x0): raise ArithmeticError("Newton's method failed to converge")
     return x0
+
+def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6)->tuple[float,float]:
+    '''Implementation of the Nelder Mead optimization algorithm,
+    uses default values for the coefficients,
+    (minimizes the value)'''
+    a = 1
+    b = 0.5
+    c = 2
+    d = 0.5
+
+
+    p1 = [0,x0]
+    p2 = [0,x0 + np.array([x0_size,0])]
+    p3 = [0, x0 + np.array([0,x0_size])]
+
+    p1[0] = f(*p1[1])
+    p2[0] = f(*p2[1])
+    p3[0] = f(*p3[1])
+
+    while True:
+            
+        # ordering (lowest first):
+        if p1[0] > p2[0]: p1,p2 = p2,p1
+        if p2[0] > p3[0]: p2,p3 = p3,p2
+        if p1[0] > p2[0]: p1,p2 = p2,p1
+
+        # termination (based on ssd of function values):
+        m = (p1[0] + p2[0] + p3[0])/3
+        var = (((p1[0]-m)**2 + (p2[0]-m)**2 + (p3[0]-m)**2)/2)
+        if var < precision**2:
+            return p1[1][0], p1[1][1]
+
+        # centroid:
+        cent = np.mean((p1[1],p2[1]))
+
+        # transform:
+        reflect_p = cent + a*(cent - p3[1])
+        reflect = [f(*reflect_p), reflect_p]
+        if p1[0] <= reflect[0] < p2[0]:
+            p3 = reflect
+            continue
+
+        elif reflect[0] < p1[0]:
+            expand_p = cent + c*(reflect_p - cent)
+            expand = [f(*expand_p), expand_p]
+            if expand[0] < reflect[0]:
+                p3 = expand
+                continue
+            else:
+                p3 = reflect
+                continue
+        elif reflect[0] < p2[0]:
+            if reflect[0] < p3[0]:
+                contract_p = cent + b*(reflect_p - cent)
+            else:
+                contract_p = cent + b*(p3[1] - cent)
+            contract = [f(*contract_p), contract_p]
+            if contract[0] < p3[0]:
+                p3 = contract
+                continue
+        else:
+            # shrink:
+            p3_p = p1[1] + d*(p3[1]-p1[1])
+            p3 = [f(*p3_p), p3_p]
+            p2_p = p1[1] + d*(p2[1]-p1[1])
+            p2 = [f(*p2_p), p2_p]
+            continue
+
+
+
 
 def bounds(lower, value, upper):
     '''alias of min(upper, max(lower, value))\n

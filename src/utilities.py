@@ -5,6 +5,7 @@ By: Johannes Nilsson
 import numpy as np
 import math as m
 from typing import Callable
+import matplotlib.pyplot as plt
 
 # === constants =============================
 
@@ -97,6 +98,8 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
     p1[0] = f(*p1[1])
     p2[0] = f(*p2[1])
     p3[0] = f(*p3[1])
+    # arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
+    # plt.plot(arrr[0], arrr[1])
 
     while True:
             
@@ -104,6 +107,9 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
         if p1[0] > p2[0]: p1,p2 = p2,p1
         if p2[0] > p3[0]: p2,p3 = p3,p2
         if p1[0] > p2[0]: p1,p2 = p2,p1
+        arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
+        plt.plot(arrr[0], arrr[0]+arrr[1])
+        print(p1)
 
         # termination (based on ssd of function values):
         m = (p1[0] + p2[0] + p3[0])/3
@@ -112,7 +118,7 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
             return p1[1][0], p1[1][1]
 
         # centroid:
-        cent = np.mean((p1[1],p2[1]))
+        cent = 0.5*(p1[1] + p2[1])
 
         # transform:
         reflect_p = cent + a*(cent - p3[1])

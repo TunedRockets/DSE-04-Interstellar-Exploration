@@ -36,7 +36,7 @@ Jupiter = Orbit.from_ephemeris(
 
 # Known ISOs (not including non-gravitational acceleration)
 pe_to_p = lambda pe, e: pe*(1+e)
-to_epoch = lambda year,month,day: (datetime.date(year,month,day) - datetime.date(2000,1,1)).seconds
+to_epoch = lambda year,month,day: (datetime.date(year,month,day) - datetime.date(2000,1,1)).total_seconds()
 
 Omuamua = Orbit(
     p = pe_to_p(0.255916*AU, 1.20113),

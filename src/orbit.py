@@ -16,7 +16,7 @@ from .utilities import *
 from typing import Callable
 import matplotlib.pyplot as plt
 import math as m
-
+from tqdm import tqdm
 
 
 
@@ -782,7 +782,7 @@ class Orbit():
 
         mindv = np.inf
         minidx = 0,0
-        for i, s in enumerate(start_range):
+        for i, s in tqdm(enumerate(start_range), desc="Generating prokchop plot", total=len(start_range)):
             rv1 = rv1_fn(s)
             for j, e in enumerate(end_range):
                 rv2 = rv2_fn(e)

@@ -247,7 +247,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
     b = b_base
     
     # marginal distribution of magnitudes interstellar velocities
-    p_v=simpson(simpson(p_vlb, b_arr), l_arr)
+    p_v=simpson(simpson(y=p_vlb, x=b_arr), x=l_arr)
     
     # If necessary, to avoid problems with memory the job is divided so that the larges array is smaller than the predefined value
     size=len(r_arr) * np.shape(v)[0] * np.shape(v)[1] * np.shape(v)[2]
@@ -286,7 +286,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
                    (R_reff/r_arr[i*new_size+j])**2*(1+2*mu/R_reff/v**2))**(1/2))/2
         
         # marginal with repsect to all except r (Eq.18) 
-        p_r[indices[i]:indices[i+1]]=simpson(simpson(simpson(p_rvlb, b_arr), l_arr),v_arr)
+        p_r[indices[i]:indices[i+1]]=simpson(simpson(simpson(y=p_rvlb, x=b_arr), x=l_arr),x=v_arr)
     
     # total number of object inside heliocentric sphere
     N_r=np.zeros(len(r_arr)) 

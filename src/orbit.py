@@ -796,7 +796,7 @@ class Orbit():
         return dvv, minidx
 
     @staticmethod
-    def porkchop_intercept(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
+    def porkchop_intercept(ob1:'Orbit', ob2:'Orbit',start_range:list[float], end_range:list[float],
                            short_way:bool = True, rendezvous = True, min_alt=0):
         '''calculates the porkchop plot between two orbits, assumes sgp based on the first orbit
         returns a 2d array of all Dv values, and index of the lowest one.\n

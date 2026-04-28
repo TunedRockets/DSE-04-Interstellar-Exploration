@@ -152,7 +152,6 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
     else:
         raise ArithmeticError("Nelder-mead failed to converge")
 
-
 def bounds(lower, value, upper):
     '''alias of min(upper, max(lower, value))\n
     works using numpy minimum so can work on arrays'''

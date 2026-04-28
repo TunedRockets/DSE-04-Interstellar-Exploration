@@ -4,7 +4,7 @@ Script for generating a distributions of dV expected for the ISO intercept
 
 '''
 
-from src.orbit import Orbit, trajectory_optimizer, plot_orbit
+from src.orbit import Orbit, trajectory_optimizer, plot_orbit, orbit_from_lambert, orbit_from_rv, orbit_from_ephemeris
 from src.get_ISO import get_ISO
 from src.examples import Earth, Jupiter
 from src.utilities import AU, YEAR, SGP_SUN
@@ -88,7 +88,7 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             r_rot = rotate(r_ap)
             v_rot = rotate(v_ap_vec)
 
-            origin_rot = Orbit.orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
+            origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
             origin_rot.link_time_and_theta(theta_ap, t_ap)
             origin_rot.normalize()
 
@@ -121,7 +121,7 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             r2, v2 = ISO.time_to_rv(et)
 
             try:
-                transfer_orbit = Orbit.orbit_from_lambert(r1, r2, st, et, origin.sgp)
+                transfer_orbit = orbit_from_lambert(r1, r2, st, et, origin.sgp)
                 plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(40*AU))
             except:
                 pass  # lambert sometimes fails
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     max_time = 20*YEAR
 
 
-    origin = Orbit.from_ephemeris(
+    origin = orbit_from_ephemeris(
         2.61696589776 * AU, #Semi major axis
         0.987573 , #eccentricity
         m.radians(1.303), #Inclination

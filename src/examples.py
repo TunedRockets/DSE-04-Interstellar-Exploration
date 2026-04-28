@@ -1,4 +1,4 @@
-from .orbit import Orbit
+from .orbit import Orbit, orbit_from_ephemeris
 from .utilities import SGP_SUN, AU, SGP_EARTH
 import math as m
 import datetime
@@ -6,7 +6,7 @@ import datetime
 # some standard objects (In the ICRF/J2000):
 # only keplerian elements, does not take into account perturbations
 
-Earth = Orbit.from_ephemeris(
+Earth = orbit_from_ephemeris(
     1.00000261*AU,
     0.01671123,
     m.radians(-0.00001531),
@@ -15,7 +15,7 @@ Earth = Orbit.from_ephemeris(
     0,
     SGP_SUN
 )
-Mars = Orbit.from_ephemeris(
+Mars = orbit_from_ephemeris(
     1.52371034*AU,
     0.09339410,
     m.radians(1.84969142),
@@ -24,7 +24,7 @@ Mars = Orbit.from_ephemeris(
     m.radians(49.55953891),
     SGP_SUN
 )
-Jupiter = Orbit.from_ephemeris(
+Jupiter = orbit_from_ephemeris(
     5.20288700*AU,
     0.04838624,
     m.radians(1.30439695),

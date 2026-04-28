@@ -860,7 +860,7 @@ def trajectory_optimizer(
         r2,v2 = destination.time_to_rv(s+t)
         try:
             vl1,vl2 = Orbit.lambert_vectors(r1,r2,t,origin.sgp)
-        except: return m.inf # doesn't work
+        except : return m.inf # doesn't work
         weight = float(
             np.linalg.norm(vl1-v1) * w_insertion +
             np.linalg.norm(vl2-v2) * w_relv + 
@@ -928,11 +928,13 @@ def plot_orbit(ax,ob:Orbit,time:float=0,trail:float=2*m.pi, ThreeDee:bool=True,h
     cross = ob.crosses_altitude(max_alt)
     if cross is None and ob.periapsis > max_alt: return # don't render anything
     elif not cross is None:
-        start_theta = max(start_theta,-cross)
-        end_theta = min(end_theta,cross)
+        start_theta = bounds(-cross,start_theta,cross)
+        end_theta = bounds(-cross,end_theta,cross)
     
     locus = ob.point_locus(start_theta,end_theta)
-    point = ob.theta_to_rv(theta)[0]
+    if cross is None or abs(theta) < cross:
+        point = ob.theta_to_rv(theta)[0]
+    else: point = np.array([m.inf])
 
     if not 'color' in kwargs:
         kwargs['color'] = np.random.random(3)

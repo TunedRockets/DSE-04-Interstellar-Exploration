@@ -81,7 +81,7 @@ def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:
         if not np.isfinite(x0): raise ArithmeticError("Newton's method failed to converge")
     return x0
 
-def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6)->tuple[float,float]:
+def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500)->tuple[float,float]:
     '''Implementation of the Nelder Mead optimization algorithm,
     uses default values for the coefficients,
     (minimizes the value)'''
@@ -101,15 +101,12 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
     # arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
     # plt.plot(arrr[0], arrr[1])
 
-    while True:
+    for _ in range(max_iter):
             
         # ordering (lowest first):
         if p1[0] > p2[0]: p1,p2 = p2,p1
         if p2[0] > p3[0]: p2,p3 = p3,p2
         if p1[0] > p2[0]: p1,p2 = p2,p1
-        arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
-        plt.plot(arrr[0], arrr[0]+arrr[1])
-        print(p1)
 
         # termination (based on ssd of function values):
         m = (p1[0] + p2[0] + p3[0])/3
@@ -152,8 +149,8 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
             p2_p = p1[1] + d*(p2[1]-p1[1])
             p2 = [f(*p2_p), p2_p]
             continue
-
-
+    else:
+        raise ArithmeticError("Nelder-mead failed to converge")
 
 
 def bounds(lower, value, upper):

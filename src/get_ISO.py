@@ -8,7 +8,7 @@ from .orbit import Orbit
 from .utilities import SGP_SUN, AU
 import numpy as np
 
-def get_ISO(T:float=0)->list[Orbit]:
+def get_ISO(T:float=0, rm:float=10)->list[Orbit]:
     '''Generates synthetic orbits of ISOs,
     If T is 0 (default), a snapshot of the population is generated,
     If T is a number (years), an expectation over that time
@@ -18,7 +18,7 @@ def get_ISO(T:float=0)->list[Orbit]:
     # WHAT TIME TO USE???
 
     # CONSTANTS (sourced from example, case 1):
-    rm = 10 # raduis of model sphere [AU]
+    rm = rm # radius of model sphere [AU]
     n0 = 0.1 # number density in interstellar space [AU^-1]
     v_min = 1e3 # max interstellar speed [m/s]
     v_max = 2e5 # min interstellar speed [m/s]

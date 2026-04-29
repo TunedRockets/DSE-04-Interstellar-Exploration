@@ -4,6 +4,10 @@ Script for generating a distributions of dV expected for the ISO intercept
 
 '''
 
+from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).parent.parent.resolve()))
+
 from src.orbit import Orbit, trajectory_optimizer
 from src.get_ISO import get_ISO
 from src.examples import Earth
@@ -56,7 +60,7 @@ def add_dv_hist(rm, weights, N)->None:
     '''Adds to the dv histogram for the different weights,
     rm is detection distance (and also simulation distance, such that every generated ISO is detected)'''
     np.seterr(all="ignore")
-    path = Path(__file__).parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    path = Path(__file__).parent.parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
     
     try:
         with open(path, "r") as file:
@@ -84,7 +88,7 @@ def add_dv_hist(rm, weights, N)->None:
         hist[dv] += 1
     
     # Save
-    path = Path(__file__).parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    path = Path(__file__).parent.parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
     with open(path, "w") as file:
         file.write(str(count) + '\n')
         file.writelines([str(x) + '\n' for x in hist])
@@ -94,7 +98,7 @@ def get_dv_hist(rm, weights)->list[float]:
     '''return normalised histogram of the delta v requirements.
     nomalization includes invalid trajectories, so area under curve will be
     less than 1'''
-    path = Path(__file__).parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    path = Path(__file__).parent.parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
 
     with open(path, "r") as file:
         lines = file.readlines()
@@ -103,7 +107,7 @@ def get_dv_hist(rm, weights)->list[float]:
     return [x/count for x in hist]
 
 
-def probability_map(rm:float, weight:dict):
+def probability_map(rm:float, weight:dict, guesses:bool = True, blocking:bool=True):
     '''generate probability map of N over dV,'''
 
     Ezell_Loeb_avg_per_annum = 5
@@ -126,17 +130,18 @@ def probability_map(rm:float, weight:dict):
     plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
     plt.ylabel('Delta V budget (km/s)')
     plt.xlabel('number of ISOs during mission time')
-    plt.title(f"Probability map for detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission")
-    plt.plot([EL_N,EL_N],[5,48], ls='--', color="gray")
-    plt.text(EL_N+1, 40, "Ezell, Loeb mean", color="gray")
-    plt.plot([HSP_N,HSP_N],[5,48], ls='--', color="gray")
-    plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
-    plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
-    plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
+    plt.title(f"Probability map for {"rendezvous" if weight["w_relv"] else "intercept"} with detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission")
+    if guesses:
+        plt.plot([EL_N,EL_N],[5,48], ls='--', color="gray")
+        plt.text(EL_N+1, 40, "Ezell, Loeb mean", color="gray")
+        plt.plot([HSP_N,HSP_N],[5,48], ls='--', color="gray")
+        plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
+        plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
+        plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
 
-    plt.show()
+    plt.show(block=blocking)
 
-def distribution_histogram(rm:float, weight:dict):
+def distribution_histogram(rm:float, weight:dict,  blocking:bool=True):
     '''generate the histogram of the dV requirements'''
 
     hist = get_dv_hist(rm, weight)
@@ -144,8 +149,8 @@ def distribution_histogram(rm:float, weight:dict):
     plt.bar(range(100),hist,width=1)
     plt.xlabel("dV requirement")
     plt.ylabel("probability density")
-    plt.title("Normalized Histogram of the Delta V requirements for ISOs\n(Normalization includes unreachable ISOs)")
-    plt.show()
+    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if weight["w_relv"] else "intercept"}\n(Normalization includes unreachable ISOs)")
+    plt.show(block=blocking)
 
 
 if __name__ == "__main__":
@@ -156,15 +161,23 @@ if __name__ == "__main__":
     weight = icpt_weights
     detect_distance = 3
     # add_dv_hist(5, weight,0)
-    distribution_histogram(5,weight)
-    probability_map(5, weight)
+    distribution_histogram(2, icpt_weights)
+    distribution_histogram(3, icpt_weights)
+    distribution_histogram(5, icpt_weights)
+    distribution_histogram(2, rdvz_weights)
+    distribution_histogram(3, rdvz_weights)
+    distribution_histogram(5, rdvz_weights)
+    probability_map(2, icpt_weights)
+    probability_map(3, icpt_weights)
+    probability_map(5, icpt_weights)
+    probability_map(2, rdvz_weights)
+    probability_map(3, rdvz_weights)
+    probability_map(5, rdvz_weights)
 
     while True:
-        add_dv_hist(2, icpt_weights, 0)
-        add_dv_hist(3, icpt_weights, 0)
-        add_dv_hist(4, icpt_weights, 0)
-        add_dv_hist(5, icpt_weights, 0)
+        add_dv_hist(2, rdvz_weights, 0)
         add_dv_hist(3, rdvz_weights, 0)
+        add_dv_hist(5, rdvz_weights, 0)
 
     # add_dv_hist(5,weight, 2000)
     # probability_map(5, weight)

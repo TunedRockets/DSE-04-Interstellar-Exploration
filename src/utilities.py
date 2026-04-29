@@ -157,6 +157,23 @@ def bounds(lower, value, upper):
     works using numpy minimum so can work on arrays'''
     return np.minimum(upper, np.maximum(lower, value))
 
+def inside_modulo_bounds(lower, value, upper, modulo):
+    '''
+    Moves value into the given bounds by moving wth the modulo,
+    if multiple bounds work, will return each instance as a list
+    if it cannot be moved into the region, will return empty list
+    '''
+    
+    # move value below lower:
+    while value-modulo > lower: value -= modulo
+    # go through to add to list
+    l = []
+    while value <= upper:
+        if lower < value < upper: l.append(value)
+        value += modulo
+    return l
+
+
 def lerp(a,b,r, clamped=False):
     '''lerps between value a and value b,
     r is the fraction between 0 and 1 that is lerped to\n

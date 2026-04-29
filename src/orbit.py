@@ -137,7 +137,7 @@ class Orbit():
     @property
     def period(self)->float:
         '''Period of orbit, Changing this changes p by way of a, unless it is hyperbolic in which 
-        case it raises a ValueError'''
+        case it returns infinity'''
         if self.e < 1: return 2*m.pi*m.sqrt(self.a**3/self.sgp)
         else: return m.inf # since there is no period
     
@@ -838,9 +838,22 @@ def trajectory_optimizer(
     
     # define points of interest (apses, nodes, ideal hohmann points, etc.)
     # get points in net, do some optimization, then pick best
+    if False:
+        node_start = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]] #
+        node_end = [destination.theta_to_time(x) for x in [0,m.pi, -destination.arg_p, m.pi - destination.arg_p]]
 
-    # poi_start = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
-    # poi_end = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
+        # scale into relevant region
+        poi_start = []
+        poi_end = []
+        for n in node_start:
+            poi_start.extend(inside_modulo_bounds(start_time, n, end_time, origin.period))
+        for n in node_end:
+            poi_end.extend(inside_modulo_bounds(start_time, n, end_time, destination.period))
+        
+
+        # hohmann:
+        if origin.e < 1 and destination.e < 1:
+            poi_start.append(origin.hohmann_time(destination))
     
 
 
@@ -925,7 +938,7 @@ def porkchop_plot(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
     
     return array, idx_best
 
-def porkchop_intercept(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
+def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
                         short_way:bool = True, rendezvous = True, min_alt=0):
     '''calculates the porkchop plot between two orbits, assumes sgp based on the first orbit
     returns a 2d array of all Dv values, and index of the lowest one.\n

@@ -107,7 +107,7 @@ def get_dv_hist(rm, weights)->list[float]:
     return [x/count for x in hist]
 
 
-def probability_map(rm:float, weight:dict, guesses:bool = True, blocking:bool=True):
+def probability_map(rm:float, weight:dict, guesses:bool = True, show:bool=True):
     '''generate probability map of N over dV,'''
 
     Ezell_Loeb_avg_per_annum = 5
@@ -138,10 +138,10 @@ def probability_map(rm:float, weight:dict, guesses:bool = True, blocking:bool=Tr
         plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
         plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
         plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
+    if show:
+        plt.show()
 
-    plt.show(block=blocking)
-
-def distribution_histogram(rm:float, weight:dict,  blocking:bool=True):
+def distribution_histogram(rm:float, weight:dict,  show:bool=True):
     '''generate the histogram of the dV requirements'''
 
     hist = get_dv_hist(rm, weight)
@@ -149,8 +149,9 @@ def distribution_histogram(rm:float, weight:dict,  blocking:bool=True):
     plt.bar(range(100),hist,width=1)
     plt.xlabel("dV requirement")
     plt.ylabel("probability density")
-    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if weight["w_relv"] else "intercept"}\n(Normalization includes unreachable ISOs)")
-    plt.show(block=blocking)
+    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if weight["w_relv"] else "intercept"}\nwith detection range {rm} AU. (Normalization includes unreachable ISOs)")
+    if show:
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -161,18 +162,36 @@ if __name__ == "__main__":
     weight = icpt_weights
     detect_distance = 3
     # add_dv_hist(5, weight,0)
-    distribution_histogram(2, icpt_weights)
-    distribution_histogram(3, icpt_weights)
-    distribution_histogram(5, icpt_weights)
-    distribution_histogram(2, rdvz_weights)
-    distribution_histogram(3, rdvz_weights)
-    distribution_histogram(5, rdvz_weights)
-    probability_map(2, icpt_weights)
-    probability_map(3, icpt_weights)
-    probability_map(5, icpt_weights)
-    probability_map(2, rdvz_weights)
-    probability_map(3, rdvz_weights)
-    probability_map(5, rdvz_weights)
+    # probability_map(2, icpt_weights, False, False)
+    # plt.figure()
+    # probability_map(3, icpt_weights, False, False)
+    # plt.figure()
+    # probability_map(5, icpt_weights, False, False)
+    # plt.figure()
+    # probability_map(2, rdvz_weights, False, False)
+    # plt.figure()
+    # probability_map(3, rdvz_weights, False, False)
+    # plt.figure()
+    # probability_map(5, rdvz_weights, False, False)
+    # plt.show()
+
+
+    # distribution_histogram(2, icpt_weights, False)
+    # plt.figure()
+    # distribution_histogram(3, icpt_weights, False)
+    # plt.figure()
+    # distribution_histogram(5, icpt_weights, False)
+    # plt.figure()
+    # distribution_histogram(2, rdvz_weights, False)
+    # plt.figure()
+    # distribution_histogram(3, rdvz_weights, False)
+    # plt.figure()
+    # distribution_histogram(5, rdvz_weights, False)
+    # plt.show()
+    
+    probability_map(3,icpt_weights)
+
+    
 
     while True:
         add_dv_hist(2, rdvz_weights, 0)

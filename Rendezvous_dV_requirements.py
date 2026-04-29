@@ -129,8 +129,17 @@ if __name__ == "__main__":
     detect_distance = 3*AU
     max_time = 10*YEAR
     origin = Earth
-    add_dv_hist(5,weight, 2000)
     probability_map(5, weight)
+
+    while True:
+        add_dv_hist(2, weight, 0)
+        add_dv_hist(3, weight, 0)
+        add_dv_hist(4, weight, 0)
+        add_dv_hist(5, weight, 0)
+        add_dv_hist(3, rdvz_weights, 0)
+
+    # add_dv_hist(5,weight, 2000)
+    # probability_map(5, weight)
 
 
 

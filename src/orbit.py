@@ -834,8 +834,14 @@ def trajectory_optimizer(
         )
         return weight
     
+    # TODO
+    
     # define points of interest (apses, nodes, ideal hohmann points, etc.)
-    #TODO
+    # get points in net, do some optimization, then pick best
+
+    # poi_start = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
+    # poi_end = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
+    
 
 
     # find starting point with sampling the range:

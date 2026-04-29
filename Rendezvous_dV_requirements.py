@@ -77,10 +77,10 @@ def add_dv_hist(rm, weights, N)->None:
         if detect_theta is None: continue
         detect_time = ISO.theta_to_time(-detect_theta)
         try:
-            insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+max_time, **weights)
+            insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+10*YEAR, **weights)
         except (ArithmeticError,ValueError): continue
         dv = round(insert_dv*weights["w_insertion"] + rdvz_dv*weights["w_relv"])
-        if dv > 100: continue
+        if dv >= 100: continue
         hist[dv] += 1
     
     # Save
@@ -105,17 +105,46 @@ def get_dv_hist(rm, weights)->list[float]:
 
 def probability_map(rm:float, weight:dict):
     '''generate probability map of N over dV,'''
+
+    Ezell_Loeb_avg_per_annum = 5
+    Hoover_seligman_payne_per_annum = 14
+    Marceta_seligman_per_annum = 35
+    years = 10 
+
+    EL_N = Ezell_Loeb_avg_per_annum * years
+    HSP_N = Hoover_seligman_payne_per_annum * years
+    MS_N = Marceta_seligman_per_annum * years
     
 
-    N_range = np.arange(10,200,10)
-    V_range =np.arange(4,50,2)
+    N_range = np.arange(10,MS_N + 30,5)
+    V_range =np.arange(4,50)
     NN, VV = np.meshgrid(N_range,V_range)
     PP = np.vectorize(mission_success_probability)(rm,NN,VV,weight)
     plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
-    plt.contour(PP,levels=[0.9],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
+    plt.colorbar(location="right", label="Probability of mission success")
+    CS = plt.contour(PP,levels=[0.9],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
+    plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
     plt.ylabel('Delta V budget (km/s)')
     plt.xlabel('number of ISOs during mission time')
-    plt.title(f"Probability distribution for detection range of {rm} AU")
+    plt.title(f"Probability map for detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission")
+    plt.plot([EL_N,EL_N],[5,48], ls='--', color="gray")
+    plt.text(EL_N+1, 40, "Ezell, Loeb mean", color="gray")
+    plt.plot([HSP_N,HSP_N],[5,48], ls='--', color="gray")
+    plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
+    plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
+    plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
+
+    plt.show()
+
+def distribution_histogram(rm:float, weight:dict):
+    '''generate the histogram of the dV requirements'''
+
+    hist = get_dv_hist(rm, weight)
+    print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")
+    plt.bar(range(100),hist,width=1)
+    plt.xlabel("dV requirement")
+    plt.ylabel("probability density")
+    plt.title("Normalized Histogram of the Delta V requirements for ISOs\n(Normalization includes unreachable ISOs)")
     plt.show()
 
 
@@ -125,17 +154,16 @@ if __name__ == "__main__":
 
     # ==== settings =====    
     weight = icpt_weights
-
-    detect_distance = 3*AU
-    max_time = 10*YEAR
-    origin = Earth
+    detect_distance = 3
+    # add_dv_hist(5, weight,0)
+    distribution_histogram(5,weight)
     probability_map(5, weight)
 
     while True:
-        add_dv_hist(2, weight, 0)
-        add_dv_hist(3, weight, 0)
-        add_dv_hist(4, weight, 0)
-        add_dv_hist(5, weight, 0)
+        add_dv_hist(2, icpt_weights, 0)
+        add_dv_hist(3, icpt_weights, 0)
+        add_dv_hist(4, icpt_weights, 0)
+        add_dv_hist(5, icpt_weights, 0)
         add_dv_hist(3, rdvz_weights, 0)
 
     # add_dv_hist(5,weight, 2000)

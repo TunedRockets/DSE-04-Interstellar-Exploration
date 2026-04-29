@@ -824,7 +824,7 @@ def trajectory_optimizer(
         r2,v2 = destination.time_to_rv(s+t)
         try:
             vl1,vl2 = lambert_vectors(r1,r2,t,origin.sgp)
-        except : return m.inf # doesn't work
+        except (ArithmeticError, ValueError): return m.inf # doesn't work
         weight = float(
             np.linalg.norm(vl1-v1) * w_insertion +
             np.linalg.norm(vl2-v2) * w_relv + 

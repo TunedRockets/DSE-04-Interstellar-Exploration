@@ -283,6 +283,18 @@ class Orbit():
         # phi = phi_0 + n*t (mod 2pi)
         t_until = (phi_opt - phi_0)/effective_mean_motion
         return t_until
+
+    def hohmann_travel_time(self,other:"Orbit")->float:
+        '''travel time of a hohmann transfer orbit
+
+        :param other: other orbit
+        :type other: Orbit
+        :return: time of hohmann transfer
+        :rtype: float
+        '''
+        # half period is pi*sqrt(a^3/mu)
+        # a = 0.5*(a1+a2)
+        return m.pi * m.sqrt(((self.a + other.a)/2)**3 / self.sgp )
     
     # ================= getting vectors ====================
     @property

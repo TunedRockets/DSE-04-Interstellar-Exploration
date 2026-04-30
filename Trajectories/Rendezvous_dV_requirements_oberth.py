@@ -22,7 +22,7 @@ mpl.use('TkAgg')
 def add_dv_hist(rm, weights, N, PLOT=False)->None:
     '''Adds to the dv histogram for the different weights'''
     np.seterr(all="ignore")
-    path = Path(__file__).parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    path = Path(__file__).parent.parent / "data_oberth" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
     
     try:
         with open(path, "r") as file:
@@ -55,13 +55,16 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             rp_vec, vp_vec = origin.theta_to_rv(theta_pe)
             vp_mag = np.linalg.norm(vp_vec)
 
+            min_time = -100
+
             insert_dv, rdvz_dv, transfer_orbit, st, et = oberth_effect_optimzer(
                 ISO,
                 rp_vec,
                 vp_mag,
                 tp,
+                min_time,
                 max_time,
-                optimize_rdzvous=(weights["w_relv"] > 0)
+                optimize_rendezvous=(weights["w_relv"] > 0)
             )
 
             # ===============================
@@ -103,8 +106,41 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             continue
 
         insert_dv = round(insert_dv)
-        if insert_dv > 100: continue
-        elif PLOT:
+        if PLOT:
+            # ===============================
+            # Reconstruct rotated orbit (after apoapsis burn)
+            # ===============================
+
+            # rotation axis from current to required direction
+            axis = np.cross(v0_hat, v_req_hat)
+            norm = np.linalg.norm(axis)
+
+            if norm < 1e-10:
+                axis = np.array([0, 0, 1])  # fallback
+            else:
+                axis /= norm
+
+            def rotate(vec):
+                return (
+                        vec * m.cos(delta) +
+                        np.cross(axis, vec) * m.sin(delta) +
+                        axis * np.dot(axis, vec) * (1 - m.cos(delta))
+                )
+
+            # get apoapsis state
+            theta_ap = m.pi
+            t_ap = origin.theta_to_time(theta_ap)
+            r_ap, v_ap_vec = origin.theta_to_rv(theta_ap)
+
+            # rotate state
+            r_rot = rotate(r_ap)
+            v_rot = rotate(v_ap_vec)
+
+            # rebuild orbit
+            origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
+            origin_rot.link_time_and_theta(theta_ap, t_ap)
+            origin_rot.normalize()
+
             # ==== plotting ====
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
@@ -113,14 +149,9 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             plot_orbit(ax, origin, time=detect_time, ThreeDee=True, label="Original")
 
             # plot rotated orbit
-            # plot_orbit(ax, origin_rot, time=detect_time, ThreeDee=True, label="Rotated")
-
-            # ---- plot transfer arc ----
-            # r1, v1 = origin_rot.time_to_rv(st)
-            r2, v2 = ISO.time_to_rv(et)
+            plot_orbit(ax, origin_rot, time=detect_time, ThreeDee=True, label="Rotated")
 
             try:
-                transfer_orbit = orbit_from_lambert(r1, r2, st, et, origin.sgp)
                 plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(20*AU))
             except:
                 pass  # lambert sometimes fails
@@ -137,20 +168,21 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             ax.legend()
 
             plt.show()
+        if insert_dv > 100: continue
         hist[insert_dv] += 1
     
     # Save
-    # path = Path(__file__).parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
-    # with open(path, "w") as file:
-    #     file.write(str(count) + '\n')
-    #     file.writelines([str(x) + '\n' for x in hist])
+    path = Path(__file__).parent.parent / "data_oberth" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    with open(path, "w") as file:
+        file.write(str(count) + '\n')
+        file.writelines([str(x) + '\n' for x in hist])
     return
 
 def get_dv_hist(rm, weights)->list[float]:
     '''return normalised histogram of the delta v requirements.
     nomalization includes invalid trajectories, so area under curve will be
     less than 1'''
-    path = Path(__file__).parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    path = Path(__file__).parent.parent / "data_oberth" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
     
 
     with open(path, "r") as file:
@@ -176,8 +208,8 @@ if __name__ == "__main__":
     rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
     weight = icpt_weights
 
-    detect_distance = 3*AU
-    max_time = 20*YEAR
+    detect_distance = 4*AU
+    max_time = 30*YEAR
 
 
     origin = orbit_from_ephemeris(
@@ -191,8 +223,8 @@ if __name__ == "__main__":
     )
 
     
-    rm = 4
-    add_dv_hist(rm,weight,2000, PLOT=False)
+    rm = 3
+    add_dv_hist(rm,weight,2000, PLOT=True)
 
     hist = get_dv_hist(rm, weight)
     print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")

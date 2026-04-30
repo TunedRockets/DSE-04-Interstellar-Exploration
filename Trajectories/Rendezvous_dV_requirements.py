@@ -1,7 +1,7 @@
 '''
 Script for generating a distributions of dV expected for the ISO intercept
-
-
+and from that the mission success chance
+missing is a proper distribution of N, which requires more research in the literature
 '''
 
 from pathlib import Path

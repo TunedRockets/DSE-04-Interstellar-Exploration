@@ -55,7 +55,7 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             rp_vec, vp_vec = origin.theta_to_rv(theta_pe)
             vp_mag = np.linalg.norm(vp_vec)
 
-            min_time = -100
+            min_time = 100
 
             insert_dv, rdvz_dv, transfer_orbit, st, et = oberth_effect_optimzer(
                 ISO,
@@ -64,7 +64,9 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
                 tp,
                 min_time,
                 max_time,
-                optimize_rendezvous=(weights["w_relv"] > 0)
+                optimize_rendezvous=(weights["w_relv"] > 0),
+                period=origin.period,
+                detect_time=detect_time
             )
 
             # ===============================
@@ -137,9 +139,12 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             v_rot = rotate(v_ap_vec)
 
             # rebuild orbit
-            origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
-            origin_rot.link_time_and_theta(theta_ap, t_ap)
-            origin_rot.normalize()
+            try:
+                origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
+                origin_rot.link_time_and_theta(theta_ap, t_ap)
+                origin_rot.normalize()
+            except:
+                continue
 
             # ==== plotting ====
             fig = plt.figure()
@@ -165,6 +170,19 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             ax.set_ylabel("y")
             ax.set_zlabel("z")
             plt.axis("scaled")
+            textstr = (
+                f"ΔV insert: {insert_dv:.2f} km/s\n"
+                f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
+                f"Intercept distance: {np.linalg.norm(transfer_orbit.time_to_rv(et)[0])/AU:.2f} AU\n"
+                f"Intercept time: {et/YEAR:.2f} years\n"
+            )
+
+            ax.text2D(0.02, 0.98, textstr,
+                      transform=ax.transAxes,
+                      fontsize=10,
+                      verticalalignment='top',
+                      bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+
             ax.legend()
 
             plt.show()
@@ -208,8 +226,8 @@ if __name__ == "__main__":
     rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
     weight = icpt_weights
 
-    detect_distance = 4*AU
-    max_time = 30*YEAR
+    detect_distance = 3*AU
+    max_time = 40*YEAR
 
 
     origin = orbit_from_ephemeris(

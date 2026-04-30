@@ -717,7 +717,7 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
             int_loc = destination.time_to_rv(tp + t)[0]
             _, transfer_time = orbit_from_periapsis_point_and_point(rp, int_loc, sgp, tp)
 
-            if not np.isfinite(transfer_time):
+            if not np.isfinite(transfer_time) or transfer_time < min_time or transfer_time > max_time or transfer_time < 0:
                 return np.nan
 
             return transfer_time - t
@@ -727,7 +727,7 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
 
     # --- find brackets ---
     brackets = []
-    ts = np.linspace(min_time, max_time, 300)
+    ts = np.linspace(min_time, max_time, 100)
     vals = np.array([f(t) for t in ts])
 
     for i in range(len(ts)-1):
@@ -742,11 +742,12 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
         t_sol = root_finder_bisection(f, a, b)
     else:
         # fallback: pick best approximate solution
-        finite_mask = np.isfinite(vals)
-        if not np.any(finite_mask):
-            raise RuntimeError("No valid solutions found")
+        # finite_mask = np.isfinite(vals)
+        # if not np.any(finite_mask):
+        #     raise RuntimeError("No valid solutions found")
+        raise RuntimeError("No valid solutions found")
 
-        t_sol = ts[finite_mask][np.argmin(np.abs(vals[finite_mask]))]
+        # t_sol = ts[finite_mask][np.argmin(np.abs(vals[finite_mask]))]
 
     # --- build orbit ---
     int_loc = destination.time_to_rv(tp + t_sol)[0]
@@ -767,7 +768,8 @@ def oberth_effect_optimzer(
         max_time: float,
         periods: int | None = None,
         period: float | None = None,
-        optimize_rendezvous: bool = False
+        optimize_rendezvous: bool = False,
+        detect_time: float | None = None
 ):
     """
     Optimizes an Oberth-style transfer by scanning candidate departure times
@@ -780,55 +782,46 @@ def oberth_effect_optimzer(
     period_offsets = [0.0]
     if period is not None and periods is not None:
         period_offsets = [k * period for k in range(periods)]
-
+    if period is not None and detect_time is not None:
+        while tp<detect_time:
+            tp += period
     best_score = float("inf")
     best_result = None
 
-    # coarse search over flight times
-    t_samples = np.linspace(0.1, max_time, 30)
-
     for offset in period_offsets:
-        for t_guess in t_samples:
 
-            departure_time = tp + offset
-
-            try:
-                transfer_orbit, flight_time = oberth_transfer_finder(
-                    rp,
-                    departure_time,
-                    target_object,
-                    sgp,
-                    min_time=min_time,
-                    max_time=max_time
-                )
-            except Exception:
-                continue
-
-            # velocity on transfer orbit at departure (Oberth burn point)
-            v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
-
-            dv_insertion = abs(v_transfer_dep - vp)
-
-            # velocity at intercept
-            intercept_time = departure_time + flight_time
-            _, v_target = target_object.time_to_rv(intercept_time)
-
-            v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
-            dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
-
-            score = dv_insertion
-            if optimize_rendezvous:
-                score += dv_rdv
-
-            if score < best_score:
-                best_score = score
-                best_result = (
-                    dv_insertion,
-                    dv_rdv,
-                    transfer_orbit,
-                    departure_time,
-                    intercept_time
-                )
+        departure_time = tp + offset
+        try:
+            transfer_orbit, flight_time = oberth_transfer_finder(
+                rp,
+                departure_time,
+                target_object,
+                sgp,
+                min_time=min_time,
+                max_time=max_time
+            )
+        except Exception:
+            continue
+        # velocity on transfer orbit at departure (Oberth burn point)
+        v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
+        dv_insertion = abs(v_transfer_dep - vp)
+        # velocity at intercept
+        intercept_time = departure_time + flight_time
+        _, v_target = target_object.time_to_rv(intercept_time)
+        v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+        dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
+        score = dv_insertion
+        if optimize_rendezvous:
+            score += dv_rdv
+        if score < best_score:
+            best_score = score
+            best_result = (
+                dv_insertion,
+                dv_rdv,
+                transfer_orbit,
+                departure_time,
+                intercept_time
+            )
 
     if best_result is None:
         raise RuntimeError("No valid Oberth transfer found")

@@ -620,125 +620,221 @@ def orbit_from_lambert(r1:np.ndarray, r2:np.ndarray, start_time:float,
     v1, _ = lambert_vectors(r1,r2,(end_time-start_time),sgp,short_way)
     ob = orbit_from_rv(r1,v1, sgp, start_time)
     return ob
+
+def orbit_from_periapsis_point_and_point(
+        rp_loc: np.ndarray,
+        int_loc: np.ndarray,
+        sgp: float,
+        t_p: float = 0
+    ) -> tuple[Orbit, float]:
+    '''
+    Construct an orbit from:
+    - focus at origin
+    - periapsis location vector (rp_loc)
+    - another point on orbit (int_loc)
+
+    Returns:
+        Orbit object,
+        time from periapsis to intercept point (Δt)
+
+    '''
+    rp_loc = np.asarray(rp_loc, dtype=float).reshape(3, )
+    int_loc = np.asarray(int_loc, dtype=float).reshape(3, )
+
+    r_p = np.linalg.norm(rp_loc)
+    r_i = np.linalg.norm(int_loc)
+
+    # --- define orbital plane ---
+    h_vec = np.cross(rp_loc, int_loc)
+    if np.linalg.norm(h_vec) == 0:
+        raise ValueError("Points are collinear with focus → infinite solutions")
+
+    h_hat = h_vec / np.linalg.norm(h_vec)
+
+    # --- define perifocal frame ---
+    p_hat = rp_loc / r_p
+    q_hat = np.cross(h_hat, p_hat)
+    q_hat = q_hat / np.linalg.norm(q_hat)
+
+    Q = np.column_stack((p_hat, q_hat, h_hat))
+
+    # --- express int_loc in perifocal frame ---
+    r_i_pqw = Q.T @ int_loc
+    x, y = r_i_pqw[0], r_i_pqw[1]
+
+    theta = np.arctan2(y, x)
+
+    # --- solve for eccentricity ---
+    cos_theta = np.cos(theta)
+    denom = (r_i * cos_theta - r_p)
+
+    if abs(denom) < 1e-12:
+        raise ValueError("Degenerate configuration (cannot solve for eccentricity)")
+
+    e = (r_p - r_i) / denom
+
+    # --- compute parameter ---
+    p = r_p * (1 + e)
+
+    # --- angular momentum ---
+    h = np.sqrt(p * sgp)
+
+    # --- extract orbital elements ---
+    k_hat = np.array([0, 0, 1])
+    n_vec = np.cross(k_hat, h_hat)
+
+    i = np.arccos(h_hat[2])
+
+    if np.linalg.norm(n_vec) < 1e-12:
+        RAAN = 0
+    else:
+        RAAN = np.arccos(n_vec[0] / np.linalg.norm(n_vec))
+        if n_vec[1] < 0:
+            RAAN = 2*np.pi - RAAN
+
+    if np.linalg.norm(n_vec) < 1e-12:
+        arg_p = np.arctan2(p_hat[1], p_hat[0])
+    else:
+        arg_p = np.arccos(np.dot(n_vec, p_hat) / np.linalg.norm(n_vec))
+        if p_hat[2] < 0:
+            arg_p = 2*np.pi - arg_p
+
+    # --- build orbit ---
+    orbit = Orbit(p, e, i, RAAN, arg_p, t_p, sgp)
+
+    # --- compute time since periapsis ---
+    try:
+        dt = true_2_time(theta, e, h, sgp)
+    except Exception:
+        raise ValueError("Failed to compute time-of-flight (likely invalid geometry)")
+
+    return orbit, dt
+
+def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
+
+    def f(t):
+        try:
+            int_loc = destination.time_to_rv(tp + t)[0]
+            _, transfer_time = orbit_from_periapsis_point_and_point(rp, int_loc, sgp, tp)
+
+            if not np.isfinite(transfer_time):
+                return np.nan
+
+            return transfer_time - t
+
+        except Exception:
+            return np.nan
+
+    # --- find brackets ---
+    brackets = []
+    ts = np.linspace(min_time, max_time, 300)
+    vals = np.array([f(t) for t in ts])
+
+    for i in range(len(ts)-1):
+        if np.isnan(vals[i]) or np.isnan(vals[i+1]):
+            continue
+        if vals[i] * vals[i+1] < 0:
+            brackets.append((ts[i], ts[i+1]))
+
+    # --- solve ---
+    if brackets:
+        a, b = brackets[0]
+        t_sol = root_finder_bisection(f, a, b)
+    else:
+        # fallback: pick best approximate solution
+        finite_mask = np.isfinite(vals)
+        if not np.any(finite_mask):
+            raise RuntimeError("No valid solutions found")
+
+        t_sol = ts[finite_mask][np.argmin(np.abs(vals[finite_mask]))]
+
+    # --- build orbit ---
+    int_loc = destination.time_to_rv(tp + t_sol)[0]
+    orbit, _ = orbit_from_periapsis_point_and_point(rp, int_loc, sgp, tp)
+
+    return orbit, t_sol
+
+
+
+
+
 def oberth_effect_optimzer(
         target_object: Orbit,
         rp: np.ndarray,
-        vp: float,
+        vp: np.ndarray,
         tp: float,
+        min_time: float,
         max_time: float,
-        period: float = None,
-        periods: int = None,
-        optimize_rdzvous: bool = False
+        periods: int | None = None,
+        period: float | None = None,
+        optimize_rendezvous: bool = False
 ):
+    """
+    Optimizes an Oberth-style transfer by scanning candidate departure times
+    and using `oberth_transfer_finder` to construct each trajectory.
+    """
+
     sgp = target_object.sgp
 
-    r_hat = rp / np.linalg.norm(rp)
-
-    # build perpendicular basis
-    ref = np.array([0, 0, 1])
-    if abs(np.dot(ref, r_hat)) > 0.9:
-        ref = np.array([1, 0, 0])
-
-    v1 = np.cross(r_hat, ref)
-    v1 /= np.linalg.norm(v1)
-    v2 = np.cross(r_hat, v1)
-
-    # optional multi-period search
-    period_offsets = [0]
+    # Optional periodic departure windows
+    period_offsets = [0.0]
     if period is not None and periods is not None:
         period_offsets = [k * period for k in range(periods)]
 
-    best = None
-    best_score = np.inf
+    best_score = float("inf")
+    best_result = None
 
-    # =========================
-    # Objective function
-    # =========================
-    def F(phi, t_flight, offset):
-        if t_flight <= 0 or t_flight > max_time:
-            return np.inf
-
-        intercept_time = tp + offset + t_flight
-
-        try:
-            r_target, v_target = target_object.time_to_rv(intercept_time)
-        except Exception:
-            return np.inf
-
-        # construct periapsis velocity
-        v_dir = m.cos(phi) * v1 + m.sin(phi) * v2
-        v_initial = v_dir * vp
-
-        try:
-            v_l1, v_l2 = lambert_vectors(rp, r_target, t_flight, sgp, True)
-        except (ArithmeticError, ValueError):
-            return np.inf
-
-        dv_transfer = np.linalg.norm(v_l1 - v_initial)
-        dv_rdv = np.linalg.norm(v_l2 - v_target)
-
-        return dv_transfer + (dv_rdv if optimize_rdzvous else 0)
-
-    # =========================
-    # Coarse search
-    # =========================
-    phi_samples = np.linspace(0, 2*m.pi, 24)
-    t_samples = np.linspace(0.1, max_time, 24)
+    # coarse search over flight times
+    t_samples = np.linspace(0.1, max_time, 30)
 
     for offset in period_offsets:
+        for t_guess in t_samples:
 
-        best_local = None
-        best_local_score = np.inf
+            departure_time = tp + offset
 
-        for phi in phi_samples:
-            for t in t_samples:
-                val = F(phi, t, offset)
-                if val < best_local_score:
-                    best_local_score = val
-                    best_local = (phi, t)
+            try:
+                transfer_orbit, flight_time = oberth_transfer_finder(
+                    rp,
+                    departure_time,
+                    target_object,
+                    sgp,
+                    min_time=min_time,
+                    max_time=max_time
+                )
+            except Exception:
+                continue
 
-        if best_local is None:
-            continue
+            # velocity on transfer orbit at departure (Oberth burn point)
+            v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
 
-        # =========================
-        # Nelder–Mead refinement
-        # =========================
-        def F_nm(x):
-            return F(x[0], x[1], offset)
+            dv_insertion = abs(v_transfer_dep - vp)
 
-        x0 = np.array(best_local)
-        step = np.array([0.2, max_time * 0.1])
+            # velocity at intercept
+            intercept_time = departure_time + flight_time
+            _, v_target = target_object.time_to_rv(intercept_time)
 
-        phi_opt, t_opt = nelder_mead_2d(F_nm, x0, step, 1e-6)
+            v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+            dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
 
-        # evaluate final solution
-        intercept_time = tp + offset + t_opt
-        r_target, v_target = target_object.time_to_rv(intercept_time)
+            score = dv_insertion
+            if optimize_rendezvous:
+                score += dv_rdv
 
-        v_dir = m.cos(phi_opt) * v1 + m.sin(phi_opt) * v2
-        v_initial = v_dir * vp
+            if score < best_score:
+                best_score = score
+                best_result = (
+                    dv_insertion,
+                    dv_rdv,
+                    transfer_orbit,
+                    departure_time,
+                    intercept_time
+                )
 
-        v_l1, v_l2 = lambert_vectors(rp, r_target, t_opt, sgp, True)
+    if best_result is None:
+        raise RuntimeError("No valid Oberth transfer found")
 
-        dv_transfer = np.linalg.norm(v_l1 - v_initial)
-        dv_rdv = np.linalg.norm(v_l2 - v_target)
+    return best_result
 
-        score = dv_transfer + (dv_rdv if optimize_rdzvous else 0)
-
-        if score < best_score:
-            best_score = score
-            best = (
-                dv_transfer,
-                dv_rdv,
-                orbit_from_rv(rp, v_l1, sgp, tp),
-                tp,
-                intercept_time
-            )
-
-    if best is None:
-        raise RuntimeError("No valid transfer found")
-
-    return best
 
 
 def orbit_from_gauss(observations:list[np.ndarray],

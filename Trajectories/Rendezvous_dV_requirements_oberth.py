@@ -173,8 +173,8 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             textstr = (
                 f"ΔV insert: {insert_dv:.2f} km/s\n"
                 f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
-                f"Intercept distance: {np.linalg.norm(transfer_orbit.time_to_rv(et)[0])/AU:.2f} AU\n"
-                f"Intercept time: {et/YEAR:.2f} years\n"
+                f"Intercept distance: {np.linalg.norm(ISO.time_to_rv(et)[0])/AU:.2f} AU\n"
+                f"Intercept time: {(et-detect_time)/YEAR:.2f} years\n"
             )
 
             ax.text2D(0.02, 0.98, textstr,

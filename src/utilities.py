@@ -41,9 +41,11 @@ def stumpff_s(z:float)->float:
     if z==0:
         return 1/6
     elif z > 0:
-        return (m.sqrt(z) - m.sin(m.sqrt(z)))/(m.sqrt(z)**3)
+        z_sqrt = m.sqrt(z)
+        return (z_sqrt - m.sin(z_sqrt))/(z_sqrt**3)
     else:
-        return (-m.sqrt(-z) + m.sinh(m.sqrt(-z)))/(m.sqrt(-z)**3)
+        z_sqrt = m.sqrt(-z)
+        return (-z_sqrt + m.sinh(z_sqrt))/(z_sqrt**3)
 
 def stumpff_c(z:float)->float:
     ''' Stumpff cosine functionalso known as c_2,

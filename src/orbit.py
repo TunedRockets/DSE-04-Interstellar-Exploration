@@ -851,15 +851,10 @@ def trajectory_optimizer(
     pois = _times_of_interest(origin,destination,start_time,end_time)
     pois[:,1] -= pois[:,0] # make travel time
     
-    # preoptimize 5 best pois:
+    # pick best of pois:
     dv_pois = np.vectorize(F)(pois[:,0],pois[:,1])
-    inds = np.argsort(dv_pois)
-    pois = pois[inds]
-    if len(pois) > 5: pois = pois[:5]
-    nm_func = lambda s,t: nelder_mead_2d(F, x0=np.array((s,t)), x0_size=dt/20, max_iter=50, allow_nonconvergence=True)
-    dv_opt_pos = np.vectorize(nm_func)(pois[:,0], pois[:,1])
-    dv_opt = np.vectorize(F)(dv_opt_pos[0],dv_opt_pos[1])
-    p = (dv_opt_pos[0][np.argmin(dv_opt)], dv_opt_pos[1][np.argmin(dv_opt)])
+    idx = np.argmin(dv_pois)
+    p = pois[idx]
 
 
     # find starting point with sampling the range:
@@ -872,7 +867,7 @@ def trajectory_optimizer(
     # t = tt[idx]
     # dt = sample_range[1]-sample_range[0]
 
-    s_opt,t_opt = nelder_mead_2d(F,p,dt/20, 1e-6) #type:ignore
+    s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
 
     # compute properties:
     r1,v1 = origin.time_to_rv(s_opt)
@@ -1059,7 +1054,9 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
     A = m.sin(d_theta) * m.sqrt((r1*r2)/(1-m.cos(d_theta)))
     S = stumpff_s
     C = stumpff_c
+    
     y = lambda z: r1 + r2 + A*(z*S(z)-1)/np.sqrt(C(z))
+
     
     # equation to solve is time*sqrt(mu) = x^3*S(z) + A*sqrt(y(z))
     # with x = sqrt(y(z)/C(z))

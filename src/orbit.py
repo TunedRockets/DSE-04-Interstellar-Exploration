@@ -795,7 +795,7 @@ def trajectory_optimizer(
         w_relv:float = 0,
         w_travel_time:float = 0,
         w_intercept_distance:float=0,
-        w_intercept_time:float=0
+        w_intercept_time:float=0,
 )->tuple[float,float,float,float,float]:
     '''
     Function to optimize the trajectory between two keplerian orbits.
@@ -846,40 +846,33 @@ def trajectory_optimizer(
         )
         return weight
     
-    # TODO
-    
-    # define points of interest (apses, nodes, ideal hohmann points, etc.)
-    # get points in net, do some optimization, then pick best
-    if False:
-        node_start = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]] #
-        node_end = [destination.theta_to_time(x) for x in [0,m.pi, -destination.arg_p, m.pi - destination.arg_p]]
+    dt = end_time-start_time
 
-        # scale into relevant region
-        poi_start = []
-        poi_end = []
-        for n in node_start:
-            poi_start.extend(inside_modulo_bounds(start_time, n, end_time, origin.period))
-        for n in node_end:
-            poi_end.extend(inside_modulo_bounds(start_time, n, end_time, destination.period))
-        
-
-        # hohmann:
-        if origin.e < 1 and destination.e < 1:
-            poi_start.append(origin.hohmann_time(destination))
+    pois = _times_of_interest(origin,destination,start_time,end_time)
+    pois[:,1] -= pois[:,0] # make travel time
     
+    # preoptimize 5 best pois:
+    dv_pois = np.vectorize(F)(pois[:,0],pois[:,1])
+    inds = np.argsort(dv_pois)
+    pois = pois[inds]
+    if len(pois) > 5: pois = pois[:5]
+    nm_func = lambda s,t: nelder_mead_2d(F, x0=np.array((s,t)), x0_size=dt/20, max_iter=50, allow_nonconvergence=True)
+    dv_opt_pos = np.vectorize(nm_func)(pois[:,0], pois[:,1])
+    dv_opt = np.vectorize(F)(dv_opt_pos[0],dv_opt_pos[1])
+    p = (dv_opt_pos[0][np.argmin(dv_opt)], dv_opt_pos[1][np.argmin(dv_opt)])
 
 
     # find starting point with sampling the range:
-    sample_range = np.linspace(start_time,end_time,20)
-    ss,ee = np.meshgrid(sample_range,sample_range)
-    tt = ee - ss
-    FF = np.vectorize(F,otypes=[float])(ss,tt)
-    idx = np.unravel_index(FF.argmin(), FF.shape)
-    s = ss[idx]
-    t = tt[idx]
-    dt = sample_range[1]-sample_range[0]
+    # sample_range = np.linspace(start_time,end_time,20)
+    # ss,ee = np.meshgrid(sample_range,sample_range)
+    # tt = ee - ss
+    # FF = np.vectorize(F,otypes=[float])(ss,tt)
+    # idx = np.unravel_index(FF.argmin(), FF.shape)
+    # s = ss[idx]
+    # t = tt[idx]
+    # dt = sample_range[1]-sample_range[0]
 
-    s_opt,t_opt = nelder_mead_2d(F,np.array([s,t]),-dt/2, 1e-6)
+    s_opt,t_opt = nelder_mead_2d(F,p,dt/20, 1e-6) #type:ignore
 
     # compute properties:
     r1,v1 = origin.time_to_rv(s_opt)
@@ -965,6 +958,37 @@ def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range
 
 
 # ======= misc ========
+
+def _times_of_interest(origin:Orbit, destination:Orbit, lower_time:float, upper_time:float)->np.ndarray:
+    '''helper functions to generate times of interest for the trajectory optimizer'''
+
+    ori_apses = [origin.theta_to_time(x) for x in [0,m.pi]]
+    dest_apses = [destination.theta_to_time(x) for x in [0,m.pi]]
+    starts = []
+    ends = []
+    for n in ori_apses:
+        starts.extend(inside_modulo_bounds(lower_time, n, upper_time, origin.period))
+    for n in dest_apses:
+        ends.extend(inside_modulo_bounds(lower_time, n, upper_time, destination.period))
+
+    pois = np.array(np.meshgrid(starts,ends)).T.reshape(-1,2)
+    # mesh of apses
+
+    # hohmann:
+    if (origin.e < 1 and destination.e < 1):
+        t = origin.hohmann_time(destination)
+        t = np.array(inside_modulo_bounds(lower_time,t,upper_time, origin.synodic_period(destination)))
+        t2 = t + origin.hohmann_travel_time(destination)
+        poi = np.column_stack((t,t2))
+        pois = np.vstack((pois,poi))
+    
+    # presort invalids:
+    pois = pois[pois[:,1] < upper_time]
+    pois = pois[pois[:,0] < pois[:,1]]
+    return pois
+
+
+
 
 def propagate(r_0:np.ndarray, v_0:np.ndarray, dt:float, sgp:float, tolerance:float = 1e-9)->tuple[np.ndarray, np.ndarray]:
     '''

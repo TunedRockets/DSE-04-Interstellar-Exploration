@@ -81,10 +81,27 @@ def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:
         if not np.isfinite(x0): raise ArithmeticError("Newton's method failed to converge")
     return x0
 
-def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500)->tuple[float,float]:
+def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500, allow_nonconvergence:bool=False)->tuple[float,float]:
     '''Implementation of the Nelder Mead optimization algorithm,
     uses default values for the coefficients,
-    (minimizes the value)'''
+    (minimizes the value)
+
+    :param f: function to minimize
+    :type f: Callable[[float,float],float]
+    :param x0: initial point
+    :type x0: np.ndarray
+    :param x0_size: initial step size
+    :type x0_size: float
+    :param precision: standard deviation required to terminate, defaults to 1e-6
+    :type precision: float, optional
+    :param max_iter: maximum allowed iterations, each iteration samples the function a maximum of 3 times, defaults to 500
+    :type max_iter: int, optional
+    :param allow_nonconvergence: if this is true, the function will return current value on reaching maximum iterations, even
+    if it hasn't converged, defaults to False
+    :type allow_nonconvergence: bool, optional
+    :return: coordinates of minimum value of f
+    :rtype: tuple[float,float]
+    '''
     a = 1
     b = 0.5
     c = 2
@@ -100,6 +117,7 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
     p3[0] = f(*p3[1])
     # arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
     # plt.plot(arrr[0], arrr[1])
+    avg_point = lambda p1,p2,p3: ((p1[1][0] + p2[1][0] + p3[1][0])/3, (p1[1][1] + p2[1][1] + p3[1][1])/3)
 
     for _ in range(max_iter):
             
@@ -112,7 +130,7 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
         m = (p1[0] + p2[0] + p3[0])/3
         var = (((p1[0]-m)**2 + (p2[0]-m)**2 + (p3[0]-m)**2)/2)
         if var < precision**2:
-            return p1[1][0], p1[1][1]
+            return avg_point(p1,p2,p3)
 
         # centroid:
         cent = 0.5*(p1[1] + p2[1])
@@ -150,7 +168,8 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
             p2 = [f(*p2_p), p2_p]
             continue
     else:
-        raise ArithmeticError("Nelder-mead failed to converge")
+        if allow_nonconvergence: return avg_point(p1,p2,p3)
+        else: raise ArithmeticError("Nelder-mead failed to converge")
 
 def bounds(lower, value, upper):
     '''alias of min(upper, max(lower, value))\n

@@ -104,7 +104,7 @@ class Orbit():
     @h.setter
     def h(self, h:float):
         # p = h^2/mu
-        self.p = m.sqrt(h)/self.sgp
+        self.p = h**2/self.sgp
 
     @property
     def periapsis(self)->float:
@@ -168,6 +168,11 @@ class Orbit():
             "(did you forget to include apoapsis when changing hyperbolic orbit?)")
 
         if new_pe == None: new_pe = self.periapsis
+
+        # figure out swap:
+        if new_pe > new_ap:
+            new_ap,new_pe = new_pe, new_ap
+            self.arg_p -= m.pi # swap periapsis argument
 
         # figure out e:
         e = (new_ap - new_pe)/(new_ap + new_pe)

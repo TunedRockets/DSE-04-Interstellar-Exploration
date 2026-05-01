@@ -1050,32 +1050,37 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
     r2 /= DU
     time /= TU
     sgp = 1
-
+    timerootsgp = time*m.sqrt(sgp)
+    r1r2 = r1 + r2
     A = m.sin(d_theta) * m.sqrt((r1*r2)/(1-m.cos(d_theta)))
     S = stumpff_s
     C = stumpff_c
     
-    y = lambda z: r1 + r2 + A*(z*S(z)-1)/np.sqrt(C(z))
-
+    y = lambda z, S, C: r1r2 + A*(z*S-1)/np.sqrt(C)
     
     # equation to solve is time*sqrt(mu) = x^3*S(z) + A*sqrt(y(z))
     # with x = sqrt(y(z)/C(z))
     # means:
-    chi = lambda z: m.sqrt(y(z)/C(z))
-    F = lambda z: chi(z)**3 * S(z) + A * m.sqrt(y(z)) - time*m.sqrt(sgp)
+    def F(z):
+        Sz = S(z)
+        Cz = C(z)
+        yz = y(z,Sz,Cz)
+        return m.sqrt(yz/Cz)**3 * Sz + A * m.sqrt(yz) - timerootsgp
 
     a= 4*m.pi**2 # upper bound
     b = -4*m.pi**2 # lower bound (expand for hyperbolas)
-    while y(b) < 0: b += 0.1 # adjust lower bound (so y is +ve)
+    while y(b, S(b), C(b)) < 0: b += 0.1 # adjust lower bound (so y is +ve)
     while not m.isfinite(F(a)): a *= 0.9 # adjust upper bound (otherwise it's NaNs)
 
     z = root_finder_bisection(F,b,a)
     # assert abs(F(z)) < 1e-5
 
     # f and g_dot are unitless, g is not, having units of [TU]
-    f = 1 - y(z)/r1
-    g_dot = 1 - y(z)/r2
-    g = A*m.sqrt(y(z)/sgp) * TU
+    Sz = S(z)
+    Cz = C(z)
+    f = 1 - y(z,Sz,Cz)/r1
+    g_dot = 1 - y(z,Sz,Cz)/r2
+    g = A*m.sqrt(y(z,Sz,Cz)/sgp) * TU
     
     v1_vec = (r2_vec - f*r1_vec)/g
     v2_vec = (g_dot*r2_vec - r1_vec)/g

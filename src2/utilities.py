@@ -57,7 +57,7 @@ def stumpff_c(z:float)->float:
     else:
         return (-1 + m.cosh(m.sqrt(-z)))/(-z)
 
-def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8, max_iter=10000)->float:
+def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8, max_iter=10000, f_tolerance=1e-8)->float:
     '''takes a univariate function and finds the root of that function
     through recursive bisection.
     converges on a root between bounds, provided bounds are of different sign'''
@@ -67,12 +67,19 @@ def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float 
     iter=0
     while 0.5*np.abs(upper-lower) > tolerance:  # check that we're not converged
         middle = (lower + upper)/2                  # midpoint of current interval
-        if f(lower) * f(middle) < 0:           # select which 1/2 interval to continue with
-            upper = middle
+        f_lower =f(lower)
+        f_middle = f(middle)
+        if abs(f_lower-f_middle) < f_tolerance:
+            return middle
+        elif np.isfinite(f_middle) and np.isfinite(f_lower):
+            if f_lower * f_middle < 0:           # select which 1/2 interval to continue with
+                upper = middle
+            else:
+                lower = middle
+            if iter>max_iter:
+                raise ValueError("iteration limit exceeded")
         else:
-            lower = middle
-        if iter>max_iter:
-            raise ValueError("iteration limit exceeded")
+            raise ValueError("Function has non finite outputs (non continuous)")
     return middle
 
 def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, iterations:int = 50)->float:

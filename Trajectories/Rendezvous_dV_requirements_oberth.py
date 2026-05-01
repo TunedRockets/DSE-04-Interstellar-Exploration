@@ -66,7 +66,8 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
                 max_time,
                 optimize_rendezvous=(weights["w_relv"] > 0),
                 period=origin.period,
-                detect_time=detect_time
+                detect_time=detect_time,
+                periods=3
             )
 
             # ===============================
@@ -224,10 +225,10 @@ if __name__ == "__main__":
     # interecept only optimizes for minimum insertion, rendezvous optimises for minimum total dV
     icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
     rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-    weight = icpt_weights
-
-    detect_distance = 3*AU
-    max_time = 40*YEAR
+    weight = rdvz_weights
+    rm = 3
+    detect_distance = rm*AU
+    max_time = 50*YEAR
 
 
     origin = orbit_from_ephemeris(
@@ -241,8 +242,8 @@ if __name__ == "__main__":
     )
 
     
-    rm = 3
-    add_dv_hist(rm,weight,2000, PLOT=True)
+
+    add_dv_hist(rm,weight,2000, PLOT=False)
 
     hist = get_dv_hist(rm, weight)
     print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")

@@ -325,7 +325,7 @@ if __name__ == "__main__":
     detect_distance = rm*AU
     max_time = 50*YEAR
 
-    lon_vals = np.linspace(0, 360, 20)
+    lon_vals = np.linspace(0, 140, 10)
     all_hists = []
 
     for lon_per in lon_vals:

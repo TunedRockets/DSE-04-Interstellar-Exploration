@@ -14,7 +14,13 @@ from tqdm import tqdm
 from pathlib import Path
 import random
 import matplotlib as mpl
-# mpl.use('TkAgg')
+
+PLOT= False
+
+if PLOT:
+    mpl.use('TkAgg')
+
+rdvz = False
 
 
 
@@ -164,12 +170,12 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             plot_orbit(ax, origin_rot, time=detect_time, ThreeDee=True, label="Rotated")
 
             try:
-                plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(20*AU))
+                plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(40*AU))
             except:
                 pass  # lambert sometimes fails
 
             # plot ISO, earth and jupiter orbit for context
-            plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(20*AU))
+            plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(40*AU))
             plot_orbit(ax, Earth, time=detect_time, ThreeDee=True, label="Earth")
             plot_orbit(ax, Jupiter, time=detect_time, ThreeDee=True, label="Jupiter")
 
@@ -291,7 +297,17 @@ def probability_map(rm: float, weight: dict, guesses: bool = True, show: bool = 
     if show:
         plt.show()
 
+def distribution_histogram(rm:float, weight:dict,  show:bool=True, lon_per=None):
+    '''generate the histogram of the dV requirements'''
 
+    hist = get_dv_hist(rm, weight, lon_per=lon_per)
+    print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")
+    plt.bar(range(100),hist,width=1)
+    plt.xlabel("dV requirement")
+    plt.ylabel("probability density")
+    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if weight["w_relv"] else "intercept"}\nwith detection range {rm} AU. (Normalization includes unreachable ISOs)")
+    if show:
+        plt.show()
 
 
 
@@ -300,13 +316,16 @@ if __name__ == "__main__":
     # ==== settings =====
     icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
     rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-    weight = icpt_weights
+    if rdvz:
+        weight = rdvz_weights
+    else:
+        weight = icpt_weights
 
     rm = 5
     detect_distance = rm*AU
     max_time = 50*YEAR
 
-    lon_vals = np.linspace(0, 360, 50)
+    lon_vals = np.linspace(0, 360, 20)
     all_hists = []
 
     for lon_per in lon_vals:
@@ -320,9 +339,11 @@ if __name__ == "__main__":
             SGP_SUN
         )
 
-        add_dv_hist(rm, weight, 2000, PLOT=False, lon_per=np.radians(lon_per))
+        add_dv_hist(rm, weight, 10000, PLOT=PLOT, lon_per=np.radians(lon_per))
 
         hist = get_dv_hist(rm, weight, lon_per=np.radians(lon_per))
+        distribution_histogram(2, icpt_weights, True, lon_per=lon_per)
+        plt.figure()
         all_hists.append(hist)
 
         probability_map(rm, weight, lon_per=np.radians(lon_per))

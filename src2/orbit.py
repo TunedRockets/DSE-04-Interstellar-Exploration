@@ -739,7 +739,7 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
     # --- solve ---
     if brackets:
         a, b = brackets[0]
-        t_sol = root_finder_bisection(f, a, b, f_tolerance=100, tolerance=100)
+        t_sol = root_finder_bisection(f, a, b, f_tolerance=1000, tolerance=1000, max_iter=100000)
     else:
         # fallback: pick best approximate solution
         # finite_mask = np.isfinite(vals)

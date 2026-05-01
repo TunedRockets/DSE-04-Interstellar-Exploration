@@ -3,7 +3,6 @@ Script for generating a distributions of dV expected for the ISO intercept
 
 
 '''
-
 from src2.orbit import Orbit, oberth_effect_optimzer, plot_orbit, orbit_from_lambert, orbit_from_rv, orbit_from_ephemeris
 from src2.get_ISO import get_ISO
 from src2.examples import Earth, Jupiter
@@ -13,16 +12,21 @@ import numpy as np
 import math as m
 from tqdm import tqdm
 from pathlib import Path
+import random
 import matplotlib as mpl
-mpl.use('TkAgg')
+# mpl.use('TkAgg')
 
 
 
-
-def add_dv_hist(rm, weights, N, PLOT=False)->None:
+def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
     '''Adds to the dv histogram for the different weights'''
     np.seterr(all="ignore")
-    path = Path(__file__).parent.parent / "data_oberth" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    if lon_per is None:
+        lon_per_str=""
+    else:
+        lon_per_str=str(round(np.degrees(lon_per)))
+
+    path = Path(__file__).parent.parent / "data_oberth" / (f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f},"+lon_per_str)
     
     try:
         with open(path, "r") as file:
@@ -50,7 +54,9 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             # Oberth optimization at periapsis
             # ===============================
             theta_pe = 0
-            tp = origin.theta_to_time(theta_pe)
+            # tp = origin.theta_to_time(theta_pe)
+            or_period = origin.period
+            tp = random.uniform(0.5*or_period, 1.5*or_period)
 
             rp_vec, vp_vec = origin.theta_to_rv(theta_pe)
             vp_mag = np.linalg.norm(vp_vec)
@@ -65,9 +71,9 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
                 min_time,
                 max_time,
                 optimize_rendezvous=(weights["w_relv"] > 0),
-                period=origin.period,
+                period=or_period,
                 detect_time=detect_time,
-                periods=3
+                periods=4
             )
 
             # ===============================
@@ -187,22 +193,27 @@ def add_dv_hist(rm, weights, N, PLOT=False)->None:
             ax.legend()
 
             plt.show()
-        if insert_dv > 100: continue
-        hist[insert_dv] += 1
+        if insert_dv > 99 or insert_dv < 0 or not np.isfinite(insert_dv): continue
+        else:
+            hist[round(insert_dv)] += 1
     
     # Save
-    path = Path(__file__).parent.parent / "data_oberth" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
+    path = Path(__file__).parent.parent / "data_oberth" / (f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f},"+lon_per_str)
     with open(path, "w") as file:
         file.write(str(count) + '\n')
         file.writelines([str(x) + '\n' for x in hist])
     return
 
-def get_dv_hist(rm, weights)->list[float]:
+def get_dv_hist(rm, weights, lon_per=None)->list[float]:
     '''return normalised histogram of the delta v requirements.
     nomalization includes invalid trajectories, so area under curve will be
     less than 1'''
-    path = Path(__file__).parent.parent / "data_oberth" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
-    
+    if lon_per is None:
+        lon_per_str = ""
+    else:
+        lon_per_str = str(round(np.degrees(lon_per)))
+    path = Path(__file__).parent.parent / "data_oberth" / (
+                f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}," + lon_per_str)
 
     with open(path, "r") as file:
         lines = file.readlines()
@@ -211,44 +222,139 @@ def get_dv_hist(rm, weights)->list[float]:
     return [x/count for x in hist]
 
 
+def mission_success_probability(detection_distance:float, dV_budget:int, N:int, weight:dict, lon_per=None)->float:
+    '''
+    Generates total mission probability for the given scenario.
+    :param detection_distance: distance (in AU) from the sun that ISOs are detected
+    :type: float
+    :param dV_buget: total mission dV budget
+    :type: int
+    :param N: Number of ISOs during the mission
+    :type: float
+    :param weight: optimizer weight, i.e. an intercept or rendezvouz
+    :type: dict
+    '''
+    p_ISO = ISO_probability(detection_distance,dV_budget, weight, lon_per=lon_per)
+    p_least_one = 1-(1-p_ISO)**N
+    return p_least_one
+
+def ISO_probability(rm:float,dV_budget:int, weight,lon_per)->float:
+    '''calculate individual chance of success for given dv budget and detection distance,
+    currently only works with integer dV budgets
+
+    :param detection_distance: distance (in AU) from the sun that ISOs are detected
+    :type: float
+    :param dV_buget: total mission dV budget
+    :type: int
+    :param weight: optimizer weight, i.e. an intercept or rendezvouz
+    :type: dict'''
+    hist = get_dv_hist(rm,weight,lon_per=lon_per)
+    return np.sum(hist[:m.floor(dV_budget)+1])
+
+def probability_map(rm: float, weight: dict, guesses: bool = True, show: bool = True, lon_per=None):
+    '''generate probability map of N over dV,'''
+
+    Ezell_Loeb_avg_per_annum = 5
+    Hoover_seligman_payne_per_annum = 14
+    Marceta_seligman_per_annum = 35
+    years = 10
+
+    EL_N = Ezell_Loeb_avg_per_annum * years
+    HSP_N = Hoover_seligman_payne_per_annum * years
+    MS_N = Marceta_seligman_per_annum * years
+
+    N_range = np.arange(10, MS_N + 30, 5)
+    V_range = np.arange(4, 50)
+    NN, VV = np.meshgrid(N_range, V_range)
+    PP = np.vectorize(mission_success_probability)(rm, NN, VV, weight,lon_per=lon_per)
+    plt.imshow(PP, origin="lower", aspect="auto", extent=(N_range[0], N_range[-1], V_range[0], V_range[-1]))
+    plt.colorbar(location="right", label="Probability of mission success")
+    CS = plt.contour(PP, levels=[0.9], origin="lower", aspect="auto",
+                     extent=(N_range[0], N_range[-1], V_range[0], V_range[-1]))
+    plt.clabel(CS, fmt=lambda x: f"{x * 100:.0f}%")
+    plt.ylabel('Delta V budget (km/s)')
+    plt.xlabel('number of ISOs during mission time')
+    if lon_per is None:
+        plt.title(
+            f"Probability map for {"rendezvous" if weight["w_relv"] else "intercept"} with detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission")
+    else:
+        plt.title(
+            f"Probability map for {"rendezvous" if weight["w_relv"] else "intercept"} with detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission, perihelion at {np.round(np.degrees(lon_per))} degrees")
+
+    if guesses:
+        plt.plot([EL_N, EL_N], [5, 48], ls='--', color="gray")
+        plt.text(EL_N + 1, 40, "Ezell, Loeb mean", color="gray")
+        plt.plot([HSP_N, HSP_N], [5, 48], ls='--', color="gray")
+        plt.text(HSP_N + 1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
+        plt.plot([MS_N, MS_N], [5, 48], ls='--', color="gray")
+        plt.text(MS_N - 1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
+    if show:
+        plt.show()
+
 
 
 
 
 if __name__ == "__main__":
 
-    
-
     # ==== settings =====
-
-    T = 0 # time window of ISO generation
-    # interecept only optimizes for minimum insertion, rendezvous optimises for minimum total dV
     icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
     rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-    weight = rdvz_weights
-    rm = 3
+    weight = icpt_weights
+
+    rm = 5
     detect_distance = rm*AU
     max_time = 50*YEAR
 
+    lon_vals = np.linspace(0, 360, 50)
+    all_hists = []
 
-    origin = orbit_from_ephemeris(
-        2.61696589776 * AU, #Semi major axis
-        0.987573 , #eccentricity
-        m.radians(1.303), #Inclination
-        m.radians(100.46457166), #Mean longitude
-        m.radians(60.0), #Longitude of perihelion
-        m.radians(100.464), #Right ascension of ascending node
-        SGP_SUN
-    )
+    for lon_per in lon_vals:
+        origin = orbit_from_ephemeris(
+            2.61696589776 * AU,
+            0.987573,
+            m.radians(1.303),
+            m.radians(100.46457166),
+            m.radians(lon_per),
+            m.radians(100.464),
+            SGP_SUN
+        )
 
-    
+        add_dv_hist(rm, weight, 2000, PLOT=False, lon_per=np.radians(lon_per))
 
-    add_dv_hist(rm,weight,2000, PLOT=False)
+        hist = get_dv_hist(rm, weight, lon_per=np.radians(lon_per))
+        all_hists.append(hist)
 
-    hist = get_dv_hist(rm, weight)
-    print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")
-    plt.bar(range(100),hist,width=1)
-    plt.xlabel("dV requirement")
-    plt.ylabel("probability density")
+        probability_map(rm, weight, lon_per=np.radians(lon_per))
+
+    # Convert degrees → radians for polar plot
+    theta = np.radians(lon_vals)
+
+    # Compute all three thresholds
+    frac_under_10 = []
+    frac_under_20 = []
+    frac_under_30 = []
+
+    for hist in all_hists:  # <-- store hist in loop instead of just one value
+        frac_under_10.append(np.sum(hist[:11]))  # 0–10
+        frac_under_20.append(np.sum(hist[:21]))  # 0–20
+        frac_under_30.append(np.sum(hist[:31]))  # 0–30
+
+    # ==== Polar plot ====
+    plt.figure()
+    ax = plt.subplot(111, projection='polar')
+
+    ax.plot(theta, frac_under_10, marker='o', label="< 10 km/s")
+    ax.plot(theta, frac_under_20, marker='o', label="< 20 km/s")
+    ax.plot(theta, frac_under_30, marker='o', label="< 30 km/s")
+
+    ax.set_theta_zero_location("E")  # 0° at right (like your input)
+    ax.set_theta_direction(1)  # counterclockwise
+
+    ax.set_title("ΔV thresholds vs Longitude of Periapsis")
+    ax.set_rlabel_position(135)
+    ax.grid(True)
+    ax.legend(loc="upper right")
 
     plt.show()
+

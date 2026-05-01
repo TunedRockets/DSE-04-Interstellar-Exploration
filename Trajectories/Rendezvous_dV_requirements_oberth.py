@@ -342,7 +342,7 @@ if __name__ == "__main__":
         add_dv_hist(rm, weight, 10000, PLOT=PLOT, lon_per=np.radians(lon_per))
 
         hist = get_dv_hist(rm, weight, lon_per=np.radians(lon_per))
-        distribution_histogram(2, icpt_weights, True, lon_per=lon_per)
+        distribution_histogram(rm, icpt_weights, True, lon_per=lon_per)
         plt.figure()
         all_hists.append(hist)
 

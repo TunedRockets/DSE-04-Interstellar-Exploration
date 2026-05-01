@@ -74,14 +74,15 @@ def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float 
             lower = middle
     return middle
 
-def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, iterations:int = 50)->float:
+def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, max_iter:int = 100, precision=1e-6)->float:
     '''runs newton's method of root finding, will throw an arithmetic error on divergence'''
 
-    for i in range(iterations):
-        dx = f(x0)/df(x0)
+    for i in range(max_iter):
+        fx = f(x0)
+        if abs(fx) < precision: return x0
+        dx = fx/df(x0)
         x0 = x0 - dx
-        if not np.isfinite(x0): raise ArithmeticError("Newton's method failed to converge")
-    return x0
+    else: raise ArithmeticError("Newton's method failed to converge")
 
 def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500, allow_nonconvergence:bool=False)->tuple[float,float]:
     '''Implementation of the Nelder Mead optimization algorithm,
@@ -492,22 +493,21 @@ def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     S = stumpff_s
     C = stumpff_c
     # sqrt(sgp) * t = (1-rp*alpha)chi^3 S(chi^2*alpha) + rp*chi (after periapsis)
-    F = lambda chi: (1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi - sgp**(1/2)*t
+    F = lambda chi: (1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi - m.sqrt(sgp)*t
     dF = lambda chi: (1-rp*alpha)*chi**2 * C(chi**2*alpha) + rp
     # find root:
-    chi0 = sgp**(1/2) * t * abs(alpha)
+    chi0 = m.sqrt(sgp) * t * abs(alpha)
     chi = root_finder_newton(F,dF,chi0)
+
     if e == 1: # parabolic:
-        return 2 * np.arctan(sgp**(1/2)*chi/h)
+        return 2 * np.arctan(m.sqrt(sgp)*chi/h)
     elif e < 1: # elliptic
-        E = chi * alpha**(1/2)
-        return 2*np.arctan(
-            ((1+e)/(1-e))**(1/2) * np.tan(E/2)
-        )
+        E = chi * m.sqrt(alpha)
+        return 2*m.atan(m.sqrt((1+e)/(1-e)) * np.tan(E/2))
     else: # hyperbolic
         Eh = chi * (-alpha)**(1/2)
         return 2*np.arctan(
-            ((e+1)/(e-1))**(1/2) * np.tanh(Eh/2)
+            m.sqrt((e+1)/(e-1)) * np.tanh(Eh/2)
         )
 
 

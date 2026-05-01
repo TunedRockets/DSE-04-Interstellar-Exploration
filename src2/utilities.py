@@ -41,11 +41,9 @@ def stumpff_s(z:float)->float:
     if z==0:
         return 1/6
     elif z > 0:
-        z_sqrt = m.sqrt(z)
-        return (z_sqrt - m.sin(z_sqrt))/(z_sqrt**3)
+        return (m.sqrt(z) - m.sin(m.sqrt(z)))/(m.sqrt(z)**3)
     else:
-        z_sqrt = m.sqrt(-z)
-        return (-z_sqrt + m.sinh(z_sqrt))/(z_sqrt**3)
+        return (-m.sqrt(-z) + m.sinh(m.sqrt(-z)))/(m.sqrt(-z)**3)
 
 def stumpff_c(z:float)->float:
     ''' Stumpff cosine functionalso known as c_2,
@@ -59,19 +57,29 @@ def stumpff_c(z:float)->float:
     else:
         return (-1 + m.cosh(m.sqrt(-z)))/(-z)
 
-def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8)->float:
+def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8, max_iter=10000, f_tolerance=1e-8)->float:
     '''takes a univariate function and finds the root of that function
     through recursive bisection.
     converges on a root between bounds, provided bounds are of different sign'''
 
     if not ( f(lower) * f(upper) < 0): # check the initial interval contains a root
-        raise ValueError("bounds have same sign")           
+        raise ValueError("bounds have same sign")
+    iter=0
     while 0.5*np.abs(upper-lower) > tolerance:  # check that we're not converged
         middle = (lower + upper)/2                  # midpoint of current interval
-        if f(lower) * f(middle) < 0:           # select which 1/2 interval to continue with
-            upper = middle
+        f_lower =f(lower)
+        f_middle = f(middle)
+        if abs(f_lower-f_middle) < f_tolerance:
+            return middle
+        elif np.isfinite(f_middle) and np.isfinite(f_lower):
+            if f_lower * f_middle < 0:           # select which 1/2 interval to continue with
+                upper = middle
+            else:
+                lower = middle
+            if iter>max_iter:
+                raise ValueError("iteration limit exceeded")
         else:
-            lower = middle
+            raise ValueError("Function has non finite outputs (non continuous)")
     return middle
 
 def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, iterations:int = 50)->float:
@@ -83,27 +91,10 @@ def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:
         if not np.isfinite(x0): raise ArithmeticError("Newton's method failed to converge")
     return x0
 
-def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500, allow_nonconvergence:bool=False)->tuple[float,float]:
+def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500)->tuple[float,float]:
     '''Implementation of the Nelder Mead optimization algorithm,
     uses default values for the coefficients,
-    (minimizes the value)
-
-    :param f: function to minimize
-    :type f: Callable[[float,float],float]
-    :param x0: initial point
-    :type x0: np.ndarray
-    :param x0_size: initial step size
-    :type x0_size: float
-    :param precision: standard deviation required to terminate, defaults to 1e-6
-    :type precision: float, optional
-    :param max_iter: maximum allowed iterations, each iteration samples the function a maximum of 3 times, defaults to 500
-    :type max_iter: int, optional
-    :param allow_nonconvergence: if this is true, the function will return current value on reaching maximum iterations, even
-    if it hasn't converged, defaults to False
-    :type allow_nonconvergence: bool, optional
-    :return: coordinates of minimum value of f
-    :rtype: tuple[float,float]
-    '''
+    (minimizes the value)'''
     a = 1
     b = 0.5
     c = 2
@@ -119,7 +110,6 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
     p3[0] = f(*p3[1])
     # arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
     # plt.plot(arrr[0], arrr[1])
-    avg_point = lambda p1,p2,p3: ((p1[1][0] + p2[1][0] + p3[1][0])/3, (p1[1][1] + p2[1][1] + p3[1][1])/3)
 
     for _ in range(max_iter):
             
@@ -132,7 +122,7 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
         m = (p1[0] + p2[0] + p3[0])/3
         var = (((p1[0]-m)**2 + (p2[0]-m)**2 + (p3[0]-m)**2)/2)
         if var < precision**2:
-            return avg_point(p1,p2,p3)
+            return p1[1][0], p1[1][1]
 
         # centroid:
         cent = 0.5*(p1[1] + p2[1])
@@ -170,30 +160,12 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
             p2 = [f(*p2_p), p2_p]
             continue
     else:
-        if allow_nonconvergence: return avg_point(p1,p2,p3)
-        else: raise ArithmeticError("Nelder-mead failed to converge")
+        raise ArithmeticError("Nelder-mead failed to converge")
 
 def bounds(lower, value, upper):
     '''alias of min(upper, max(lower, value))\n
     works using numpy minimum so can work on arrays'''
     return np.minimum(upper, np.maximum(lower, value))
-
-def inside_modulo_bounds(lower, value, upper, modulo):
-    '''
-    Moves value into the given bounds by moving wth the modulo,
-    if multiple bounds work, will return each instance as a list
-    if it cannot be moved into the region, will return empty list
-    '''
-    
-    # move value below lower:
-    while value-modulo > lower: value -= modulo
-    # go through to add to list
-    l = []
-    while value <= upper:
-        if lower < value < upper: l.append(value)
-        value += modulo
-    return l
-
 
 def lerp(a,b,r, clamped=False):
     '''lerps between value a and value b,

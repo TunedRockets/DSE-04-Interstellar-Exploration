@@ -137,7 +137,7 @@ class Orbit():
     @property
     def period(self)->float:
         '''Period of orbit, Changing this changes p by way of a, unless it is hyperbolic in which 
-        case it returns infinity'''
+        case it raises a ValueError'''
         if self.e < 1: return 2*m.pi*m.sqrt(self.a**3/self.sgp)
         else: return m.inf # since there is no period
     
@@ -283,18 +283,6 @@ class Orbit():
         # phi = phi_0 + n*t (mod 2pi)
         t_until = (phi_opt - phi_0)/effective_mean_motion
         return t_until
-
-    def hohmann_travel_time(self,other:"Orbit")->float:
-        '''travel time of a hohmann transfer orbit
-
-        :param other: other orbit
-        :type other: Orbit
-        :return: time of hohmann transfer
-        :rtype: float
-        '''
-        # half period is pi*sqrt(a^3/mu)
-        # a = 0.5*(a1+a2)
-        return m.pi * m.sqrt(((self.a + other.a)/2)**3 / self.sgp )
     
     # ================= getting vectors ====================
     @property
@@ -446,7 +434,7 @@ class Orbit():
     # == deprecated ==
     
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def orbit_from_rv(r:np.ndarray, v:np.ndarray, sgp:float, time:float=0)->"Orbit":
         '''
         Creates an orbit given a position and velocity vector.\n
@@ -456,7 +444,7 @@ class Orbit():
         return orbit_from_rv(r,v,sgp,time)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def orbit_from_lambert(r1:np.ndarray, r2:np.ndarray, start_time:float,
                            end_time:float, sgp:float, short_way:bool = True)->"Orbit":
         '''creates an orbit by solving lambert's problem\n
@@ -466,7 +454,7 @@ class Orbit():
         return orbit_from_lambert(r1,r2,start_time,end_time,sgp,short_way)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def orbit_from_gauss(observations:list[np.ndarray],
                             times:list[float], 
                             positions:list[np.ndarray],
@@ -477,7 +465,7 @@ class Orbit():
         return orbit_from_gauss(observations,times,positions,sgp)
     
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def from_ephemeris(a:float, e:float, i:float, L:float, long_p:float, RAAN:float, sgp:float)->"Orbit":
         '''creates an orbit from ephemeris numbers instead.
         a: semi-major axis
@@ -490,7 +478,7 @@ class Orbit():
         return orbit_from_ephemeris(a,e,i,L,long_p,RAAN,sgp)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def point_to_point(p1:np.ndarray, p2:np.ndarray, radius:float, start_time:float, end_time:float, sgp:float, angular_speed:float, epoch_angle:float)->"Orbit":
         '''Create a point to point orbit between two coordinates on a sphere with given radius\n
         points given in elevation/azimuth.\n
@@ -498,7 +486,7 @@ class Orbit():
         return point_to_point(p1,p2,radius,start_time,end_time,sgp,angular_speed,epoch_angle)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float, short_way:bool = True)->tuple[np.ndarray, np.ndarray]:
         '''Solves lamberts problem of finding an orbit from two position vectors and a time between them\n
         can choose between "short" or "long" way (defaults to short), does not consider solutions of multiple periods.\n
@@ -632,6 +620,215 @@ def orbit_from_lambert(r1:np.ndarray, r2:np.ndarray, start_time:float,
     v1, _ = lambert_vectors(r1,r2,(end_time-start_time),sgp,short_way)
     ob = orbit_from_rv(r1,v1, sgp, start_time)
     return ob
+
+def orbit_from_periapsis_point_and_point(
+        rp_loc: np.ndarray,
+        int_loc: np.ndarray,
+        sgp: float,
+        t_p: float = 0
+    ) -> tuple[Orbit, float]:
+    '''
+    Construct an orbit from:
+    - focus at origin
+    - periapsis location vector (rp_loc)
+    - another point on orbit (int_loc)
+
+    Returns:
+        Orbit object,
+        time from periapsis to intercept point (Δt)
+
+    '''
+    rp_loc = np.asarray(rp_loc, dtype=float).reshape(3, )
+    int_loc = np.asarray(int_loc, dtype=float).reshape(3, )
+
+    r_p = np.linalg.norm(rp_loc)
+    r_i = np.linalg.norm(int_loc)
+
+    # --- define orbital plane ---
+    h_vec = np.cross(rp_loc, int_loc)
+    if np.linalg.norm(h_vec) == 0:
+        raise ValueError("Points are collinear with focus → infinite solutions")
+
+    h_hat = h_vec / np.linalg.norm(h_vec)
+
+    # --- define perifocal frame ---
+    p_hat = rp_loc / r_p
+    q_hat = np.cross(h_hat, p_hat)
+    q_hat = q_hat / np.linalg.norm(q_hat)
+
+    Q = np.column_stack((p_hat, q_hat, h_hat))
+
+    # --- express int_loc in perifocal frame ---
+    r_i_pqw = Q.T @ int_loc
+    x, y = r_i_pqw[0], r_i_pqw[1]
+
+    theta = np.arctan2(y, x)
+
+    # --- solve for eccentricity ---
+    cos_theta = np.cos(theta)
+    denom = (r_i * cos_theta - r_p)
+
+    if abs(denom) < 1e-12:
+        raise ValueError("Degenerate configuration (cannot solve for eccentricity)")
+
+    e = (r_p - r_i) / denom
+
+    # --- compute parameter ---
+    p = r_p * (1 + e)
+
+    # --- angular momentum ---
+    h = np.sqrt(p * sgp)
+
+    # --- extract orbital elements ---
+    k_hat = np.array([0, 0, 1])
+    n_vec = np.cross(k_hat, h_hat)
+
+    i = np.arccos(h_hat[2])
+
+    if np.linalg.norm(n_vec) < 1e-12:
+        RAAN = 0
+    else:
+        RAAN = np.arccos(n_vec[0] / np.linalg.norm(n_vec))
+        if n_vec[1] < 0:
+            RAAN = 2*np.pi - RAAN
+
+    if np.linalg.norm(n_vec) < 1e-12:
+        arg_p = np.arctan2(p_hat[1], p_hat[0])
+    else:
+        arg_p = np.arccos(np.dot(n_vec, p_hat) / np.linalg.norm(n_vec))
+        if p_hat[2] < 0:
+            arg_p = 2*np.pi - arg_p
+
+    # --- build orbit ---
+    orbit = Orbit(p, e, i, RAAN, arg_p, t_p, sgp)
+
+    # --- compute time since periapsis ---
+    try:
+        dt = true_2_time(theta, e, h, sgp)
+    except Exception:
+        raise ValueError("Failed to compute time-of-flight (likely invalid geometry)")
+
+    return orbit, dt
+
+def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
+
+    def f(t):
+        try:
+            int_loc = destination.time_to_rv(tp + t)[0]
+            _, transfer_time = orbit_from_periapsis_point_and_point(rp, int_loc, sgp, tp)
+
+            if not np.isfinite(transfer_time) or transfer_time < min_time or transfer_time > max_time or transfer_time < 0:
+                return np.nan
+
+            return transfer_time - t
+
+        except Exception:
+            return np.nan
+
+    # --- find brackets ---
+    brackets = []
+    ts = np.linspace(min_time, max_time, 100)
+    vals = np.array([f(t) for t in ts])
+
+    for i in range(len(ts)-1):
+        if np.isnan(vals[i]) or np.isnan(vals[i+1]):
+            continue
+        if vals[i] * vals[i+1] < 0:
+            brackets.append((ts[i], ts[i+1]))
+
+    # --- solve ---
+    if brackets:
+        a, b = brackets[0]
+        t_sol = root_finder_bisection(f, a, b, f_tolerance=100, tolerance=100)
+    else:
+        # fallback: pick best approximate solution
+        # finite_mask = np.isfinite(vals)
+        # if not np.any(finite_mask):
+        #     raise RuntimeError("No valid solutions found")
+        raise RuntimeError("No valid solutions found")
+
+        # t_sol = ts[finite_mask][np.argmin(np.abs(vals[finite_mask]))]
+
+    # --- build orbit ---
+    int_loc = destination.time_to_rv(tp + t_sol)[0]
+    orbit, _ = orbit_from_periapsis_point_and_point(rp, int_loc, sgp, tp)
+
+    return orbit, t_sol
+
+
+
+
+
+def oberth_effect_optimzer(
+        target_object: Orbit,
+        rp: np.ndarray,
+        vp: np.ndarray,
+        tp: float,
+        min_time: float,
+        max_time: float,
+        periods: int | None = None,
+        period: float | None = None,
+        optimize_rendezvous: bool = False,
+        detect_time: float | None = None
+):
+    """
+    Optimizes an Oberth-style transfer by scanning candidate departure times
+    and using `oberth_transfer_finder` to construct each trajectory.
+    """
+
+    sgp = target_object.sgp
+
+    # Optional periodic departure windows
+    period_offsets = [0.0]
+    if period is not None and periods is not None:
+        period_offsets = [k * period for k in range(periods)]
+    if period is not None and detect_time is not None:
+        while tp<detect_time:
+            tp += period
+    best_score = float("inf")
+    best_result = None
+
+    for offset in period_offsets:
+
+        departure_time = tp + offset
+        try:
+            transfer_orbit, flight_time = oberth_transfer_finder(
+                rp,
+                departure_time,
+                target_object,
+                sgp,
+                min_time=min_time,
+                max_time=max_time
+            )
+        except Exception:
+            continue
+        # velocity on transfer orbit at departure (Oberth burn point)
+        v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
+        dv_insertion = abs(v_transfer_dep - vp)
+        # velocity at intercept
+        intercept_time = departure_time + flight_time
+        _, v_target = target_object.time_to_rv(intercept_time)
+        v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+        dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
+        score = dv_insertion
+        if optimize_rendezvous:
+            score += dv_rdv
+        if score < best_score:
+            best_score = score
+            best_result = (
+                dv_insertion,
+                dv_rdv,
+                transfer_orbit,
+                departure_time,
+                intercept_time
+            )
+
+    if best_result is None:
+        raise RuntimeError("No valid Oberth transfer found")
+
+    return best_result
+
+
 
 def orbit_from_gauss(observations:list[np.ndarray],
                         times:list[float], 
@@ -795,7 +992,7 @@ def trajectory_optimizer(
         w_relv:float = 0,
         w_travel_time:float = 0,
         w_intercept_distance:float=0,
-        w_intercept_time:float=0,
+        w_intercept_time:float=0
 )->tuple[float,float,float,float,float]:
     '''
     Function to optimize the trajectory between two keplerian orbits.
@@ -846,28 +1043,27 @@ def trajectory_optimizer(
         )
         return weight
     
-    dt = end_time-start_time
-
-    pois = _times_of_interest(origin,destination,start_time,end_time)
-    pois[:,1] -= pois[:,0] # make travel time
+    # TODO
     
-    # pick best of pois:
-    dv_pois = np.vectorize(F)(pois[:,0],pois[:,1])
-    idx = np.argmin(dv_pois)
-    p = pois[idx]
+    # define points of interest (apses, nodes, ideal hohmann points, etc.)
+    # get points in net, do some optimization, then pick best
+
+    # poi_start = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
+    # poi_end = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
+    
 
 
     # find starting point with sampling the range:
-    # sample_range = np.linspace(start_time,end_time,20)
-    # ss,ee = np.meshgrid(sample_range,sample_range)
-    # tt = ee - ss
-    # FF = np.vectorize(F,otypes=[float])(ss,tt)
-    # idx = np.unravel_index(FF.argmin(), FF.shape)
-    # s = ss[idx]
-    # t = tt[idx]
-    # dt = sample_range[1]-sample_range[0]
+    sample_range = np.linspace(start_time,end_time,20)
+    ss,ee = np.meshgrid(sample_range,sample_range)
+    tt = ee - ss
+    FF = np.vectorize(F,otypes=[float])(ss,tt)
+    idx = np.unravel_index(FF.argmin(), FF.shape)
+    s = ss[idx]
+    t = tt[idx]
+    dt = sample_range[1]-sample_range[0]
 
-    s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
+    s_opt,t_opt = nelder_mead_2d(F,np.array([s,t]),-dt/2, 1e-6)
 
     # compute properties:
     r1,v1 = origin.time_to_rv(s_opt)
@@ -938,7 +1134,7 @@ def porkchop_plot(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
     
     return array, idx_best
 
-def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
+def porkchop_intercept(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
                         short_way:bool = True, rendezvous = True, min_alt=0):
     '''calculates the porkchop plot between two orbits, assumes sgp based on the first orbit
     returns a 2d array of all Dv values, and index of the lowest one.\n
@@ -953,37 +1149,6 @@ def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range
 
 
 # ======= misc ========
-
-def _times_of_interest(origin:Orbit, destination:Orbit, lower_time:float, upper_time:float)->np.ndarray:
-    '''helper functions to generate times of interest for the trajectory optimizer'''
-
-    ori_apses = [origin.theta_to_time(x) for x in [0,m.pi]]
-    dest_apses = [destination.theta_to_time(x) for x in [0,m.pi]]
-    starts = []
-    ends = []
-    for n in ori_apses:
-        starts.extend(inside_modulo_bounds(lower_time, n, upper_time, origin.period))
-    for n in dest_apses:
-        ends.extend(inside_modulo_bounds(lower_time, n, upper_time, destination.period))
-
-    pois = np.array(np.meshgrid(starts,ends)).T.reshape(-1,2)
-    # mesh of apses
-
-    # hohmann:
-    if (origin.e < 1 and destination.e < 1):
-        t = origin.hohmann_time(destination)
-        t = np.array(inside_modulo_bounds(lower_time,t,upper_time, origin.synodic_period(destination)))
-        t2 = t + origin.hohmann_travel_time(destination)
-        poi = np.column_stack((t,t2))
-        pois = np.vstack((pois,poi))
-    
-    # presort invalids:
-    pois = pois[pois[:,1] < upper_time]
-    pois = pois[pois[:,0] < pois[:,1]]
-    return pois
-
-
-
 
 def propagate(r_0:np.ndarray, v_0:np.ndarray, dt:float, sgp:float, tolerance:float = 1e-9)->tuple[np.ndarray, np.ndarray]:
     '''
@@ -1050,37 +1215,30 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
     r2 /= DU
     time /= TU
     sgp = 1
-    timerootsgp = time*m.sqrt(sgp)
-    r1r2 = r1 + r2
+
     A = m.sin(d_theta) * m.sqrt((r1*r2)/(1-m.cos(d_theta)))
     S = stumpff_s
     C = stumpff_c
-    
-    y = lambda z, S, C: r1r2 + A*(z*S-1)/np.sqrt(C)
+    y = lambda z: r1 + r2 + A*(z*S(z)-1)/np.sqrt(C(z))
     
     # equation to solve is time*sqrt(mu) = x^3*S(z) + A*sqrt(y(z))
     # with x = sqrt(y(z)/C(z))
     # means:
-    def F(z):
-        Sz = S(z)
-        Cz = C(z)
-        yz = y(z,Sz,Cz)
-        return m.sqrt(yz/Cz)**3 * Sz + A * m.sqrt(yz) - timerootsgp
+    chi = lambda z: m.sqrt(y(z)/C(z))
+    F = lambda z: chi(z)**3 * S(z) + A * m.sqrt(y(z)) - time*m.sqrt(sgp)
 
     a= 4*m.pi**2 # upper bound
     b = -4*m.pi**2 # lower bound (expand for hyperbolas)
-    while y(b, S(b), C(b)) < 0: b += 0.1 # adjust lower bound (so y is +ve)
+    while y(b) < 0: b += 0.1 # adjust lower bound (so y is +ve)
     while not m.isfinite(F(a)): a *= 0.9 # adjust upper bound (otherwise it's NaNs)
 
     z = root_finder_bisection(F,b,a)
     # assert abs(F(z)) < 1e-5
 
     # f and g_dot are unitless, g is not, having units of [TU]
-    Sz = S(z)
-    Cz = C(z)
-    f = 1 - y(z,Sz,Cz)/r1
-    g_dot = 1 - y(z,Sz,Cz)/r2
-    g = A*m.sqrt(y(z,Sz,Cz)/sgp) * TU
+    f = 1 - y(z)/r1
+    g_dot = 1 - y(z)/r2
+    g = A*m.sqrt(y(z)/sgp) * TU
     
     v1_vec = (r2_vec - f*r1_vec)/g
     v2_vec = (g_dot*r2_vec - r1_vec)/g

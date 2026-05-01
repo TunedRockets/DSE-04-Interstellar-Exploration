@@ -1,8 +1,13 @@
 '''
 Proof of concept code for calculating ISO interceptor trajectories
 using the Kepler orbit script
+generates individual ISOs and intercepts
 '''
-from src.orbit import Orbit, trajectory_optimizer, plot_orbit
+from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).parent.parent.resolve()))
+
+from src.orbit import Orbit, trajectory_optimizer, plot_orbit, orbit_from_lambert
 from src.utilities import *
 from src.get_ISO import get_ISO
 from src.examples import Earth
@@ -10,12 +15,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-detect_distance = 5*AU
+detect_distance = 3*AU
 max_time = 10*YEAR
 weight = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
 
 
-ISOs = get_ISO(rm=2)
+ISOs = get_ISO(rm=3)
 
 for ISO in ISOs:
     detect_theta = ISO.crosses_altitude(detect_distance)
@@ -33,14 +38,15 @@ for ISO in ISOs:
 
     ax = plt.figure().add_subplot(projection='3d')
     
-    intercept = Orbit.orbit_from_lambert(Earth.time_to_rv(st)[0],
+    intercept = orbit_from_lambert(Earth.time_to_rv(st)[0],
                                          ISO.time_to_rv(et)[0],
                                          st,
                                          et,
                                          Earth.sgp)
-    plot_orbit(ax, intercept, et,(intercept.time_to_theta(et)-intercept.time_to_theta(st)),color="red")
+    plot_orbit(ax, intercept, et,(intercept.time_to_theta(et)-intercept.time_to_theta(st)),color="orange")
 
     plot_orbit(ax,Earth, color="blue")
+    ax.scatter(0,0,0, lw=3, color="red")
     plot_orbit(ax,ISO, max_alt=max(ISO.polar_equation(ISO.time_to_theta(et)),er,AU), time=et, color="green")
     plt.axis('scaled')
     plt.show()

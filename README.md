@@ -16,4 +16,5 @@ Perhaps change from Nelder-mead to iterated local search, see: [this KSP KOS cod
 
 TODO:
 - [ ] sample specific points in optimizer
+- [ ] use Cprofile on the optimizer
 - [ ] make proper dockstrings with input output? 

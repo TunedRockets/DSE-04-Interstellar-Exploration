@@ -854,6 +854,13 @@ def trajectory_optimizer(
     dt = end_time-start_time
 
     pois = _times_of_interest(origin,destination,start_time,end_time)
+    extremes = np.array([ # to fill out in case pois is empty
+        [start_time, end_time],
+        [start_time,start_time+dt/10],
+        [end_time-dt/10,end_time],
+        [start_time,start_time + dt/2]
+    ])
+    pois = np.vstack((pois, extremes))
     pois[:,1] -= pois[:,0] # make travel time
     
     # pick best of pois:
@@ -961,9 +968,14 @@ def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range
 
 def _times_of_interest(origin:Orbit, destination:Orbit, lower_time:float, upper_time:float)->np.ndarray:
     '''helper functions to generate times of interest for the trajectory optimizer'''
-
-    ori_apses = [origin.theta_to_time(x) for x in [0,m.pi]]
-    dest_apses = [destination.theta_to_time(x) for x in [0,m.pi]]
+    if origin.e < 1:
+        ori_apses = [origin.theta_to_time(x) for x in [0,m.pi]]
+    else:
+        ori_apses = [origin.theta_to_time(0)]
+    if destination.e < 1:
+        dest_apses = [destination.theta_to_time(x) for x in [0,m.pi]]
+    else:
+        dest_apses = [destination.theta_to_time(0)]
     starts = []
     ends = []
     for n in ori_apses:

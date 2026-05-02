@@ -16,11 +16,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math as m
 from tqdm import tqdm
-from pathlib import Path
+import pandas as pd
 
+# SETTINGS:
+
+PATH_TO_DATA = Path(__file__).parent.parent / "data" 
+PICKLE_NAME = "dvreq.pic"
 icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
 rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-
+detection_ranges = np.array([2,3,5])
 
 # === probability functions =====
 
@@ -154,55 +158,129 @@ def distribution_histogram(rm:float, weight:dict,  show:bool=True):
         plt.show()
 
 
+
+# ========== improved storage and analysis =============
+
+'''
+Instead of only storing the end result, store the generated ISO orbit and data about it, that way data can be reanalyzed, and reinterpreted
+without generating an entirely new set.
+
+pickle this as a pandas for reuse.
+values to store are the 6 orbital parameters gotten from generation (shuffle t_p by a year just in case during generation)
+then dv and stats for different types of intercept (flyby, rdvz, jupiter_flyby, jupiter_rdvz)
+
+Units: time in days, speeds in km/s, distances in AU (not applicable to internal values)
+'''
+col_names = ["generated_rm", "detection_r", "periapsis", 
+             "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
+             "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
+             "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
+             ]
+
+def study_ISO(ISO:Orbit, rm:float, detect_r:float)->dict:
+    '''study an ISO orbit and return data as a row to be added to a pandas table
+
+    :param ISO: the generated ISO in question
+    :type ISO: Orbit
+    :param rm: value of rm used in generation
+    :type rm: float
+    :param detect_r: radius of detection for the ISO in AU from the sun
+    :type detect_r: float
+    :return: dict corresponding to pandas row
+    :rtype: dict
+    '''
+    # initial data
+    out = {"generated_rm":rm, "detection_r":detect_r, "periapsis":ISO.periapsis/AU,
+             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, }
+    
+    # check detection distance/time
+    detect_theta = ISO.crosses_altitude(detect_r*AU)
+    if detect_theta is None:
+        return out # no detection :(
+    detect_time = ISO.theta_to_time(-detect_theta)
+    
+    # intercept:
+    try:
+        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+10*YEAR, **icpt_weights)
+        out.update({
+            "icpt_idv":insert_dv, 
+            "icpt_rdv": rdvz_dv, 
+            "icpt_r": er/AU, 
+            "icpt_t_launch":(st - detect_time), 
+            "icpt_t_arrival":(et - detect_time)
+        })
+    except (ArithmeticError,ValueError):
+        pass # no intercept :(
+    # rendezvous:
+    try:
+        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+10*YEAR, **rdvz_weights)
+        out.update({
+            "rdvz_idv":insert_dv, 
+            "rdvz_rdv": rdvz_dv, 
+            "rdvz_r": er/AU, 
+            "rdvz_t_launch":(st - detect_time), 
+            "rdvz_t_arrival":(et - detect_time)
+        })
+    except (ArithmeticError,ValueError):
+        pass # no rendezvous :(
+
+    return out
+
+def study_batch(rm:float)->pd.DataFrame:
+    '''generate a batch of ISOs, then study each for several ranges of detect_r
+    and then return the resulting dataframe
+
+    :param rm: rm value for the generation
+    :type rm: float
+    :return: dataframe with the results of the study
+    :rtype: pd.DataFrame
+    '''
+    ISOs = get_ISO(rm=rm)
+    # shuffle timings so that does not influence study:
+    for ISO in ISOs:
+        ISO.t_p += YEAR*np.random.rand()
+    res_list= []
+    for r in detection_ranges[detection_ranges <= rm]:
+        for ISO in tqdm(ISOs, desc=f"Studying ISOs with detection range {r}"):
+            res_list.append(study_ISO(ISO,rm,r))
+    return pd.DataFrame(res_list)
+
+def get_data(extra_batches:int=0, rm:float = 5)->pd.DataFrame:
+    '''Get the gathered data on ISOs, 
+    also generate a set number of extra batches and add that to the data
+
+    :param extra_batches: number of extra batches to add, defaults to 0
+    :type extra_batches: int, optional
+    :param rm: rm value for the generation of extra batches
+    :type rm: float
+    :return: dataframe with the results of the study
+    :rtype: pd.DataFrame
+    '''
+    # load if applicable
+    try:
+        data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
+    except:
+        data = pd.DataFrame()
+    
+    # generate new if applicable:
+    if extra_batches > 0:
+        new = [data]
+        for i in range(extra_batches):
+            print(f"Generating batch {i+1} of {extra_batches}:")
+            new.append(study_batch(rm))
+        data = pd.concat(new,ignore_index=True)
+        # save result:
+        data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
+    # return result:
+    return data
+
+
 if __name__ == "__main__":
 
     
 
-    # ==== settings =====    
-    weight = icpt_weights
-    detect_distance = 3
-    # add_dv_hist(5, weight,0)
-    # probability_map(2, icpt_weights, False, False)
-    # plt.figure()
-    # probability_map(3, icpt_weights, False, False)
-    # plt.figure()
-    # probability_map(5, icpt_weights, False, False)
-    # plt.figure()
-    # probability_map(2, rdvz_weights, False, False)
-    # plt.figure()
-    # probability_map(3, rdvz_weights, False, False)
-    # plt.figure()
-    # probability_map(5, rdvz_weights, False, False)
-    # plt.show()
-
-
-    # distribution_histogram(2, icpt_weights, False)
-    # plt.figure()
-    # distribution_histogram(3, icpt_weights, False)
-    # plt.figure()
-    # distribution_histogram(5, icpt_weights, False)
-    # plt.figure()
-    # distribution_histogram(2, rdvz_weights, False)
-    # plt.figure()
-    # distribution_histogram(3, rdvz_weights, False)
-    # plt.figure()
-    # distribution_histogram(5, rdvz_weights, False)
-    # plt.show()
-    
-    probability_map(3,icpt_weights)
-
-    
-
-    while True:
-        add_dv_hist(2, rdvz_weights, 0)
-        add_dv_hist(3, rdvz_weights, 0)
-        add_dv_hist(5, rdvz_weights, 0)
-
-    # add_dv_hist(5,weight, 2000)
-    # probability_map(5, weight)
-
-
-
+    data = get_data(1)
+    print(data)
 
     # hist = get_dv_hist(3, weight)
     # print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")

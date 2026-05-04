@@ -300,6 +300,20 @@ class Orbit():
         # half period is pi*sqrt(a^3/mu)
         # a = 0.5*(a1+a2)
         return m.pi * m.sqrt(((self.a + other.a)/2)**3 / self.sgp )
+
+    def relative_node_crossing(self,other:"Orbit")->float:
+        '''returns the true anaomaly where the two orbits cross,
+        returns the "ascending node", "descending node" is pi radians opposite this one
+
+        :param other: Other orbit
+        :type other: Orbit
+        :return: true anomaly of relative ascending node
+        :rtype: float
+        '''
+        e = self.e_vec
+        N = np.cross(self.h_vec,other.h_vec) # relative node vector
+        theta = m.acos(N.dot(e)/(np.linalg.norm(N) * np.linalg.norm(e))) # anomaly of node vector (i.e. crossing)
+        return theta
     
     # ================= getting vectors ====================
     @property
@@ -854,12 +868,26 @@ def trajectory_optimizer(
     dt = end_time-start_time
 
     pois = _times_of_interest(origin,destination,start_time,end_time)
+    extremes = np.array([ # to fill out in case pois is empty
+        [start_time, end_time],
+        [start_time,start_time+dt/10],
+        [end_time-dt/10,end_time],
+        [start_time,start_time + dt/2]
+    ])
+    pois = np.vstack((pois, extremes))
     pois[:,1] -= pois[:,0] # make travel time
     
     # pick best of pois:
-    dv_pois = np.vectorize(F)(pois[:,0],pois[:,1])
-    idx = np.argmin(dv_pois)
-    p = pois[idx]
+    dv_pois = []
+    for poi in pois:
+        try:
+            dv = F(poi[0], poi[1])
+        except (ArithmeticError, ValueError): 
+            dv = m.inf
+        dv_pois.append(dv)
+    idx = np.argsort(dv_pois)
+    pois = pois[idx]
+    best = pois[0:5] if len(pois) >= 5 else pois
 
 
     # find starting point with sampling the range:
@@ -872,7 +900,16 @@ def trajectory_optimizer(
     # t = tt[idx]
     # dt = sample_range[1]-sample_range[0]
 
-    s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
+    # try the five best:
+    for p in best:
+        try:
+            s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
+            break # found one
+        except:
+            # this one didn't work
+            continue
+    else:
+        raise ArithmeticError("no trajectory could be found")
 
     # compute properties:
     r1,v1 = origin.time_to_rv(s_opt)
@@ -962,17 +999,35 @@ def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range
 def _times_of_interest(origin:Orbit, destination:Orbit, lower_time:float, upper_time:float)->np.ndarray:
     '''helper functions to generate times of interest for the trajectory optimizer'''
 
-    ori_apses = [origin.theta_to_time(x) for x in [0,m.pi]]
-    dest_apses = [destination.theta_to_time(x) for x in [0,m.pi]]
+    # apses and nodes
+    ori_cross = origin.relative_node_crossing(destination)
+    dest_cross = destination.relative_node_crossing(origin)
+    if origin.e < 1:
+        ori_nodes = [0,m.pi, ori_cross, ori_cross + m.pi]
+    else:
+        ori_nodes = [0.0]
+        if abs(ori_cross) < origin.asymptote_angle(): ori_nodes.append(ori_cross) 
+
+        if abs(ori_cross - m.pi) < origin.asymptote_angle(): ori_nodes.append(ori_cross - m.pi) 
+
+    if destination.e < 1:
+        dest_nodes = [0,m.pi, dest_cross, dest_cross + m.pi]
+    else:
+        dest_nodes = [0.0]
+        if abs(dest_cross) < destination.asymptote_angle(): dest_nodes.append(dest_cross) 
+
+        if abs(dest_cross - m.pi) < destination.asymptote_angle(): dest_nodes.append(dest_cross - m.pi) 
+    
+
     starts = []
     ends = []
-    for n in ori_apses:
-        starts.extend(inside_modulo_bounds(lower_time, n, upper_time, origin.period))
-    for n in dest_apses:
-        ends.extend(inside_modulo_bounds(lower_time, n, upper_time, destination.period))
+    for n in ori_nodes:
+        starts.extend(inside_modulo_bounds(lower_time, origin.theta_to_time(n), upper_time, origin.period))
+    for n in dest_nodes:
+        ends.extend(inside_modulo_bounds(lower_time, destination.theta_to_time(n), upper_time, destination.period))
 
     pois = np.array(np.meshgrid(starts,ends)).T.reshape(-1,2)
-    # mesh of apses
+    # mesh of nodes/apses
 
     # hohmann:
     if (origin.e < 1 and destination.e < 1):
@@ -981,7 +1036,6 @@ def _times_of_interest(origin:Orbit, destination:Orbit, lower_time:float, upper_
         t2 = t + origin.hohmann_travel_time(destination)
         poi = np.column_stack((t,t2))
         pois = np.vstack((pois,poi))
-    
     # presort invalids:
     pois = pois[pois[:,1] < upper_time]
     pois = pois[pois[:,0] < pois[:,1]]

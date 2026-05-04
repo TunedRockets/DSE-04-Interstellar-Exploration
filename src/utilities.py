@@ -489,6 +489,7 @@ def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     
     # time -> chi -> true
     rp = h*h/(sgp*(1+e))
+    
     alpha = (sgp*(1-e*e))/(h*h) # 1/a
     S = stumpff_s
     C = stumpff_c
@@ -496,18 +497,30 @@ def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     F = lambda chi: (1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi - m.sqrt(sgp)*t
     dF = lambda chi: (1-rp*alpha)*chi**2 * C(chi**2*alpha) + rp
     # find root:
-    chi0 = m.sqrt(sgp) * t * abs(alpha)
-    chi = root_finder_newton(F,dF,chi0)
+
+    # root finder behaves strangely, so hybrid/bisection is used instead
+    # prussing conway say it's in the range: (sqrt(mu)dt/r_max) -- (sqrt(mu)dt/r_min)
+    # where r_min is periapsis 
+    # and r_max is apoapsis (or for e>=1 infinity s.t. chi = 0)
+    chi_max = m.sqrt(sgp)*t/rp
+    chi_min = m.sqrt(sgp)*t/(h*h/(sgp*(1-e))) if e < 1 else 0.0
+    try:
+        chi0 = 0.5*(chi_min+chi_max)
+        chi = root_finder_newton(F,dF,chi0)
+        if not (chi_min < chi < chi_max): raise ArithmeticError("Converged wrong")
+    except ArithmeticError:
+        # fall back on bisection
+        chi = root_finder_bisection(F,chi_min,chi_max)
 
     if e == 1: # parabolic:
-        return 2 * np.arctan(m.sqrt(sgp)*chi/h)
+        return 2 * m.atan(m.sqrt(sgp)*chi/h)
     elif e < 1: # elliptic
         E = chi * m.sqrt(alpha)
-        return 2*m.atan(m.sqrt((1+e)/(1-e)) * np.tan(E/2))
+        return 2*m.atan(m.sqrt((1+e)/(1-e)) * m.tan(E/2))
     else: # hyperbolic
-        Eh = chi * (-alpha)**(1/2)
-        return 2*np.arctan(
-            m.sqrt((e+1)/(e-1)) * np.tanh(Eh/2)
+        Eh = chi * m.sqrt(-alpha)
+        return 2*m.atan(
+            m.sqrt((e+1)/(e-1)) * m.tanh(Eh/2)
         )
 
 
@@ -518,15 +531,15 @@ def true_2_time(theta:float, e:float, h:float, sgp:float)->float:
     S = stumpff_s
 
     if e == 1:
-        chi = h/(sgp**(1/2))*np.tan(theta/2)
+        chi = h/(m.sqrt(sgp))*m.tan(theta/2)
     elif e < 1:
-        E = 2 * np.arctan(((1-e)/(1+e))**(1/2) * np.tan(theta/2))
-        chi = E/(alpha**(1/2))
+        E = 2 * m.tan(m.sqrt((1-e)/(1+e)) * m.tan(theta/2))
+        chi = E/(m.sqrt(alpha))
     else:
-        Eh = 2 * np.arctanh(((e-1)/(e+1))**(1/2) * np.tan(theta/2))
-        chi = Eh/((-alpha)**(1/2))
+        Eh = 2 * m.atanh(m.sqrt((e-1)/(e+1)) * m.tan(theta/2))
+        chi = Eh/(m.sqrt(-alpha))
     
-    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/(sgp**(1/2))
+    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/(m.sqrt(sgp))
     return time
     
 

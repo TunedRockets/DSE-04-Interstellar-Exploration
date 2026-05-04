@@ -963,7 +963,7 @@ def oberth_effect_optimzer(
         optimize_rendezvous: bool = False,
         detect_time: float | None = None,
         tp_window_width: float | None = None,
-        debug: bool = True
+        debug: bool = False
 ):
     """
     Optimizes an Oberth-style transfer by scanning candidate departure times
@@ -986,63 +986,6 @@ def oberth_effect_optimzer(
 
         departure_time = tp + offset
         try:
-            def f(t_p):
-                transfer_orbit, flight_time = oberth_transfer_finder(
-                    rp,
-                    t_p,
-                    target_object,
-                    sgp,
-                    min_time=min_time,
-                    max_time=max_time
-                )
-                if flight_time is not None:
-                    # velocity on transfer orbit at departure (Oberth burn point)
-                    v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(t_p)[1])
-                    dv_insertion = abs(v_transfer_dep - vp)
-                    # velocity at intercept
-                    intercept_time = t_p + flight_time
-                    _, v_target = target_object.time_to_rv(intercept_time)
-                    v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
-                    dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
-                    if optimize_rendezvous:
-                        score = dv_rdv + dv_insertion
-                    else:
-                        score = dv_insertion
-                    return score
-                else:
-                    return 10e6
-            def debug_plot_f():
-                ts = np.linspace(
-                    departure_time - tp_window_width,
-                    departure_time + tp_window_width,
-                    200
-                )
-
-                vals = []
-
-                for t in ts:
-                    try:
-                        val = f(t)
-                        if not np.isfinite(val):
-                            val = np.nan
-                    except Exception:
-                        val = np.nan
-                    vals.append(val)
-
-                vals = np.array(vals)
-
-                plt.figure(figsize=(8, 4))
-                plt.plot(ts, vals, label="f(t_p)")
-                plt.axvline(departure_time, linestyle="--", label="initial guess")
-                plt.xlabel("t_p")
-                plt.ylabel("score")
-                plt.title("Oberth optimizer landscape")
-                plt.legend()
-                plt.grid()
-                plt.show()
-
-            if debug:
-                debug_plot_f()
             if tp_window_width is None:
                 transfer_orbit, flight_time = oberth_transfer_finder(
                     rp,
@@ -1065,6 +1008,64 @@ def oberth_effect_optimzer(
                 else:
                     score = dv_insertion
             else:
+                def f(t_p):
+                    transfer_orbit, flight_time = oberth_transfer_finder(
+                        rp,
+                        t_p,
+                        target_object,
+                        sgp,
+                        min_time=min_time,
+                        max_time=max_time
+                    )
+                    if flight_time is not None:
+                        # velocity on transfer orbit at departure (Oberth burn point)
+                        v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(t_p)[1])
+                        dv_insertion = abs(v_transfer_dep - vp)
+                        # velocity at intercept
+                        intercept_time = t_p + flight_time
+                        _, v_target = target_object.time_to_rv(intercept_time)
+                        v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+                        dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
+                        if optimize_rendezvous:
+                            score = dv_rdv + dv_insertion
+                        else:
+                            score = dv_insertion
+                        return score
+                    else:
+                        return 10e6
+
+                def debug_plot_f():
+                    ts = np.linspace(
+                        departure_time - tp_window_width,
+                        departure_time + tp_window_width,
+                        200
+                    )
+
+                    vals = []
+
+                    for t in ts:
+                        try:
+                            val = f(t)
+                            if not np.isfinite(val):
+                                val = np.nan
+                        except Exception:
+                            val = np.nan
+                        vals.append(val)
+
+                    vals = np.array(vals)
+
+                    plt.figure(figsize=(8, 4))
+                    plt.plot(ts, vals, label="f(t_p)")
+                    plt.axvline(departure_time, linestyle="--", label="initial guess")
+                    plt.xlabel("t_p")
+                    plt.ylabel("score")
+                    plt.title("Oberth optimizer landscape")
+                    plt.legend()
+                    plt.grid()
+                    plt.show()
+
+                if debug:
+                    debug_plot_f()
 
                 optimum_tp = minimize(f, departure_time, method="nelder-mead", bounds=((departure_time-tp_window_width,departure_time+tp_window_width))).x[0]
                 transfer_orbit, flight_time = oberth_transfer_finder(

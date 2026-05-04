@@ -24,11 +24,11 @@ PATH_TO_DATA = Path(__file__).parent.parent / "data"
 PICKLE_NAME = "dvreq.pic"
 icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
 rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-detection_ranges = np.array([2,3,5,12,20])
+detection_ranges = np.array([2,3,5,8])
 
 # === probability functions =====
 
-def mission_success_probability(detection_distance:float, dV_budget:int, N:int, weight:dict)->float:
+def mission_success_probability(detection_distance:int, dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
     '''
     Generates total mission probability for the given scenario.
     :param detection_distance: distance (in AU) from the sun that ISOs are detected
@@ -40,12 +40,12 @@ def mission_success_probability(detection_distance:float, dV_budget:int, N:int, 
     :param weight: optimizer weight, i.e. an intercept or rendezvouz
     :type: dict
     '''
-    p_ISO = ISO_probability(detection_distance,dV_budget, weight)
+    p_ISO = ISO_probability(detection_distance,dV_budget, rdvz, df)
     p_least_one = 1-(1-p_ISO)**N
     return p_least_one
 
     
-def ISO_probability(rm:float,dV_budget:int, weight)->float:
+def ISO_probability(detection_distance:int,dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
     '''calculate individual chance of success for given dv budget and detection distance,
     currently only works with integer dV budgets
 
@@ -55,107 +55,11 @@ def ISO_probability(rm:float,dV_budget:int, weight)->float:
     :type: int
     :param weight: optimizer weight, i.e. an intercept or rendezvouz
     :type: dict'''
-    hist = get_dv_hist(rm,weight)
-    return np.sum(hist[:m.floor(dV_budget)+1])
+    # hist = get_dv_hist(rm,weight)
+    # return np.sum(hist[:m.floor(dV_budget)+1])
 
-# ==== histogram generation ====
-
-def add_dv_hist(rm, weights, N)->None:
-    '''Adds to the dv histogram for the different weights,
-    rm is detection distance (and also simulation distance, such that every generated ISO is detected)'''
-    np.seterr(all="ignore")
-    path = Path(__file__).parent.parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
-    
-    try:
-        with open(path, "r") as file:
-            lines = file.readlines()
-            count = int(lines[0])
-            hist = [int(x) for x in lines[1:]]
-    except:
-        hist = [0 for _ in range(100)]
-        count = 0
-
-    ISOs = get_ISO() # sample of ISOs
-    while len(ISOs) < N:
-        ISOs.extend(get_ISO())
-    count += len(ISOs)
-
-    for ISO in tqdm(ISOs,desc="studying ISOs"):
-        detect_theta = ISO.crosses_altitude(rm*AU)
-        if detect_theta is None: continue
-        detect_time = ISO.theta_to_time(-detect_theta)
-        try:
-            insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+10*YEAR, **weights)
-        except (ArithmeticError,ValueError): continue
-        dv = round(insert_dv*weights["w_insertion"] + rdvz_dv*weights["w_relv"])
-        if dv >= 100: continue
-        hist[dv] += 1
-    
-    # Save
-    path = Path(__file__).parent.parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
-    with open(path, "w") as file:
-        file.write(str(count) + '\n')
-        file.writelines([str(x) + '\n' for x in hist])
-    return
-
-def get_dv_hist(rm, weights)->list[float]:
-    '''return normalised histogram of the delta v requirements.
-    nomalization includes invalid trajectories, so area under curve will be
-    less than 1'''
-    path = Path(__file__).parent.parent / "data" / f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},{rm:.2f}"
-
-    with open(path, "r") as file:
-        lines = file.readlines()
-        count = int(lines[0])
-        hist = [int(x) for x in lines[1:]]
-    return [x/count for x in hist]
-
-
-def probability_map(rm:float, weight:dict, guesses:bool = True, show:bool=True):
-    '''generate probability map of N over dV,'''
-
-    Ezell_Loeb_avg_per_annum = 5
-    Hoover_seligman_payne_per_annum = 14
-    Marceta_seligman_per_annum = 35
-    years = 10 
-
-    EL_N = Ezell_Loeb_avg_per_annum * years
-    HSP_N = Hoover_seligman_payne_per_annum * years
-    MS_N = Marceta_seligman_per_annum * years
-    
-
-    N_range = np.arange(10,MS_N + 30,5)
-    V_range =np.arange(4,50)
-    NN, VV = np.meshgrid(N_range,V_range)
-    PP = np.vectorize(mission_success_probability)(rm,NN,VV,weight)
-    plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
-    plt.colorbar(location="right", label="Probability of mission success")
-    CS = plt.contour(PP,levels=[0.9],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
-    plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
-    plt.ylabel('Delta V budget (km/s)')
-    plt.xlabel('number of ISOs during mission time')
-    plt.title(f"Probability map for {"rendezvous" if weight["w_relv"] else "intercept"} with detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission")
-    if guesses:
-        plt.plot([EL_N,EL_N],[5,48], ls='--', color="gray")
-        plt.text(EL_N+1, 40, "Ezell, Loeb mean", color="gray")
-        plt.plot([HSP_N,HSP_N],[5,48], ls='--', color="gray")
-        plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
-        plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
-        plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
-    if show:
-        plt.show()
-
-def distribution_histogram(rm:float, weight:dict,  show:bool=True):
-    '''generate the histogram of the dV requirements'''
-
-    hist = get_dv_hist(rm, weight)
-    print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")
-    plt.bar(range(100),hist,width=1)
-    plt.xlabel("dV requirement")
-    plt.ylabel("probability density")
-    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if weight["w_relv"] else "intercept"}\nwith detection range {rm} AU. (Normalization includes unreachable ISOs)")
-    if show:
-        plt.show()
+    p = dv_below_budget(dV_budget,detection_distance,rdvz, df)
+    return p
 
 
 
@@ -234,6 +138,8 @@ def study_batch()->pd.DataFrame:
     :return: dataframe with the results of the study
     :rtype: pd.DataFrame
     '''
+
+    np.seterr(divide='ignore', invalid='ignore') # since we don't care about the errors
     ISOs = get_ISO()
     # shuffle timings so that does not influence study:
     for ISO in ISOs:
@@ -243,6 +149,7 @@ def study_batch()->pd.DataFrame:
         for ISO in tqdm(ISOs, desc=f"Studying ISOs with detection range {r}"):
             res_list.append(study_ISO(ISO,r))
     return pd.DataFrame(res_list)
+
 
 def get_data(extra_batches:int=0)->pd.DataFrame:
     '''Get the gathered data on ISOs, 
@@ -307,7 +214,42 @@ def dv_histogram(detect_r:int, rdvz:bool,printing:bool = False,df:pd.DataFrame|N
         print(f"40 km/s: {func(40):.2f}%")
 
 
-def dv_below_budget(dv_budget:float, detect_r:int, rdvz:bool,df:pd.DataFrame|None=None):
+def probability_map(detect_r:int, rdvz:bool, guesses:bool = True, show:bool=True):
+    '''generate probability map of N over dV,'''
+
+    Ezell_Loeb_avg_per_annum = 5
+    Hoover_seligman_payne_per_annum = 14
+    Marceta_seligman_per_annum = 35
+    years = 10 
+
+    EL_N = Ezell_Loeb_avg_per_annum * years
+    HSP_N = Hoover_seligman_payne_per_annum * years
+    MS_N = Marceta_seligman_per_annum * years
+    
+
+    N_range = np.arange(10,MS_N + 30,5)
+    V_range =np.arange(4,50)
+    NN, VV = np.meshgrid(N_range,V_range)
+    PP = np.vectorize(mission_success_probability)(detect_r,VV,NN,rdvz)
+    plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
+    plt.colorbar(location="right", label="Probability of mission success")
+    CS = plt.contour(PP,levels=[0.9],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
+    plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
+    plt.ylabel('Delta V budget (km/s)')
+    plt.xlabel('number of ISOs during mission time')
+    plt.title(f"Probability map for {"rendezvous" if rdvz else "intercept"} with detection range of {detect_r} AU\nAnd estimated ISO detections during {years} year mission")
+    if guesses:
+        plt.plot([EL_N,EL_N],[5,48], ls='--', color="gray")
+        plt.text(EL_N+1, 40, "Ezell, Loeb mean", color="gray")
+        plt.plot([HSP_N,HSP_N],[5,48], ls='--', color="gray")
+        plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
+        plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
+        plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
+    if show:
+        plt.show()
+
+
+def dv_below_budget(dv_budget:float, detect_r:int, rdvz:bool,df:pd.DataFrame|None=None)->float:
     '''get fraction of orbits that are at or below a dv_budget
     '''
     if df is None: df = get_data()
@@ -367,21 +309,31 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
 
 
-
-
-
 if __name__ == "__main__":
 
     # compare different generation with same detection:
     # generate:
     # for r in detection_ranges:
     #     get_data(10,r)
+    dv_histogram(2,False,True)
+    plt.show()
+    dv_histogram(3,False,True)
+    plt.show()
+    dv_histogram(5,False,True)
+    plt.show()
+    probability_map(2,False,True)
+    probability_map(3,False,True)
+    probability_map(5,False,True)
     
     while True:
-        get_data(1)
+        
+        df = get_data(1)
+        print("Current # of rows:")
+        print(len(df))
+        print('---------\n')
 
     # compare for detectr:
-    dv_histogram(5, False, True)
+    dv_histogram(3, False, True)
     plt.legend()
     plt.show()
 

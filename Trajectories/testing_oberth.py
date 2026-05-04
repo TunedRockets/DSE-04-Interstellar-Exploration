@@ -1,319 +1,248 @@
+
+
 import numpy as np
 import matplotlib.pyplot as plt
+import pytest
 import matplotlib as mpl
 mpl.use('TkAgg')
 
-from src2.orbit import *
-
-# -----------------------------
-# Constants (Earth-like system)
-# -----------------------------
-mu = 398600.0  # km^3/s^2 (Earth)
-
-# -----------------------------
-# Target circular orbit
-# -----------------------------
-r_target = 6000.0  # km
-v_target = np.sqrt(mu / r_target)
-
-target_orbit = Orbit(
-    p=r_target,
-    e=0.0,
-    i=0.0,
-    RAAN=0.0,
-    arg_p=0.0,
-    t_p=0.0,
-    sgp=mu
+from src2.orbit import (
+    Orbit,
+    orbit_from_keplerian,
+    oberth_transfer_finder,
+    oberth_effect_optimzer,
+    dt_from_periapsis_point_and_point,
+    lambert_vectors,
+    plot_orbit
 )
 
-# -----------------------------
-# Starting point
-# -----------------------------
-rp_loc = np.array([7000.0, 0.0, 0.0])
-vp_vec = np.array([0.0, np.sqrt(mu / np.linalg.norm(rp_loc)), 0.0])
-tp = 10000.0
+# ===========================
+# Global constants
+# ===========================
 
-# -----------------------------
-# Second point
-# -----------------------------
-int_loc = np.array([0.0, 12000.0, 2000.0])
+MU_EARTH = 398600.0  # km^3/s^2
 
-# =========================================================
-# 1. Periapsis + point reconstruction
-# =========================================================
-try:
-    orbit_pp, dt_pp = orbit_from_periapsis_point_and_point(
-        rp_loc,
-        int_loc,
-        mu,
-        tp
+
+# ===========================
+# Fixtures
+# ===========================
+
+@pytest.fixture
+def circular_orbits():
+    r1 = 12000.0
+    r2 = 7000.0
+
+    ob1 = orbit_from_keplerian(r1, 0, 0, 0, 0, 0, MU_EARTH)
+    ob2 = orbit_from_keplerian(r2, 0, 0, 0, 0, np.pi/2, MU_EARTH)
+
+    rp, vp_vec = ob1.theta_to_rv(0)
+    vp = np.linalg.norm(vp_vec)
+
+    return ob1, ob2, rp, vp
+
+
+# ===========================
+# 1. Basic functionality
+# ===========================
+
+def test_oberth_transfer_basic(circular_orbits):
+    ob1, ob2, rp, vp = circular_orbits
+
+    orbit, dt = oberth_transfer_finder(
+        rp,
+        0,
+        ob2,
+        MU_EARTH,
+        min_time=0,
+        max_time=20000
     )
-except Exception as e:
-    print("Periapsis-point method failed:", e)
-    orbit_pp, dt_pp = None, None
 
-# =========================================================
-# Diagnostic plot
-# =========================================================
-def residual(t):
-    try:
-        int_loc_test = target_orbit.time_to_rv(t)[0]
-        _, transfer_time = orbit_from_periapsis_point_and_point(
-            rp_loc,
-            int_loc_test,
-            mu,
-            t
-        )
-        return transfer_time - t
-    except:
-        return np.nan
+    assert orbit is not None
+    assert np.isfinite(dt)
+    assert dt > 0
 
-try:
-    ts = np.linspace(-10_000, 10000, 400)
-    rs = np.array([residual(t) for t in ts])
 
-    plt.figure()
-    plt.axhline(0, color='black', linewidth=1)
-    plt.plot(ts, rs)
-    plt.axis("equal")
-    
-    plt.xlabel("Transfer time guess [s]")
-    plt.ylabel("transfer_time - t")
-    plt.title("Root structure of periapsis-point transfer problem")
-    plt.grid()
-    plt.show()
-except Exception as e:
-    print("Diagnostic plot failed:", e)
+# ===========================
+# 2. Time consistency
+# ===========================
 
-# =========================================================
-# 2. Oberth transfer finder
-# =========================================================
-try:
-    orbit_oberth, tof_oberth = oberth_transfer_finder(
-        rp_loc,
-        tp,
-        target_orbit,
-        mu,
-        min_time=-1000,
-        max_time=1000,
-    )
-except Exception as e:
-    print("Oberth finder failed:", e)
-    orbit_oberth, tof_oberth = None, None
+def test_time_consistency(circular_orbits):
+    ob1, ob2, rp, vp = circular_orbits
 
-# =========================================================
-# 3. Oberth optimizer
-# =========================================================
-try:
-    dv1, dv2, orbit_opt, t_dep, t_arr = oberth_effect_optimzer(
-        target_object=target_orbit,
-        rp=rp_loc,
-        vp=vp_vec,
-        tp=tp,
-        min_time=-100,
-        max_time=5 * 86400,
+    t_guess = 5000
+
+    int_loc = ob2.time_to_rv(t_guess)[0]
+    dt = dt_from_periapsis_point_and_point(rp, int_loc, MU_EARTH)
+
+    assert np.isfinite(dt)
+
+
+# ===========================
+# 3. Optimizer output
+# ===========================
+
+def test_oberth_optimizer(circular_orbits):
+    ob1, ob2, rp, vp = circular_orbits
+
+    dv_ins, dv_rdv, orbit, t_dep, t_arr = oberth_effect_optimzer(
+        target_object=ob2,
+        rp=rp,
+        vp=vp,
+        tp=0,
+        min_time=1000,
+        max_time=20000,
         optimize_rendezvous=True
     )
-except Exception as e:
-    print("Oberth optimizer failed:", e)
-    dv1 = dv2 = orbit_opt = t_dep = t_arr = None
 
-# =========================================================
-# Helper for plotting
-# =========================================================
-def setup_ax(title):
+    assert np.isfinite(dv_ins)
+    assert np.isfinite(dv_rdv)
+    assert orbit is not None
+    assert t_arr > t_dep
+
+
+# ===========================
+# 4. Compare vs Lambert
+# ===========================
+
+def test_vs_lambert(circular_orbits):
+    ob1, ob2, rp, vp = circular_orbits
+
+    dv_ins, dv_rdv, orbit, t_dep, t_arr = oberth_effect_optimzer(
+        target_object=ob2,
+        rp=rp,
+        vp=vp,
+        tp=0,
+        min_time=1000,
+        max_time=20000
+    )
+
+    r1, v1 = ob1.time_to_rv(t_dep)
+    r2, v2 = ob2.time_to_rv(t_arr)
+
+    v_lam1, _ = lambert_vectors(r1, r2, t_arr - t_dep, MU_EARTH)
+
+    dv_lambert = np.linalg.norm(v_lam1 - v1)
+
+    assert dv_ins <= dv_lambert * 2  # loose sanity bound
+
+
+# ===========================
+# 5. Inclined orbit test
+# ===========================
+
+def test_inclined_target():
+    ob1 = orbit_from_keplerian(7000, 0, 0, 0, 0, 0, MU_EARTH)
+    ob2 = orbit_from_keplerian(
+        12000,
+        0.2,
+        np.radians(30),
+        np.radians(40),
+        np.radians(60),
+        np.pi/3,
+        MU_EARTH
+    )
+
+    rp, vp_vec = ob1.theta_to_rv(0)
+    vp = np.linalg.norm(vp_vec)
+
+    dv_ins, dv_rdv, orbit, t_dep, t_arr = oberth_effect_optimzer(
+        target_object=ob2,
+        rp=rp,
+        vp=vp,
+        tp=0,
+        min_time=1000,
+        max_time=20000
+    )
+
+    assert np.isfinite(dv_ins)
+    assert orbit is not None
+
+
+# ===========================
+# 6. Failure handling
+# ===========================
+
+def test_invalid_geometry():
+    ob2 = orbit_from_keplerian(12000, 0, 0, 0, 0, 0, MU_EARTH)
+
+    bad_rp = np.array([0, 0, 0])
+
+    orbit, dt = oberth_transfer_finder(
+        bad_rp,
+        0,
+        ob2,
+        MU_EARTH,
+        1000,
+        20000
+    )
+
+    assert orbit is None or not np.isfinite(dt)
+
+
+# ===========================
+# 7. Root behavior (diagnostic)
+# ===========================
+
+def test_root_behavior(circular_orbits):
+    ob1, ob2, rp, vp = circular_orbits
+
+    ts = np.linspace(1000, 20000, 100)
+    vals = []
+
+    for t in ts:
+        try:
+            int_loc = ob2.time_to_rv(t)[0]
+            dt = dt_from_periapsis_point_and_point(rp, int_loc, MU_EARTH)
+            vals.append(dt - t if np.isfinite(dt) else np.nan)
+        except:
+            vals.append(np.nan)
+
+    vals = np.array(vals)
+
+    # ensure at least some valid values exist
+    assert np.any(np.isfinite(vals))
+
+
+# ===========================
+# Optional visualization
+# ===========================
+
+def run_visual_test():
+    print("Running visual test...")
+
+    ob1 = orbit_from_keplerian(7000, 0, 0, 0, 0, 0, MU_EARTH)
+    ob2 = orbit_from_keplerian(12000, 0, 0, 0, 0, np.pi/2, MU_EARTH)
+
+    rp, vp_vec = ob1.theta_to_rv(0)
+    vp = np.linalg.norm(vp_vec)
+
+    dv_ins, dv_rdv, orbit, t_dep, t_arr = oberth_effect_optimzer(
+        target_object=ob2,
+        rp=rp,
+        vp=vp,
+        tp=0,
+        min_time=1000,
+        max_time=20000,
+        optimize_rendezvous=True
+    )
+
+    print("DV insertion:", dv_ins)
+    print("DV rendezvous:", dv_rdv)
+
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.set_title(title)
-    return fig, ax
 
-# =========================================================
-# Individual plots (failure-safe)
-# =========================================================
+    plot_orbit(ax, ob1, color='blue')
+    plot_orbit(ax, ob2, color='green')
+    plot_orbit(ax, orbit, color='red')
 
-# --- Target orbit ---
-try:
-    fig, ax = setup_ax("Target Orbit")
-    plot_orbit(ax, target_orbit, color='blue', label="Target Orbit")
-    plt.axis("equal")
-    
-    ax.legend()
+    plt.title("Oberth Transfer Visualization")
     plt.show()
-except Exception as e:
-    print("Target orbit plot failed:", e)
-
-# --- Periapsis-point method ---
-try:
-    if orbit_pp is not None:
-        fig, ax = setup_ax("Periapsis-Point Method")
-        plot_orbit(ax, target_orbit, color='blue', label="Target Orbit")
-        plot_orbit(ax, orbit_pp, color='green', label="Transfer Orbit")
-        ax.scatter(*rp_loc, color='black', label="Departure", s=50)
-        ax.scatter(*int_loc, color='orange', label="Intermediate", s=50)
-        ax.legend()
-        plt.axis("equal")
-        
-        plt.show()
-except Exception as e:
-    print("Periapsis-point plot failed:", e)
-
-# --- Oberth finder ---
-try:
-    if orbit_oberth is not None:
-        fig, ax = setup_ax("Oberth Transfer Finder")
-        plot_orbit(ax, target_orbit, color='blue', label="Target Orbit")
-        plot_orbit(ax, orbit_oberth, color='red', label="Transfer Orbit")
-        ax.scatter(*rp_loc, color='black', label="Departure", s=50)
-        ax.legend()
-        plt.axis("equal")
-        
-        plt.show()
-except Exception as e:
-    print("Oberth finder plot failed:", e)
-
-# --- Oberth optimizer ---
-try:
-    if orbit_opt is not None:
-        fig, ax = setup_ax("Oberth Optimizer Result")
-        plot_orbit(ax, target_orbit, color='blue', label="Target Orbit")
-        plot_orbit(ax, orbit_opt, color='purple', label="Optimized Orbit")
-        ax.scatter(*rp_loc, color='black', label="Departure", s=50)
-        ax.legend()
-        plt.axis("equal")
-        plt.show()
-except Exception as e:
-    print("Oberth optimizer plot failed:", e)
-
-# =========================================================
-# Diagnostics print
-# =========================================================
-print("Periapsis-point dt:", dt_pp)
-print("Oberth transfer TOF:", tof_oberth)
-print("Optimizer dV insertion:", dv1)
-print("Optimizer dV rendezvous:", dv2)
-print("Departure time:", t_dep)
-print("Arrival time:", t_arr)
-
-# =========================================================
-# 4. Randomized intercept tests
-# =========================================================
-
-n_tests = 20  # number of random trials
-t_min = 0
-t_max = 2 * 86400  # 2 days
-
-success_count = 0
-
-for i in range(n_tests):
-    print(f"\n=== Test {i+1}/{n_tests} ===")
-
-    try:
-        # --- pick random time on target orbit ---
-        t_rand = np.random.uniform(t_min, t_max)
-
-        # get target position at that time
-        r_target_rand, v_target_rand = target_orbit.time_to_rv(t_rand)
-
-        # --- attempt intercept ---
-        orbit_test, tof_test = oberth_transfer_finder(
-            rp_loc,
-            tp,
-            target_orbit,
-            mu,
-            min_time=t_rand - 2000,
-            max_time=t_rand + 2000,
-        )
-
-        success_count += 1
-
-        # --- plot result ---
-        try:
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-            ax.set_title(f"Intercept Test {i+1}")
-
-            plot_orbit(ax, target_orbit, color='blue', label="Target Orbit")
-            plot_orbit(ax, orbit_test, color='red', label="Transfer Orbit")
-
-            ax.scatter(*rp_loc, color='black', label="Departure", s=50)
-            ax.scatter(*r_target_rand, color='orange', label="Target Point", s=50)
-            plt.axis("equal")
-            ax.legend()
-            plt.show()
-
-        except Exception as e:
-            print(f"Plot failed for test {i+1}:", e)
-
-        print(f"Success | t_target={t_rand:.2f}, TOF={tof_test:.2f}")
-
-    except Exception as e:
-        print(f"Intercept failed for test {i+1}:", e)
-
-# =========================================================
-# Summary
-# =========================================================
-print("\n===================================")
-print(f"Success rate: {success_count}/{n_tests}")
-print("===================================")
 
 
-# =========================================================
-# 4. Random point intercept tests (pure geometry)
-# =========================================================
+# ===========================
+# Run manually
+# ===========================
 
-n_tests = 20
-success_count = 0
-
-# radius bounds for random points (tune as needed)
-r_min = 6000
-r_max = 20000
-
-for i in range(n_tests):
-    print(f"\n=== Test {i+1}/{n_tests} ===")
-
-    try:
-        # --- random point in 3D space ---
-        direction = np.random.normal(size=3)
-        direction /= np.linalg.norm(direction)
-
-        radius = np.random.uniform(r_min, r_max)
-        int_loc_rand = direction * radius
-
-        # --- attempt reconstruction ---
-        orbit_test, dt_test = orbit_from_periapsis_point_and_point(
-            rp_loc,
-            int_loc_rand,
-            mu,
-            tp
-        )
-
-        success_count += 1
-
-        print(f"Success | dt = {dt_test:.2f} s | r = {radius:.1f} km")
-
-        # --- plot ---
-        try:
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-            ax.set_title(f"Random Intercept Test {i+1}")
-
-            plot_orbit(ax, orbit_test, color='green', label="Reconstructed Orbit")
-
-            ax.scatter(*rp_loc, color='black', label="Periapsis", s=50)
-            ax.scatter(*int_loc_rand, color='orange', label="Target Point", s=50)
-            plt.axis("equal")
-            ax.legend()
-            plt.show()
-
-        except Exception as e:
-            print(f"Plot failed for test {i+1}:", e)
-
-    except Exception as e:
-        print(f"Solver failed for test {i+1}:", e)
-
-# =========================================================
-# Summary
-# =========================================================
-print("\n===================================")
-print(f"Success rate: {success_count}/{n_tests}")
-print("===================================")
+if __name__ == "__main__":
+    run_visual_test()

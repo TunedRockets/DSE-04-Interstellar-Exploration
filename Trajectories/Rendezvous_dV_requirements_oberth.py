@@ -15,12 +15,12 @@ from pathlib import Path
 import random
 import matplotlib as mpl
 
-PLOT= False
+PLOT= True
 
 if PLOT:
     mpl.use('TkAgg')
 
-rdvz = False
+rdvz = True
 
 
 
@@ -79,7 +79,8 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
                 optimize_rendezvous=(weights["w_relv"] > 0),
                 period=or_period,
                 detect_time=detect_time,
-                periods=4
+                periods=4,
+                # tp_window_width=10*YEAR/365
             )
 
             # ===============================
@@ -150,6 +151,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             # rotate state
             r_rot = rotate(r_ap)
             v_rot = rotate(v_ap_vec)
+            inc_dv = np.linalg.norm((v_rot-v_ap_vec))
 
             # rebuild orbit
             try:
@@ -170,12 +172,12 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             plot_orbit(ax, origin_rot, time=detect_time, ThreeDee=True, label="Rotated")
 
             try:
-                plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(40*AU))
+                plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(50*AU))
             except:
                 pass  # lambert sometimes fails
 
             # plot ISO, earth and jupiter orbit for context
-            plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(40*AU))
+            plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(50*AU))
             plot_orbit(ax, Earth, time=detect_time, ThreeDee=True, label="Earth")
             plot_orbit(ax, Jupiter, time=detect_time, ThreeDee=True, label="Jupiter")
 
@@ -184,6 +186,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             ax.set_zlabel("z")
             plt.axis("scaled")
             textstr = (
+                f"ΔV inclination: {inc_dv:.2f} km/s\n"
                 f"ΔV insert: {insert_dv:.2f} km/s\n"
                 f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
                 f"Intercept distance: {np.linalg.norm(ISO.time_to_rv(et)[0])/AU:.2f} AU\n"
@@ -323,15 +326,21 @@ if __name__ == "__main__":
 
     rm = 5
     detect_distance = rm*AU
-    max_time = 50*YEAR
+    max_time = 40*YEAR
 
-    lon_vals = np.linspace(0, 140, 10)
+    # lon_vals = np.linspace(0, 140, 10)
+    lon_vals = np.array(([30]))
     all_hists = []
 
     for lon_per in lon_vals:
+        aphelion = 1*5.4507 * AU # Jupiter aphelion
+        solar_radius = 696_340
+        perihelion = 6*solar_radius
+        semi_major_axis = (aphelion + perihelion) / 2
+        eccentricity = (aphelion - perihelion) / (aphelion + perihelion)
         origin = orbit_from_ephemeris(
-            2.61696589776 * AU,
-            0.987573,
+            semi_major_axis,
+            eccentricity,
             m.radians(1.303),
             m.radians(100.46457166),
             m.radians(lon_per),
@@ -342,13 +351,13 @@ if __name__ == "__main__":
         add_dv_hist(rm, weight, 10000, PLOT=PLOT, lon_per=np.radians(lon_per))
 
         hist = get_dv_hist(rm, weight, lon_per=np.radians(lon_per))
-        distribution_histogram(2, icpt_weights, True, lon_per=lon_per)
+        distribution_histogram(rm, weight, True, lon_per=np.radians(lon_per))
         plt.figure()
         all_hists.append(hist)
 
         probability_map(rm, weight, lon_per=np.radians(lon_per))
 
-    # Convert degrees → radians for polar plot
+    # Convert degrees radians for polar plot
     theta = np.radians(lon_vals)
 
     # Compute all three thresholds

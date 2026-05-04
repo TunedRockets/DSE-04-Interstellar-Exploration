@@ -652,6 +652,13 @@ def orbit_from_lambert(r1:np.ndarray, r2:np.ndarray, start_time:float,
     ob = orbit_from_rv(r1,v1, sgp, start_time)
     return ob
 
+def orbit_from_lambert_transfer(origin:Orbit, destination:Orbit, start_time:float,
+                        end_time:float, short_way:bool = True)->Orbit:
+    r1 = origin.time_to_rv(start_time)[0]
+    r2 = destination.time_to_rv(end_time)[0]
+    return orbit_from_lambert(r1,r2,start_time,end_time,origin.sgp,short_way)
+    
+
 def orbit_from_gauss(observations:list[np.ndarray],
                         times:list[float], 
                         positions:list[np.ndarray],
@@ -905,7 +912,7 @@ def trajectory_optimizer(
         try:
             s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
             break # found one
-        except:
+        except (ValueError, ArithmeticError):
             # this one didn't work
             continue
     else:
@@ -1145,6 +1152,8 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
     v2_vec = (g_dot*r2_vec - r1_vec)/g
     return v1_vec, v2_vec
 
+
+
 def orbit_within_1_precent(ob1:Orbit,ob2:Orbit):
     '''are the orbits within 1% on the 6 elements?
     relative to ob1, will normalize the orbit'''
@@ -1161,28 +1170,36 @@ def orbit_within_1_precent(ob1:Orbit,ob2:Orbit):
     if not within(ob1.t_p, ob2.t_p): return False
     return True
 
-def plot_orbit(ax,ob:Orbit,time:float=0,trail:float=2*m.pi, ThreeDee:bool=True,hyper_predict:bool=False, max_alt:float=m.inf, **kwargs)->None:
+def plot_orbit(ax,ob:Orbit,time:float|tuple[float,float]=0.0,trail:float=2*m.pi, ThreeDee:bool=True,hyper_predict:bool=False, max_alt:float=m.inf, **kwargs)->None:
     '''Plot orbit in the given axis, trail determines how far behind the orbit is plotted (defaults to entire orbit)
     hyperbolic orbits will only be plotted up to the current point, if hyper_predict is true, a dashed line will be plotted ahead,
-    max_size determines how far out to plot'''
+    max_size determines how far out to plot,
+    if time is a tuple, trail is ignored and instead using the two times'''
 
-    theta = ob.time_to_theta(time)
+    if isinstance(time, float):
+        theta = ob.time_to_theta(time)
 
-    if trail != 2*m.pi:
-        # add trail:
-        end_theta = theta
-        start_theta = theta-trail
-    else: # no trail, 
-        end_theta = m.pi
-        start_theta = -m.pi
-    if ob.e >= 1: end_theta = theta
+        if trail != 2*m.pi:
+            # add trail:
+            end_theta = theta
+            start_theta = theta-trail
+        else: # no trail, 
+            end_theta = m.pi
+            start_theta = -m.pi
+        if ob.e >= 1: end_theta = theta
+    else:
+        start_theta = ob.time_to_theta(time[0]) #type:ignore
+        end_theta = ob.time_to_theta(time[1]) # type:ignore
+        theta = end_theta
+
 
     cross = ob.crosses_altitude(max_alt)
     if cross is None and ob.periapsis > max_alt: return # don't render anything
     elif not cross is None:
         start_theta = bounds(-cross,start_theta,cross)
         end_theta = bounds(-cross,end_theta,cross)
-    
+
+
     locus = ob.point_locus(start_theta,end_theta)
     if cross is None or abs(theta) < cross:
         point = ob.theta_to_rv(theta)[0]
@@ -1206,3 +1223,7 @@ def plot_orbit(ax,ob:Orbit,time:float=0,trail:float=2*m.pi, ThreeDee:bool=True,h
         else: ax.plot(locus[:,0],locus[:,1], **kwargs)
     return;
 
+def get_solar_system_ax():
+    ax = plt.figure().add_subplot(projection='3d')
+    ax.scatter(0,0,0, lw=3, color="red")
+    return ax

@@ -65,7 +65,8 @@ def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float 
     converges on a root between bounds, provided bounds are of different sign'''
 
     if not ( f(lower) * f(upper) < 0): # check the initial interval contains a root
-        raise ValueError("bounds have same sign")           
+        raise ValueError("bounds have same sign")   
+    middle = (lower + upper)/2
     while 0.5*np.abs(upper-lower) > tolerance:  # check that we're not converged
         middle = (lower + upper)/2                  # midpoint of current interval
         if f(lower) * f(middle) < 0:           # select which 1/2 interval to continue with

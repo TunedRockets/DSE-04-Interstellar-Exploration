@@ -489,6 +489,7 @@ def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     
     # time -> chi -> true
     rp = h*h/(sgp*(1+e))
+    
     alpha = (sgp*(1-e*e))/(h*h) # 1/a
     S = stumpff_s
     C = stumpff_c
@@ -496,8 +497,20 @@ def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     F = lambda chi: (1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi - m.sqrt(sgp)*t
     dF = lambda chi: (1-rp*alpha)*chi**2 * C(chi**2*alpha) + rp
     # find root:
-    chi0 = m.sqrt(sgp) * t * abs(alpha)
-    chi = root_finder_newton(F,dF,chi0)
+
+    # root finder behaves strangely, so hybrid/bisection is used instead
+    # prussing conway say it's in the range: (sqrt(mu)dt/r_max) -- (sqrt(mu)dt/r_min)
+    # where r_min is periapsis 
+    # and r_max is apoapsis (or for e>=1 infinity s.t. chi = 0)
+    chi_max = m.sqrt(sgp)*t/rp
+    chi_min = m.sqrt(sgp)*t/(h*h/(sgp*(1-e))) if e < 1 else 0.0
+    try:
+        chi0 = 0.5*(chi_min+chi_max)
+        chi = root_finder_newton(F,dF,chi0)
+        if not (chi_min < chi < chi_max): raise ArithmeticError("Converged wrong")
+    except ArithmeticError:
+        # fall back on bisection
+        chi = root_finder_bisection(F,chi_min,chi_max)
 
     if e == 1: # parabolic:
         return 2 * m.atan(m.sqrt(sgp)*chi/h)

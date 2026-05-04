@@ -279,8 +279,8 @@ if __name__ == "__main__":
 
     
 
-    data = get_data(1)
-    print(data)
+    data = get_data(0)
+    print(data.sort_values("icpt_idv")[["icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival","generated_rm", "detection_r", "periapsis"]])
 
     # hist = get_dv_hist(3, weight)
     # print(f"fraction under 10 km/s: {np.sum(hist[:11]):.3f}\nunder 20 km/s: {np.sum(hist[:21]):.3f}\nunder 40 km/s: {np.sum(hist[:41]):.3f}")

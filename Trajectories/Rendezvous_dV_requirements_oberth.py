@@ -15,7 +15,7 @@ from pathlib import Path
 import random
 import matplotlib as mpl
 
-PLOT= True
+PLOT= False
 
 if PLOT:
     mpl.use('TkAgg')
@@ -92,37 +92,33 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             # current orbit periapsis direction
             r0, v0 = origin.theta_to_rv(theta_pe)
             v0_hat = v0 / np.linalg.norm(v0)
-
-            # ===============================
-            # Angle between directions
-            # ===============================
+            #
+            # # ===============================
+            # # Angle between directions
+            # # ===============================
             cos_dtheta = np.clip(np.dot(v0_hat, v_req_hat), -1, 1)
             delta = m.acos(cos_dtheta)
-
-            # ===============================
-            # Apoapsis velocity
-            # ===============================
-            r_a = origin.apoapsis
-            a = origin.a
-            mu = origin.sgp
-
-            v_ap = m.sqrt(mu * (2 / r_a - 1 / a))
-
-            # ===============================
-            # Plane change Δv at apoapsis
-            # ===============================
-            dv_plane = 2 * v_ap * m.sin(delta / 2)
-
-            # ===============================
-            # Total insertion Δv
-            # ===============================
-            insert_dv += dv_plane
-
-        except:
-            continue
-
-        insert_dv = round(insert_dv)
-        if PLOT:
+            if weights[1]>0:
+                insert_dv+=rdvz_dv
+            #
+            # # ===============================
+            # # Apoapsis velocity
+            # # ===============================
+            # r_a = origin.apoapsis
+            # a = origin.a
+            # mu = origin.sgp
+            #
+            # v_ap = m.sqrt(mu * (2 / r_a - 1 / a))
+            #
+            # # ===============================
+            # # Plane change Δv at apoapsis
+            # # ===============================
+            # dv_plane = 2 * v_ap * m.sin(delta / 2)
+            #
+            # # ===============================
+            # # Total insertion Δv
+            # # ===============================
+            # insert_dv += dv_plane
             # ===============================
             # Reconstruct rotated orbit (after apoapsis burn)
             # ===============================
@@ -151,7 +147,15 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             # rotate state
             r_rot = rotate(r_ap)
             v_rot = rotate(v_ap_vec)
-            inc_dv = np.linalg.norm((v_rot-v_ap_vec))
+            inc_dv = np.linalg.norm((v_rot - v_ap_vec))
+            insert_dv += inc_dv
+
+        except:
+            continue
+
+        insert_dv = round(insert_dv)
+        if PLOT:
+
 
             # rebuild orbit
             try:
@@ -273,9 +277,9 @@ def probability_map(rm: float, weight: dict, guesses: bool = True, show: bool = 
     MS_N = Marceta_seligman_per_annum * years
 
     N_range = np.arange(10, MS_N + 30, 5)
-    V_range = np.arange(4, 50)
+    V_range = np.arange(4, 100)
     NN, VV = np.meshgrid(N_range, V_range)
-    PP = np.vectorize(mission_success_probability)(rm, NN, VV, weight,lon_per=lon_per)
+    PP = np.vectorize(mission_success_probability)(rm, NN, VV, weight, lon_per=lon_per)
     plt.imshow(PP, origin="lower", aspect="auto", extent=(N_range[0], N_range[-1], V_range[0], V_range[-1]))
     plt.colorbar(location="right", label="Probability of mission success")
     CS = plt.contour(PP, levels=[0.9], origin="lower", aspect="auto",
@@ -283,13 +287,8 @@ def probability_map(rm: float, weight: dict, guesses: bool = True, show: bool = 
     plt.clabel(CS, fmt=lambda x: f"{x * 100:.0f}%")
     plt.ylabel('Delta V budget (km/s)')
     plt.xlabel('number of ISOs during mission time')
-    if lon_per is None:
-        plt.title(
-            f"Probability map for {"rendezvous" if weight["w_relv"] else "intercept"} with detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission")
-    else:
-        plt.title(
-            f"Probability map for {"rendezvous" if weight["w_relv"] else "intercept"} with detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission, perihelion at {np.round(np.degrees(lon_per))} degrees")
-
+    plt.title(
+        f"Probability map for {"rendezvous" if weight["w_relv"] else "intercept"} with detection range of {rm} AU\nAnd estimated ISO detections during {years} year mission, lon per {np.degrees(lon_per)} deg")
     if guesses:
         plt.plot([EL_N, EL_N], [5, 48], ls='--', color="gray")
         plt.text(EL_N + 1, 40, "Ezell, Loeb mean", color="gray")
@@ -328,8 +327,8 @@ if __name__ == "__main__":
     detect_distance = rm*AU
     max_time = 40*YEAR
 
-    # lon_vals = np.linspace(0, 140, 10)
-    lon_vals = np.array(([30]))
+    lon_vals = np.linspace(0, 140, 10)
+    # lon_vals = np.array(([30]))
     all_hists = []
 
     for lon_per in lon_vals:

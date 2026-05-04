@@ -638,11 +638,11 @@ def orbit_from_periapsis_point_and_point(
     r_i = np.linalg.norm(int_loc)
 
     if np.dot(rp_loc,int_loc) > r_p:
-        print("unreachable point")
+        #print("unreachable point")
         return np.nan, np.nan
 
     if r_p == 0 or r_i == 0:
-        print("R_p is zero")
+        #print("R_p is zero")
         return np.nan, np.nan
 
     # --- plane ---
@@ -650,19 +650,19 @@ def orbit_from_periapsis_point_and_point(
     h_norm = np.linalg.norm(h_vec)
 
     if h_norm < 1e-10:
-        print("Colinear")
+        #print("Colinear")
         return np.nan, np.nan  # nearly collinear → unstable
 
     h_hat = h_vec / h_norm
 
     # --- perifocal frame ---
     p_hat = rp_loc / r_p
-    # print(h_hat, p_hat)
+    # #print(h_hat, p_hat)
     q_hat = np.cross(h_hat, p_hat)
     q_norm = np.linalg.norm(q_hat)
 
     if q_norm < 1e-10:
-        print("q_norm is small")
+        #print("q_norm is small")
         return np.nan, np.nan
 
     q_hat /= q_norm
@@ -680,26 +680,26 @@ def orbit_from_periapsis_point_and_point(
     denom = (r_i * cos_theta - r_p)
 
     if abs(denom) < 1e-8:
-        print("small denom")
+        #print("small denom")
         return np.nan, np.nan  # near-singular geometry
 
     e = (r_p - r_i) / denom
 
     # --- sanity checks ---
     if not np.isfinite(e):
-        print("not finite eccentricity")
+        #print("not finite eccentricity")
         return np.nan, np.nan
 
     # reject unphysical values
     if e < 0:
-        print("negative eccentricity")
+        #print("negative eccentricity")
         return np.nan, np.nan
 
     # --- parameter ---
     p = r_p * (1 + e)
 
     if p <= 0 or not np.isfinite(p):
-        print("not finite parameter")
+        #print("not finite parameter")
         return np.nan, np.nan
 
     # --- angular momentum ---
@@ -769,11 +769,11 @@ def dt_from_periapsis_point_and_point(
     r_i = np.linalg.norm(int_loc)
 
     if np.dot(rp_loc,int_loc) > r_p:
-        print("unreachable point")
+        #print("unreachable point")
         return np.nan
 
     if r_p == 0 or r_i == 0:
-        print("R_p is zero")
+        #print("R_p is zero")
         return np.nan
 
     # --- plane ---
@@ -781,19 +781,19 @@ def dt_from_periapsis_point_and_point(
     h_norm = np.linalg.norm(h_vec)
 
     if h_norm < 1e-10:
-        print("Colinear")
+        #print("Colinear")
         return np.nan  # nearly collinear → unstable
 
     h_hat = h_vec / h_norm
 
     # --- perifocal frame ---
     p_hat = rp_loc / r_p
-    # print(h_hat, p_hat)
+    # #print(h_hat, p_hat)
     q_hat = np.cross(h_hat, p_hat)
     q_norm = np.linalg.norm(q_hat)
 
     if q_norm < 1e-10:
-        print("q_norm is small")
+        #print("q_norm is small")
         return np.nan
 
     q_hat /= q_norm
@@ -811,26 +811,26 @@ def dt_from_periapsis_point_and_point(
     denom = (r_i * cos_theta - r_p)
 
     if abs(denom) < 1e-8:
-        print("small denom")
+        #print("small denom")
         return np.nan  # near-singular geometry
 
     e = (r_p - r_i) / denom
 
     # --- sanity checks ---
     if not np.isfinite(e):
-        print("not finite eccentricity")
+        #print("not finite eccentricity")
         return np.nan
 
     # reject unphysical values
     if e < 0:
-        print("negative eccentricity")
+        #print("negative eccentricity")
         return np.nan
 
     # --- parameter ---
     p = r_p * (1 + e)
 
     if p <= 0 or not np.isfinite(p):
-        print("not finite parameter")
+        #print("not finite parameter")
         return np.nan
 
     # --- angular momentum ---
@@ -853,31 +853,31 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
         try:
             int_loc = destination.time_to_rv(tp + t)[0]
             transfer_time = dt_from_periapsis_point_and_point(rp, int_loc, sgp)
-            print("Transfer time: ", transfer_time)
+            #print("Transfer time: ", transfer_time)
 
             # if not np.isfinite(transfer_time):
-            #     print("Non finite transfer time")
+            #     #print("Non finite transfer time")
                 # return np.nan
 
             if transfer_time < 0:
-                print("Transfer time cannot be negative")
+                #print("Transfer time cannot be negative")
                 return np.nan
 
             if transfer_time < min_time or transfer_time > max_time:
-                print("Transfer time out of bounds")
+                #print("Transfer time out of bounds")
                 return np.nan
 
             return transfer_time - t
 
         except Exception as e:
-            print("Exception at dt_from_periapsis_point_and_point: ", e)
+            #print("Exception at dt_from_periapsis_point_and_point: ", e)
             return np.nan
 
     # --- dense sampling ---
     N = 50
     ts = np.linspace(min_time, max_time, N)
     vals = np.array([f(t) for t in ts])
-    print(vals)
+    #print(vals)
     valid = np.isfinite(vals)
 
     if not np.any(valid):
@@ -933,7 +933,7 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
 
     # final safety
     if not np.isfinite(t_sol):
-        print("Transfer time not finite")
+        #print("Transfer time not finite")
         return np.nan, np.nan
 
     # --- construct orbit ---
@@ -941,7 +941,7 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
         int_loc = destination.time_to_rv(tp + t_sol)[0]
         orbit, transfer_time = orbit_from_periapsis_point_and_point(rp, int_loc, sgp, tp)
     except Exception as e:
-        print("No orbit transfer found: ", e)
+        #print("No orbit transfer found: ", e)
         return np.nan, np.nan
 
     return orbit, transfer_time

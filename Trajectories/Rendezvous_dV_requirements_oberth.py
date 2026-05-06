@@ -23,7 +23,7 @@ from pathlib import Path
 import random
 
 
-rdvz = False
+rdvz = True
 
 
 
@@ -56,9 +56,11 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
     count += len(ISOs)
 
     for ISO in tqdm(ISOs,desc="studying ISOs"):
-        detect_theta = ISO.crosses_altitude(rm*AU)
-        if detect_theta is None: continue
-        detect_time = ISO.theta_to_time(-detect_theta)
+
+        detect_time = ISO[1]
+        if detect_time is None:
+            continue
+        detect_theta = ISO[0].time_to_theta(detect_time)
         try:
             # ===============================
             # Oberth optimization at periapsis
@@ -74,7 +76,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             min_time = 100
 
             insert_dv, rdvz_dv, transfer_orbit, st, et = oberth_effect_optimzer(
-                ISO,
+                ISO[0],
                 rp_vec,
                 vp_mag,
                 tp,
@@ -186,7 +188,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
                 pass  # lambert sometimes fails
 
             # plot ISO, earth and jupiter orbit for context
-            plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(50*AU))
+            plot_orbit(ax, ISO[0], time=et, ThreeDee=True, label="ISO", max_alt=(50*AU))
             plot_orbit(ax, Earth, time=detect_time, ThreeDee=True, label="Earth")
             plot_orbit(ax, Jupiter, time=detect_time, ThreeDee=True, label="Jupiter")
 
@@ -198,7 +200,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
                 f"ΔV inclination: {inc_dv:.2f} km/s\n"
                 f"ΔV insert: {insert_dv:.2f} km/s\n"
                 f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
-                f"Intercept distance: {np.linalg.norm(ISO.time_to_rv(et)[0])/AU:.2f} AU\n"
+                f"Intercept distance: {np.linalg.norm(ISO[0].time_to_rv(et)[0])/AU:.2f} AU\n"
                 f"Intercept time: {(et-detect_time)/YEAR:.2f} years\n"
             )
 
@@ -316,6 +318,13 @@ def distribution_histogram(rm:float, weight:dict,  show:bool=True, lon_per=None)
     if show:
         plt.show()
 
+def dv_for_confidence(rm, weight, N, target_prob, lon_per=None, dv_max=100):
+    for dv in range(dv_max + 1):
+        p = mission_success_probability(rm, dv, N, weight, lon_per=lon_per)
+        if p >= target_prob:
+            return dv
+    return np.nan  # if not achievable
+
 
 
 if __name__ == "__main__":
@@ -352,7 +361,7 @@ if __name__ == "__main__":
             SGP_SUN
         )
 
-        add_dv_hist(rm, weight, 10000, PLOT=PLOT, lon_per=np.radians(lon_per))
+        add_dv_hist(rm, weight, 2000, PLOT=PLOT, lon_per=np.radians(lon_per))
 
         hist = get_dv_hist(rm, weight, lon_per=np.radians(lon_per))
         distribution_histogram(rm, weight, True, lon_per=np.radians(lon_per))
@@ -365,30 +374,38 @@ if __name__ == "__main__":
     theta = np.radians(lon_vals)
 
     # Compute all three thresholds
-    frac_under_10 = []
-    frac_under_20 = []
-    frac_under_30 = []
+    dv_90 = []
 
-    for hist in all_hists:  # <-- store hist in loop instead of just one value
-        frac_under_10.append(np.sum(hist[:11]))  # 0–10
-        frac_under_20.append(np.sum(hist[:21]))  # 0–20
-        frac_under_30.append(np.sum(hist[:31]))  # 0–30
+    MS_N = 35 * 10  # or reuse your variable
+
+    for lon_per, hist in zip(lon_vals, all_hists):
+        dv_req = dv_for_confidence(
+            rm,
+            weight,
+            MS_N,
+            0.9,
+            lon_per=np.radians(lon_per)
+        )
+        dv_90.append(dv_req)
+
+
 
     # ==== Polar plot ====
+    theta = np.radians(lon_vals)
+
     plt.figure()
     ax = plt.subplot(111, projection='polar')
 
-    ax.plot(theta, frac_under_10, marker='o', label="< 10 km/s")
-    ax.plot(theta, frac_under_20, marker='o', label="< 20 km/s")
-    ax.plot(theta, frac_under_30, marker='o', label="< 30 km/s")
+    ax.plot(theta, dv_90, marker='o', label="ΔV for 90% success")
 
-    ax.set_theta_zero_location("E")  # 0° at right (like your input)
-    ax.set_theta_direction(1)  # counterclockwise
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
 
-    ax.set_title("ΔV thresholds vs Longitude of Periapsis")
+    ax.set_title("ΔV required for 90% mission success (Marčeta–Seligman rates)")
     ax.set_rlabel_position(135)
+    ax.set_ylabel("ΔV (km/s)")
     ax.grid(True)
-    ax.legend(loc="upper right")
+    ax.legend()
 
     plt.show()
 

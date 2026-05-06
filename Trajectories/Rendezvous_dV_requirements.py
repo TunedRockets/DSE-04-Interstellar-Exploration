@@ -24,7 +24,6 @@ PATH_TO_DATA = Path(__file__).parent.parent / "data"
 PICKLE_NAME = "dvreq.pic"
 icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
 rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-# detection_ranges = np.array([2,3,5,8])
 MAX_MISSION_TIME = 20 # [years]
 
 # === probability functions =====
@@ -73,13 +72,13 @@ then dv and stats for different types of intercept (flyby, rdvz, jupiter_flyby, 
 
 Units: time in days, speeds in km/s, distances in AU (not applicable to internal values)
 '''
-col_names = ["generated_rm", "detection_r", "absolute_magnitude", "periapsis", "magitude_generation_method",
+col_names = ["detection_r", "periapsis", "magitude_generation_method",
              "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
              "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
              "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
              ]
 
-def study_ISO(ISO:Orbit, detect_t:float, abs_mag:float, gen_type:str)->dict:
+def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     '''study an ISO orbit and return data as a row to be added to a pandas table
 
     :param ISO: the generated ISO in question
@@ -91,7 +90,7 @@ def study_ISO(ISO:Orbit, detect_t:float, abs_mag:float, gen_type:str)->dict:
     '''
     # initial data
     detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
-    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "absolute_magnitude": abs_mag, "magitude_generation_method": gen_type,
+    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magitude_generation_method": gen_type,
              "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, }
     
     # check detection distance/time
@@ -136,8 +135,8 @@ def study_batch(gen_type:str='')->pd.DataFrame:
     ISOs = get_ISO(gen_type=gen_type)
     # shuffle timings so that does not influence study:
     res_list= []
-    for (ISO, detect_t, H,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
-        res_list.append(study_ISO(ISO,detect_t,H,g_type))
+    for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
+        res_list.append(study_ISO(ISO,detect_t,g_type))
     return pd.DataFrame(res_list)
 
 
@@ -223,7 +222,8 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, show:bool=T
     N_range = np.arange(10,MS_N + 30,5)
     V_range =np.arange(4,50)
     NN, VV = np.meshgrid(N_range,V_range)
-    PP = np.vectorize(mission_success_probability)(VV,NN,rdvz, df)
+    F = lambda v,n: mission_success_probability(v,n,rdvz,df)
+    PP = np.vectorize(F)(VV,NN)
     plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
     plt.colorbar(location="right", label="Probability of mission success")
     CS = plt.contour(PP,levels=[0.9],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
@@ -303,19 +303,26 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
 
 if __name__ == "__main__":
 
-    df = get_data()
-    df_om = df[df['magitude_generation_method'] == 'omuamua']
-    df_bori = df[df['magitude_generation_method'] == 'atlas-borisov']
-    # probability_map(df_om, False)
-    probability_map(df_bori, False)
-    
-    print(len(df_om))
-    print(len(df_bori))
-    plt.hist(df[df['magitude_generation_method'] == 'omuamua']['detection_r'],density=True, label="omuamua-like",fill=False, edgecolor="blue")
-    plt.hist(df[df['magitude_generation_method'] == 'atlas-borisov']['detection_r'],density=True, label="atlas-borisov-like",fill=False, edgecolor="red")
-    plt.title("detection range probability distribution(AU)")
-    plt.legend()
+    df = get_data(1, "omuamua")
+    print(df)
+    input()
+    dv_histogram(False, df=df)
     plt.show()
+    dv_histogram(True, df=df)
+    plt.show()
+
+    # df_om = df[df['magitude_generation_method'] == 'omuamua']
+    # df_bori = df[df['magitude_generation_method'] == 'atlas-borisov']
+    # # probability_map(df_om, False)
+    # probability_map(df_bori, False)
+    
+    # print(len(df_om))
+    # print(len(df_bori))
+    # plt.hist(df[df['magitude_generation_method'] == 'omuamua']['detection_r'],density=True, label="omuamua-like",fill=False, edgecolor="blue")
+    # plt.hist(df[df['magitude_generation_method'] == 'atlas-borisov']['detection_r'],density=True, label="atlas-borisov-like",fill=False, edgecolor="red")
+    # plt.title("detection range probability distribution(AU)")
+    # plt.legend()
+    # plt.show()
 
 
     while True:

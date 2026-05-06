@@ -15,8 +15,8 @@ Perhaps change from Nelder-mead to iterated local search, see: [this KSP KOS cod
 
 
 TODO:
-- [ ] read Dorsey to get a detection model
-- [ ] incorporate this for FINAL iso generation and detection
+- [x] read Dorsey to get a detection model
+- [x] incorporate this for FINAL iso generation and detection
 - [ ] doublecheck FINAL dv values for icpt & rdvz
 - [ ] incoporate Jupiter model
 - [ ] charcterize optimal trajectories (time, range, etc.) (make loads of graphs from panda)

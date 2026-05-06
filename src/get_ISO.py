@@ -10,11 +10,12 @@ from .examples import Earth
 import numpy as np
 import math as m
 from tqdm import tqdm
+from typing import Callable
 
 LSST_sensitivity_magnitude = 24.38
 
 
-def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float, float,str]]:
+def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,str]]:
     '''Generates synthetic orbits of ISOs,
     If T is 0 (default), a snapshot of the population is generated,
     If T is a number (years), an expectation over that time
@@ -40,20 +41,13 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float, f
     q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
     rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
 
-
-
-
-
     # translate q to p:
     p = q*(1+e) * AU
     oobb = []
     for i in tqdm(range(len(q)), desc="Converting Marčeta ISOs to Keplerian orbits and determining detection time"):
         ob = Orbit(p[i],e[i],inc[i],RAAN[i],arg_p[i],0,SGP_SUN)
-
         # shuffle times:
         ob.t_p = np.random.rand()*YEAR
-        # ob.link_time_and_theta(theta[i],0) # deal with time for longer somehow
-        
         # figure out detection:
         try:
             H,gen_type = generate_abs_magnitude(gen_type=gen_type)
@@ -63,39 +57,31 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float, f
             continue
 
 
-        oobb.append((ob, d_time, H, gen_type))
+        oobb.append((ob, d_time, gen_type))
     print(f"\t{len(oobb)}/{len(p)} orbits were detected and passed on to analysis")
     return oobb
 
 
-generation_types = ['omuamua', 'atlas-borisov', 'asteroidal', 'cometary']
-def generate_abs_magnitude(gen_type:str='')->tuple[float,str]:
-    '''(somehow) generate a random magnitude for the ISO
-    return magnitude and generation type
-
-    :return: absolute magnitude
-    :rtype: float
+generation_types = ['omuamua', 'atlas-borisov']
+def generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:
+    '''generate a absolute magnitude function for use in figuring out detection distance.
+    takes in distance (in km) and returns absolute magnitude
     '''
     # ref:
     # - 'Omuamua: ~22.4
     # - Borisiv: ~12 (including coma)
     # - ATLAS ~12.5  (including coma)
-    if gen_type == '':
+    gen_type = gen_type.lower()
+    if not gen_type in generation_types:
         gen_type = generation_types[np.random.randint(len(generation_types))]
     
 
-    match gen_type.lower():
+    match gen_type:
 
         case 'omuamua':
-            H = 22.4
+            H:Callable[[float],float] = lambda r: 22.4 # no brightening with distance 
         case 'atlas-borisov':
-            H = 12.5
-        case _:
-            H = 15
-            gen_type = 'fallback generation'
-
-
-
+            H:Callable[[float],float] = lambda r: 12.5 # no brightening with distance? TODO fix!
     return H, gen_type
 
 def HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
@@ -136,10 +122,10 @@ def HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     V = absolute_magnitude + 5*m.log10(au_delta) + 5*m.log10(au_ob) - phase
     return V
 
-def detection_time(ob:Orbit, absolute_magnitude:float, sensitivity:float)->float:
+def detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensitivity:float)->float:
 
     # excess magnitude (negative means detected)
-    F = lambda t: HG_magnitude(ob,t,absolute_magnitude) - sensitivity
+    F = lambda t: HG_magnitude(ob,t,absolute_magnitude(ob.polar_equation(ob.time_to_theta(t)))) - sensitivity
 
     enter_system = ob.crosses_altitude(5*AU)
     if enter_system is None: raise ArithmeticError("does not enter inner system")

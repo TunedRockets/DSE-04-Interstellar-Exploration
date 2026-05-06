@@ -24,45 +24,68 @@ PATH_TO_DATA = Path(__file__).parent.parent / "data"
 PICKLE_NAME = "dvreq.pic"
 icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
 rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-# detection_ranges = np.array([2,3,5,8])
 MAX_MISSION_TIME = 20 # [years]
 
 # === probability functions =====
 
 def mission_success_probability(dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
-    '''
-    Generates total mission probability for the given scenario.
+    '''Generates total mission probability for the given scenario.
 
-    :param dV_buget: total mission dV budget
-    :type: int
-    :param N: Number of ISOs during the mission
-    :type: float
-    :param weight: optimizer weight, i.e. an intercept or rendezvouz
-    :type: dict
+    :param dV_budget: Delta V budget of the mission
+    :type dV_budget: int
+    :param N: number of ISOs detected during the mission
+    :type N: int
+    :param rdvz: Whether to consider rendezvous or flyby
+    :type rdvz: bool
+    :param df: dataframe with the ISO data to consider, defaults to None
+    :type df: pd.DataFrame | None, optional
+    :return: success probability
+    :rtype: float
     '''
     p_ISO = ISO_probability(dV_budget, rdvz, df)
     p_least_one = 1-(1-p_ISO)**N
     return p_least_one
 
-    
 def ISO_probability(dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
     '''calculate individual chance of success for given dv budget and detection distance,
     currently only works with integer dV budgets
 
-    :param dV_buget: total mission dV budget
-    :type: int
-    :param weight: optimizer weight, i.e. an intercept or rendezvouz
-    :type: dict'''
+    :param dV_budget: Delta V budget of the mission
+    :type dV_budget: int
+    :param rdvz: Whether to consider rendezvous or flyby
+    :type rdvz: bool
+    :param df: dataframe with the ISO data to consider, defaults to None
+    :type df: pd.DataFrame | None, optional
+    :return: probability of intercepting/rendezvousing with one ISO
+    :rtype: float
+    '''
     # hist = get_dv_hist(rm,weight)
     # return np.sum(hist[:m.floor(dV_budget)+1])
 
     p = dv_below_budget(dV_budget,rdvz, df)
     return p
 
+def dv_below_budget(dv_budget:float, rdvz:bool,df:pd.DataFrame|None=None)->float:
+    '''get fraction of orbits that are at or below a dv_budget
 
+    :param dv_budget: Delta V budget of the mission
+    :type dv_budget: float
+    :param rdvz: Whether to consider rendezvous or flyby
+    :type rdvz: bool
+    :param df: dataframe with the ISO data to consider, defaults to None
+    :type df: pd.DataFrame | None, optional
+    :return: fraction of ISOs in dataframe that are reachable with the given dv budget
+    :rtype: float
+    '''
+    if df is None: df = get_data()
+    if not rdvz:
+        dv = df['icpt_idv']
+    else:
+        dv = df['rdvz_idv'] + df['rdvz_rdv']
+    dv = dv[dv <= dv_budget]
+    return len(dv)/len(df)
 
-# ========== improved storage and analysis =============
-
+# ========== improved storage and study =============
 '''
 Instead of only storing the end result, store the generated ISO orbit and data about it, that way data can be reanalyzed, and reinterpreted
 without generating an entirely new set.
@@ -73,25 +96,29 @@ then dv and stats for different types of intercept (flyby, rdvz, jupiter_flyby, 
 
 Units: time in days, speeds in km/s, distances in AU (not applicable to internal values)
 '''
-col_names = ["generated_rm", "detection_r", "absolute_magnitude", "periapsis", "magitude_generation_method",
+col_names = ["detection_r", "periapsis", "magnitude_generation_method", 'time_until_periapsis',
              "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
              "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
              "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
              ]
 
-def study_ISO(ISO:Orbit, detect_t:float, abs_mag:float, gen_type:str)->dict:
+def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     '''study an ISO orbit and return data as a row to be added to a pandas table
 
     :param ISO: the generated ISO in question
     :type ISO: Orbit
     :param detect_t: time of detection
     :type detect_t: float
-    :return: dict corresponding to pandas row
+    :param gen_type:what type of generation function is used for the absolute magnitude,
+    options are 'omuamua' or 'atlas-borisov', if omitted will randomize for each ISO.
+    :type gen_type: str
+    :return: dict corresponding to pandas row to be added to the database
     :rtype: dict
     '''
     # initial data
     detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
-    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "absolute_magnitude": abs_mag, "magitude_generation_method": gen_type,
+    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
+           'time_until_periapsis':(ISO.t_p - detect_t)/DAY,
              "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, }
     
     # check detection distance/time
@@ -136,10 +163,9 @@ def study_batch(gen_type:str='')->pd.DataFrame:
     ISOs = get_ISO(gen_type=gen_type)
     # shuffle timings so that does not influence study:
     res_list= []
-    for (ISO, detect_t, H,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
-        res_list.append(study_ISO(ISO,detect_t,H,g_type))
+    for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
+        res_list.append(study_ISO(ISO,detect_t,g_type))
     return pd.DataFrame(res_list)
-
 
 def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
     '''Get the gathered data on ISOs, 
@@ -147,6 +173,9 @@ def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
 
     :param extra_batches: number of extra batches to add, defaults to 0
     :type extra_batches: int, optional
+    :param gen_type:what type of generation function is used for the absolute magnitude,
+    options are 'omuamua' or 'atlas-borisov', if omitted will randomize for each ISO.\n defaults to ''
+    :type gen_type: str, optional
     :return: dataframe with the results of the study
     :rtype: pd.DataFrame
     '''
@@ -171,12 +200,10 @@ def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
     return data
 
 def _fix_data():
-    '''grab and save data with space to change the values'''
+    '''Debug function to fix issues with the data'''
     data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # ==== change here ====
-
-    # data["icpt_t_arrival"] = data["icpt_t_arrival"]/DAY
     # data["icpt_t_launch"] = data["icpt_t_launch"]/DAY
     # data["rdvz_t_launch"] = data["rdvz_t_launch"]/DAY
     # data["rdvz_t_arrival"] = data["rdvz_t_arrival"]/DAY
@@ -186,7 +213,14 @@ def _fix_data():
     data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
 
 def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kwargs):
-    '''plot a histogram of the delta v requirenent for given detection range and if there's a rendezvous
+    '''generate a probability density histogram of the delta v requirements
+
+    :param rdvz: Whether to consider rendezvous or flyby
+    :type rdvz: bool
+    :param printing: whether to print out CDF values for several dv values, defaults to False
+    :type printing: bool, optional
+    :param df: dataframe with the ISO data to consider, defaults to None
+    :type df: pd.DataFrame | None, optional
     '''
     # get right cols
     if df is None: df = get_data()
@@ -208,7 +242,15 @@ def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kw
         print(f"40 km/s: {func(40):.2f}%")
 
 def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, show:bool=True):
-    '''generate probability map of N over dV,'''
+    '''Generate a probability make of dv_budget against number of detected ISOs
+
+    :param df: dataframe with the ISO data to consider, defaults to None
+    :type df: pd.DataFrame
+    :param rdvz: Whether to consider rendezvous or flyby
+    :type rdvz: bool
+    :param guesses: whether to plot guesses on N from the literature, defaults to True
+    :type guesses: bool, optional
+    '''
 
     Ezell_Loeb_avg_per_annum = 5
     Hoover_seligman_payne_per_annum = 14
@@ -223,7 +265,8 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, show:bool=T
     N_range = np.arange(10,MS_N + 30,5)
     V_range =np.arange(4,50)
     NN, VV = np.meshgrid(N_range,V_range)
-    PP = np.vectorize(mission_success_probability)(VV,NN,rdvz, df)
+    F = lambda v,n: mission_success_probability(v,n,rdvz,df)
+    PP = np.vectorize(F)(VV,NN)
     plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
     plt.colorbar(location="right", label="Probability of mission success")
     CS = plt.contour(PP,levels=[0.9],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
@@ -238,25 +281,17 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, show:bool=T
         plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
         plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
         plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
-    if show:
-        plt.show()
-
-
-def dv_below_budget(dv_budget:float, rdvz:bool,df:pd.DataFrame|None=None)->float:
-    '''get fraction of orbits that are at or below a dv_budget
-    '''
-    if df is None: df = get_data()
-    if not rdvz:
-        dv = df['icpt_idv']
-    else:
-        dv = df['rdvz_idv'] + df['rdvz_rdv']
-    dv = dv[dv <= dv_budget]
-    return len(dv)/len(df)
 
 
 def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
-    '''plot an intercept and rendezvouz and print relevant values for given row,
-    max_r is max plotting range
+    '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
+
+    :param ax: matplotlib axes to plot in, needs to be 3d
+    :type ax: _type_
+    :param row: row to plot
+    :type row: pd.Series
+    :param max_r: max distance to plot, in AU, if omitted plots up to furthest intercept
+    :type max_r: float, optional
     '''
 
     # extract orbit:
@@ -274,10 +309,10 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     
     
     t_detect = ISO.theta_to_time(-ISO.crosses_altitude(detect_r*AU)) # type:ignore
-    icpt_s = t_detect + row["icpt_t_launch"]
-    icpt_e = t_detect + row["icpt_t_arrival"]
-    rdvz_s = t_detect + row["rdvz_t_launch"]
-    rdvz_e = t_detect + row["rdvz_t_arrival"]
+    icpt_s = t_detect + row["icpt_t_launch"]*DAY
+    icpt_e = t_detect + row["icpt_t_arrival"]*DAY
+    rdvz_s = t_detect + row["rdvz_t_launch"]*DAY
+    rdvz_e = t_detect + row["rdvz_t_arrival"]*DAY
     max_t = max(rdvz_e, icpt_e)
 
     # get the intercept:
@@ -294,35 +329,47 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     plot_orbit(ax,Jupiter, max_t, label="Jupiter", color="orange")
 
     # printing:
-    print(f'intercept:\nlaunches: {row["icpt_t_launch"]/DAY:.2f} days after detection, arrives {row["icpt_t_arrival"]/DAY:.2f} days after detection at a distance of {row["icpt_r"]} AU')
+    print(f'intercept:\nlaunches: {row["icpt_t_launch"]:.2f} days after detection, arrives {row["icpt_t_arrival"]:.2f} days after detection at a distance of {row["icpt_r"]} AU')
     print(f"initial delta v cost is: {row["icpt_idv"]:.2f} km/s, and relative velocity at intercept is {row['icpt_rdv']} km/s\n")
 
-    print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]/DAY:.2f} days after detection, arrives {row["rdvz_t_arrival"]/DAY:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
+    print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]:.2f} days after detection, arrives {row["rdvz_t_arrival"]:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
     print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
 
 
+# ======= plotting and analysis ========
+
 if __name__ == "__main__":
 
-    df = get_data()
-    df_om = df[df['magitude_generation_method'] == 'omuamua']
-    df_bori = df[df['magitude_generation_method'] == 'atlas-borisov']
-    # probability_map(df_om, False)
-    probability_map(df_bori, False)
-    
-    print(len(df_om))
-    print(len(df_bori))
-    plt.hist(df[df['magitude_generation_method'] == 'omuamua']['detection_r'],density=True, label="omuamua-like",fill=False, edgecolor="blue")
-    plt.hist(df[df['magitude_generation_method'] == 'atlas-borisov']['detection_r'],density=True, label="atlas-borisov-like",fill=False, edgecolor="red")
-    plt.title("detection range probability distribution(AU)")
+    # _fix_data()
+    df = get_data(1,'atlas-borisov')
+    df = df[df['magnitude_generation_method'] == 'atlas-borisov']
+    df = df[pd.notna(df['time_until_periapsis'])]
+    df = df.sort_values("rdvz_total", ignore_index=True)
+    print(df[["rdvz_total", "periapsis", "rdvz_r", "detection_r", "icpt_idv", "icpt_rdv", "icpt_t_launch", "icpt_t_arrival","time_until_periapsis",'magnitude_generation_method']])
+    ax = get_solar_system_ax()
+    plot_from_row(ax,df.iloc[0])
+    plt.axis("scaled")
     plt.legend()
     plt.show()
+    # df_om = df[df['magitude_generation_method'] == 'omuamua']
+    # df_bori = df[df['magitude_generation_method'] == 'atlas-borisov']
+    # # probability_map(df_om, False)
+    # probability_map(df_bori, False)
+    
+    # print(len(df_om))
+    # print(len(df_bori))
+    # plt.hist(df[df['magitude_generation_method'] == 'omuamua']['detection_r'],density=True, label="omuamua-like",fill=False, edgecolor="blue")
+    # plt.hist(df[df['magitude_generation_method'] == 'atlas-borisov']['detection_r'],density=True, label="atlas-borisov-like",fill=False, edgecolor="red")
+    # plt.title("detection range probability distribution(AU)")
+    # plt.legend()
+    # plt.show()
 
 
     while True:
         
         df = get_data(1,gen_type="omuamua")
         print("Current # of rows:")
-        print(len(df[df['magitude_generation_method'] == 'omuamua']))
+        print(len(df[df['magnitude_generation_method'] == 'omuamua']))
         print('---------\n')
 
 

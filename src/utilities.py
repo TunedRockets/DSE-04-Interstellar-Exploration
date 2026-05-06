@@ -175,6 +175,45 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
         if allow_nonconvergence: return avg_point(p1,p2,p3)
         else: raise ArithmeticError("Nelder-mead failed to converge")
 
+def simple_hill_descent_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, steps:int=20)->tuple[float,float]:
+    '''_summary_
+
+    :param f: _description_
+    :type f: Callable[[float,float],float]
+    :param x0: _description_
+    :type x0: np.ndarray
+    :param x0_size: _description_
+    :type x0_size: float
+    :param steps: _description_, defaults to 20
+    :type steps: int, optional
+    :return: _description_
+    :rtype: tuple[float,float]
+    '''
+    F = lambda x0: f(x0[0], x0[1])
+    center = x0
+    centerF = F(x0)
+    for _ in range(steps):
+        left = center + np.array([-x0_size,0])
+        right = center + np.array([x0_size,0])
+        up = center + np.array([0,x0_size])
+        down = center + np.array([0,-x0_size])
+        leftF = F(left)
+        rightF = F(right)
+        upF = F(up)
+        downF = F(down)
+
+        i = np.argmin([leftF,rightF,upF,downF])
+        minn = [left,right,up,down][i]
+        minnF = [leftF,rightF,upF,downF][i]
+        if minnF < centerF:
+            center = minn
+            centerF = minnF
+        x0_size *= 0.7
+    return center # type:ignore
+
+
+
+
 def bounds(lower, value, upper):
     '''alias of min(upper, max(lower, value))\n
     works using numpy minimum so can work on arrays'''

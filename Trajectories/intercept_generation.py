@@ -22,12 +22,7 @@ weight = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance
 
 ISOs = get_ISO(rm=3)
 
-for ISO in ISOs:
-    detect_theta = ISO.crosses_altitude(detect_distance)
-    if detect_theta is None: 
-        print("Not inside detect distance")
-        continue
-    detect_time = ISO.theta_to_time(-detect_theta)
+for ISO,detect_time,_ in ISOs:
 
     try:
         insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+max_time, **weight)

@@ -913,6 +913,15 @@ def trajectory_optimizer(
     pois = pois[idx]
     best = pois[0:5] if len(pois) >= 5 else pois
 
+    # Prestudy best points TODO: make this only when points are close in value and far away in position:
+    bestopt = [simple_hill_descent_2d(F,x, dt/10) for x in best]
+    bof = []
+    for bo in bestopt:
+        bof.append(F(bo[0],bo[1]))
+    idx = np.argsort(bof)
+    bestopt = np.array(bestopt)[idx]
+
+
 
     # find starting point with sampling the range:
     # sample_range = np.linspace(start_time,end_time,20)
@@ -925,7 +934,7 @@ def trajectory_optimizer(
     # dt = sample_range[1]-sample_range[0]
 
     # try the five best:
-    for p in best:
+    for p in bestopt:
         try:
             s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
             break # found one
@@ -1152,10 +1161,19 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
 
     a= 4*m.pi**2 # upper bound
     b = -4*m.pi**2 # lower bound (expand for hyperbolas)
+
+    # need that 
+
     while y(b, S(b), C(b)) < 0: b += 0.1 # adjust lower bound (so y is +ve)
     while not m.isfinite(F(a)): a *= 0.9 # adjust upper bound (otherwise it's NaNs)
-
-    z = root_finder_bisection(F,b,a)
+    root_prec = 1e-8
+    if F(b) > 0: # bisection to find start of bisection. requred for fast times 
+        b = root_finder_bisection(lambda b: y(b, S(b), C(b)),b-0.1,b, root_prec) 
+        b += root_prec # so we are actually above the root
+    
+    try:
+        z = root_finder_bisection(F,b,a)
+    except: raise ArithmeticError("Lambert failed to find root, probably too short time")
     # assert abs(F(z)) < 1e-5
 
     # f and g_dot are unitless, g is not, having units of [TU]

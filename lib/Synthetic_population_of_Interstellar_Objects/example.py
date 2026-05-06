@@ -1,0 +1,101 @@
+"""
+This is the example of generating a synthetic population of interstellar objects using the Probabilistic method 
+(Marceta, D.: Synthetic population of interstellar objects in the Solar System, Astronomy and Computing, vol. 42, 2023)
+
+In addition to orbits, the code can also generate the sizes of ISOs, according to a (broken) power law. 
+Below are two examples, one where only orbits are generated, as well as the example that generates both orbits and ISO sizes.
+
+Input:
+    T: time duration of the simulation (years). If T=0, generates a snapshot of the population at a single epoch. If T>0, also generates objects entering the sphere during this interval.
+    rm: radius of the model sphere (au)
+    n0: number-density of the ISOs in the interstellar space (unperturbed by the Sun's gravity)
+        for objects with diameter >d0 (au^-1)
+    v_min: minimum allowed interstellar speed (m/s)
+    v_max: maximum allowed interstellar speed (m/s) 
+    u_Sun:  u-component of the Sun's velocity w.r.t. LSR (m/s) 
+    v_Sun: v-component of the Sun's velocity w.r.t. LSR (m/s) 
+    w_Sun: w-component of the Sun's velocity w.r.t. LSR (m/s) 
+    sigma_vx: standard deviation of x-component of ISOs' velocities w.r.t. LSR (m/s)
+    sigma_vy: standard deviation of y-component of ISOs' velocities w.r.t. LSR (m/s)
+    sigma_vz: standard deviation of z-component of ISOs' velocities w.r.t. LSR (m/s)
+    vd: vertex deviation (radians)
+    va:  asymmetric drift (m/s)
+    R_reff:  reference radius of the Sun (m)
+    speed_resolution:  resolution of magnitudes of interstellar velocities (for numerical integration and inverse interpolation)
+    angle_resolution: resolution of galactic longitude (for numerical integration and inverse interpolation)
+    B_resolution: resolution of impact parameter (used only if T > 0)
+    dr: increment step for heliocentric distance used for numerical integration and inverse interpolation (au)
+    d_ref:  reference ISO diameter for which n0 is defined (m)
+    d: array of diameters for where power law for size frequency distribution (SFD) changes slope. This array also includes
+       minimum and maximum diameter of the population (m). If this array is empty (default) the function does not calculate sizes of the objects 
+       and takes n0 as the total number-density 
+    alpha: array of slopes of the SFD
+    velocity_components: (Optional) Tuple of (U, V, W) arrays representing a custom velocity distribution. 
+       If provided, these arrays are used to estimate the probability density (via KDE), overriding the analytic Gaussian distribution defined by sigma_vx, sigma_vy, sigma_vz, etc.        
+    
+       
+    Output (synthetic samples of orbital elements):
+    q_s - perihelion distance (au)
+    e_s - eccentricity
+    f_s - true anomaly (radians)
+    inc_s - orbital inclination (radians)
+    node_s - longitude of ascending node (radians)
+    argument_s - argument of perihelion (radians) 
+    D_s (optional) - diameters of ISOs (m)
+"""
+
+import numpy as np
+from synthetic_population import synthetic_population
+
+## Case 1: generating only orbits without generating the sizes of objects
+q, e, f, inc, Omega, omega= synthetic_population(0, rm=10, n0=0.1, v_min=1e3, v_max=2e5, 
+                                                               u_Sun=1e4, v_Sun=1.1e4, w_Sun=7e3, 
+                                                               sigma_vx=3.1e4, sigma_vy=2.3e4, sigma_vz=1.6e4, 
+                                                               vd=np.deg2rad(7), va=0, R_reff=696340000.,
+                                                               speed_resolution=100, angle_resolution=90, dr=0.1)
+
+# Case 2: generating both orbits and sizes
+"""
+In this case, the code will generate objects with sizes ranging from 50 to 2000 m. The referent number density is 1e-1 per cubic au for 
+objects larger than 1000 m. Objects within the size range [50, 500) have SFD slope of -1.5, 
+while the object within the size range [500, 2000] have slope of -2.1.
+"""
+
+#q, e, f, inc, Omega, omega, D = synthetic_population(0, rm=1, n0=10, v_min=1e3, v_max=2e5, 
+#                                                                u_Sun=1e4, v_Sun=1.1e4, w_Sun=7e3, 
+#                                                                sigma_vx=3.1e4, sigma_vy=2.3e4, sigma_vz=1.6e4, 
+#                                                                vd=np.deg2rad(7), va=0, R_reff=696340000.,
+#                                                                speed_resolution=100, angle_resolution=90, dr=0.1, 
+#                                                                d_ref=1000, d=[50, 500, 2000], alpha=[-1.5, -2.1])
+
+
+
+# Case 3: generating stationary population (only orbits)
+
+## Case 1: generating only orbits without generating the sizes of objects
+# q, e, f, inc, Omega, omega = synthetic_population(1., rm=1, n0=100, v_min=1e3, v_max=2e5, 
+#                                                                 u_Sun=1e4, v_Sun=1.1e4, w_Sun=7e3, 
+#                                                                 sigma_vx=3.1e4, sigma_vy=2.3e4, sigma_vz=1.6e4, 
+#                                                                 vd=np.deg2rad(7), va=0, R_reff=696340000.,
+#                                                                 speed_resolution=100, angle_resolution=90, dr=0.1)
+
+
+# Case 4: Data-Driven Kinematics via Kernel Density Estimation
+"""
+This example demonstrates how to inject an empirical velocity distribution into the 
+simulation. Supplying the `velocity_components` argument bypasses the standard 
+analytic model and constructs a non-parametric 3D KDE from the provided dataset.
+"""
+
+# # 1. Fetch real Galactic kinematics
+# from gaia_loader import fetch_gaia_velocities
+# gaia_uvw = fetch_gaia_velocities(p_min=10, limit=50000)
+
+# # 2. Run the synthetic population using the empirical velocity distribution
+# q, e, f, inc, Omega, omega = synthetic_population(
+#     T=0, rm=10, n0=0.1, v_min=1e3, v_max=2e5, 
+#     u_Sun=0, v_Sun=0, w_Sun=0, # Ignored when velocity_components is provided
+#     sigma_vx=0, sigma_vy=0, sigma_vz=0, vd=0, va=0, # Ignored when velocity_components is provided
+#     R_reff=696340000., speed_resolution=100, angle_resolution=90, dr=0.1,
+#     velocity_components=gaia_uvw
+# )

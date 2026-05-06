@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 import math as m
 from tqdm import tqdm
 import warnings
-from functools import cache
+from scipy.optimize import minimize
+
 
 
 # ===========================
@@ -27,7 +28,7 @@ class Orbit():
     as such, a parent body must be represented in the form of a given sgp.
     other variables such as a (semi-major-axis), h (specific angular momentum), the apsides and the period
     can be accessed and modified.
-    special cases, I.e. circular, planar, parabolic, and degenerate, 
+    special cases, I.e. circular, planar, parabolic, and degenerate,
     are dealt with specially:
     - Degenerate orbits are currently no implemented
     - Circular orbits assume the "periapsis" is the ascending node
@@ -35,7 +36,7 @@ class Orbit():
     - Circular planar orbits apply both of the above
     - orbits with negative inclination are possible, and are interpreted with the "ascending node"
       being the descending one
-    
+
     '''
 
     def __init__(self, p:float, e:float, i:float, RAAN:float,
@@ -75,14 +76,14 @@ class Orbit():
         '''time of periapsis passage'''
         self.sgp = sgp
         '''Parent body standard gravitational parameter'''
-    
+
     # === basic variations of the above (and changing them) ======
 
     @property
     def a(self)->float:
         '''Semi-major axis\n
         hyperbolic orbits are considered to have negative semi-major axes\n
-        
+
         Changing this variable scales p by a corresponding amount\n
         only works if new a is same sign as old a'''
         if self.e != 1: return self.p/(1-self.e**2)
@@ -90,26 +91,26 @@ class Orbit():
 
     @a.setter
     def a(self, a:float)->None:
-        if self.a * a > 0 and self.e != 1: 
+        if self.a * a > 0 and self.e != 1:
             # don't change sign accidentally
             self.p = a*(1-self.e**2)
         else: raise ValueError("Cannot flip sign of semi-major axis")
-        
+
     @property
     def h(self)->float:
         '''angular momentum\n
         changing this changes the parameter of the orbit'''
         return np.sqrt(self.p*self.sgp)
-    
+
     @h.setter
     def h(self, h:float):
         # p = h^2/mu
-        self.p = h**2/self.sgp
+        self.p = m.sqrt(h)/self.sgp
 
     @property
     def periapsis(self)->float:
         return self.p/(1+self.e)
-    
+
     @periapsis.setter
     def periapsis(self, pe:float)->None:
         '''The lowest point of the orbit.\n
@@ -136,16 +137,16 @@ class Orbit():
 
     @property
     def period(self)->float:
-        '''Period of orbit, Changing this changes p by way of a, unless it is hyperbolic in which 
-        case it returns infinity'''
+        '''Period of orbit, Changing this changes p by way of a, unless it is hyperbolic in which
+        case it raises a ValueError'''
         if self.e < 1: return 2*m.pi*m.sqrt(self.a**3/self.sgp)
         else: return m.inf # since there is no period
-    
+
     @period.setter
     def period(self, period):
         if self.e >= 1: raise ValueError("Cannot change period of Hyperbolic orbit (since it doesn't exist)")
         self.a = m.cbrt(self.sgp * (period/(2*m.pi))**2)
-        # (T/2pi)^2 = a^3/mu 
+        # (T/2pi)^2 = a^3/mu
 
     @property
     def mean_motion(self)->float:
@@ -153,7 +154,7 @@ class Orbit():
         '''
         return m.sqrt(self.sgp/(self.a**3))
 
-    def change_apses(self, new_ap:float|None = None, 
+    def change_apses(self, new_ap:float|None = None,
                      new_pe:float|None = None)->float:
         ''' change apses of the orbit, keeping the apse line the same.
         returns the new eccentricity. necessarily less than one\n
@@ -163,16 +164,11 @@ class Orbit():
 
         # insert already existing:
         if new_ap == None: new_ap = self.apoapsis
-        if new_ap == m.inf: 
+        if new_ap == m.inf:
             raise ValueError(f"New apoapsis can't be infinite"
             "(did you forget to include apoapsis when changing hyperbolic orbit?)")
 
         if new_pe == None: new_pe = self.periapsis
-
-        # figure out swap:
-        if new_pe > new_ap:
-            new_ap,new_pe = new_pe, new_ap
-            self.arg_p -= m.pi # swap periapsis argument
 
         # figure out e:
         e = (new_ap - new_pe)/(new_ap + new_pe)
@@ -186,7 +182,7 @@ class Orbit():
         # TODO: currently, this messes up the "periapsis at ascending node" scheme
         # if e = 0, maybe have a look at that
 
-        return e 
+        return e
 
     def polar_equation(self,theta)->float:
         '''simple polar equation that returns r for a given theta.
@@ -194,20 +190,20 @@ class Orbit():
         return self.p/(1+self.e*np.cos(theta))
 
     def asymptote_angle(self)->float:
-        '''returns the (external) angle to the asymptotes 
+        '''returns the (external) angle to the asymptotes
         of the hyperbolic orbit\n
         I.e. the angle between the asymptote and the periapsis'''
-        if self.e <= 1: 
+        if self.e <= 1:
             raise ArithmeticError(f"Only Hyperbolic orbits have asymptotes,"
                                   f" {self.e=} is not asymptotic")
         return m.acos(-1/self.e)
-    
+
     # ====== time ======
 
     def time_after_periapsis_to_theta(self, time)->float:
         '''calculate time after periapsis to what theta it should be
         (wraps a utilities function)'''
-        
+
         return time_2_true(time, self.e, self.h, self.sgp)
 
     def time_to_theta(self,time:float)->float:
@@ -219,19 +215,19 @@ class Orbit():
         '''calculate time after periapsis from given theta
         (wraps a utilities function)'''
         return true_2_time(theta, self.e, self.h, self.sgp)
-    
+
     def theta_to_time(self,theta:float)->float:
         '''calculate epoch time from given theta
         (wraps a utilities function)'''
         return self.theta_to_time_after_periapsis(theta) + self.t_p
-    
+
     def link_time_and_theta(self,theta,time)->None:
         '''Changes the time of periapsis passage so that the given theta happens at the given time'''
 
         t_theta = self.theta_to_time_after_periapsis(theta)
         self.t_p = time - t_theta
         return
-    
+
     # === other orbits =====
 
     def synodic_period(self,other:"Orbit")->float:
@@ -246,7 +242,7 @@ class Orbit():
         if self.e >=1 or other.e >= 1:
             raise ValueError("hyperbolic orbits do not have synodic periods")
         return (self.period*other.period)/abs(self.period-other.period)
-    
+
     def hohmann_angle(self,other:"Orbit")->float:
         '''calculates the optimal angle the other planets needs to be ahead
         for optimal hohmann transfer.
@@ -265,7 +261,7 @@ class Orbit():
         # where n2 is mean motion of other, and t is transfer orbit time
         t = m.pi * m.sqrt((self.a + other.a)**3/(8*self.sgp))
         return m.pi - other.mean_motion*t
-    
+
     def hohmann_time(self,other:"Orbit")->float:
         '''compute the optimal time for a hohmann transfer,
         assumes circular orbits so will be incorrect for ellitical orbits.
@@ -278,7 +274,7 @@ class Orbit():
         '''
         if self.e >=1 or other.e >= 1:
             raise ValueError("hyperbolic orbits do not have hohmann transfers")
-        
+
         # establish base angle:
         phi_0 = other.time_to_theta(0) - self.time_to_theta(0)
         phi_opt = self.hohmann_angle(other)
@@ -289,45 +285,6 @@ class Orbit():
         t_until = (phi_opt - phi_0)/effective_mean_motion
         return t_until
 
-    def hohmann_travel_time(self,other:"Orbit")->float:
-        '''travel time of a hohmann transfer orbit
-
-        :param other: other orbit
-        :type other: Orbit
-        :return: time of hohmann transfer
-        :rtype: float
-        '''
-        # half period is pi*sqrt(a^3/mu)
-        # a = 0.5*(a1+a2)
-        return m.pi * m.sqrt(((self.a + other.a)/2)**3 / self.sgp )
-
-    def relative_node_crossing(self,other:"Orbit")->float:
-        '''returns the true anaomaly where the two orbits cross,
-        returns the "ascending node", "descending node" is pi radians opposite this one
-
-        :param other: Other orbit
-        :type other: Orbit
-        :return: true anomaly of relative ascending node
-        :rtype: float
-        '''
-        e = self.e_vec
-        N = np.cross(self.h_vec,other.h_vec) # relative node vector
-        theta = m.acos(N.dot(e)/(np.linalg.norm(N) * np.linalg.norm(e))) # anomaly of node vector (i.e. crossing)
-        return theta
-    
-    def distance_to(self,other:"Orbit", time:float)->np.ndarray:
-        '''return vector between two orbits at given time,
-        starting at self, and going to origin
-
-        :param other: orther orbit to compare distance to
-        :type other: Orbit
-        :param time: time at which to measure the range
-        :type time: float
-        :return: vector to the other orbit
-        :rtype: np.ndarray
-        '''
-        return self.time_to_rv(time)[0] - other.time_to_rv(time)[0]
-    
     # ================= getting vectors ====================
     @property
     def e_vec(self)->np.ndarray:
@@ -345,29 +302,26 @@ class Orbit():
         also works as a transformation matrix from pqw to ijk (global),
         I.e. x_glob = Q*x_peri'''
 
-        return self._get_pqw(self.RAAN,self.i,self.arg_p)
-    
-    @staticmethod
-    @cache
-    def _get_pqw(RAAN, i, arg_p)->np.ndarray:
-        '''small helper to allow caching of the pqw array'''
-        # in effect the combined rotation matrix of 
+        # in effect the combined rotation matrix of
         # rot3(-RAAN)rot1(-i)rot3(-arg_p)
         # from Vallado
-        
+
         # normalize angles:
+        i = self.i
+        RAAN = self.RAAN
+        arg_p = self.arg_p
         if i < 0:
             i *= -1
             RAAN += m.pi
             arg_p += m.pi
 
         # for ease of writing:
-        co = m.cos(RAAN)
-        so = m.sin(RAAN)
-        ci = m.cos(i)
-        si = m.sin(i)
-        cp = m.cos(arg_p)
-        sp = m.sin(arg_p)
+        co = m.cos(self.RAAN)
+        so = m.sin(self.RAAN)
+        ci = m.cos(self.i)
+        si = m.sin(self.i)
+        cp = m.cos(self.arg_p)
+        sp = m.sin(self.arg_p)
 
         Q = np.array([
             [co*cp - so*sp*ci, -co*sp -so*cp*ci, so*si],
@@ -375,7 +329,6 @@ class Orbit():
             [sp*si, cp*si, ci]
         ])
         return Q
-
 
     def time_to_rv(self,time:float)->tuple[np.ndarray, np.ndarray]:
         '''
@@ -395,7 +348,7 @@ class Orbit():
             if self.asymptote_angle() < abs(theta):
                 raise ArithmeticError(f"Invalid true anomaly, orbit is" 
                 f"hyperbolic so has a max anomaly of {self.asymptote_angle()}")
-            
+
         r = self.polar_equation(theta) * np.array([m.cos(theta), m.sin(theta), 0]) # r vector in pqw
         v = (self.sgp/self.h)*np.array([-m.sin(theta), self.e + m.cos(theta), 0]) # v vector in pqw
         r = self.pqw_basis@r
@@ -407,7 +360,7 @@ class Orbit():
 
     def __repr__(self) -> str: # always need a repr (for debugging at least)
         return f"Orbit:\n {self.p=}\n {self.e=}\n {self.i=}\n {self.RAAN=}\n {self.arg_p=}\n {self.t_p=}\n {self.sgp=}"
-    
+
     def normalize(self)->None:
         '''normalizes the orbit, making t_p shift to within one period, making inclination strictly positive,
         and ensuring all values are within their bounds (i.e. 0-2pi)'''
@@ -432,7 +385,7 @@ class Orbit():
 
         if not (self.periapsis < altitude < self.apoapsis):
             return None # does not cross
-        
+
         # reverse polar equation:
         return m.acos((self.p/altitude - 1)/self.e)
 
@@ -463,9 +416,9 @@ class Orbit():
             limit_theta = self.asymptote_angle() - 0.0001 # since the asymptote itself is infinity
         except ArithmeticError:
             limit_theta = m.inf
-        
+
         while theta2 < theta1: theta2 += 2*m.pi # fix wraparound issues
-        
+
         thetas = np.linspace(max(-limit_theta,theta1), min(limit_theta,theta2), num_points) # order the points
 
         points = []
@@ -480,9 +433,9 @@ class Orbit():
         return np.array(points)
 
     # == deprecated ==
-    
+
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def orbit_from_rv(r:np.ndarray, v:np.ndarray, sgp:float, time:float=0)->"Orbit":
         '''
         Creates an orbit given a position and velocity vector.\n
@@ -492,7 +445,7 @@ class Orbit():
         return orbit_from_rv(r,v,sgp,time)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def orbit_from_lambert(r1:np.ndarray, r2:np.ndarray, start_time:float,
                            end_time:float, sgp:float, short_way:bool = True)->"Orbit":
         '''creates an orbit by solving lambert's problem\n
@@ -502,18 +455,18 @@ class Orbit():
         return orbit_from_lambert(r1,r2,start_time,end_time,sgp,short_way)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def orbit_from_gauss(observations:list[np.ndarray],
-                            times:list[float], 
+                            times:list[float],
                             positions:list[np.ndarray],
                             sgp:float)->"Orbit":
         '''Uses Gauss' method to find an orbit from 3 observations, taken at 3 different times.
         you also need to include the positions of the three observations at those 3 given times
         observations assumed to be normal vectors'''
         return orbit_from_gauss(observations,times,positions,sgp)
-    
+
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def from_ephemeris(a:float, e:float, i:float, L:float, long_p:float, RAAN:float, sgp:float)->"Orbit":
         '''creates an orbit from ephemeris numbers instead.
         a: semi-major axis
@@ -526,7 +479,7 @@ class Orbit():
         return orbit_from_ephemeris(a,e,i,L,long_p,RAAN,sgp)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def point_to_point(p1:np.ndarray, p2:np.ndarray, radius:float, start_time:float, end_time:float, sgp:float, angular_speed:float, epoch_angle:float)->"Orbit":
         '''Create a point to point orbit between two coordinates on a sphere with given radius\n
         points given in elevation/azimuth.\n
@@ -534,7 +487,7 @@ class Orbit():
         return point_to_point(p1,p2,radius,start_time,end_time,sgp,angular_speed,epoch_angle)
 
     @staticmethod
-    @warnings.deprecated("Static methods are moved to functions outside the class")
+    #@warnings.deprecated("Static methods are moved to functions outside the class")
     def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float, short_way:bool = True)->tuple[np.ndarray, np.ndarray]:
         '''Solves lamberts problem of finding an orbit from two position vectors and a time between them\n
         can choose between "short" or "long" way (defaults to short), does not consider solutions of multiple periods.\n
@@ -629,7 +582,7 @@ def orbit_from_rv(r:np.ndarray, v:np.ndarray, sgp:float, time:float=0)->Orbit:
 
     RAAN = m.acos(n_vec[0]/np.linalg.norm(n_vec)) # RAAN
     if n_vec[1] < 0: RAAN = 2*m.pi - RAAN # angle is negative (but we want to keep it in range 0-2pi)
-    
+
     arg_p = m.acos(n_vec.dot(e_vec)/(np.linalg.norm(n_vec)*e)) # argument of periapsis
     if e_vec[2] < 0: arg_p = 2*m.pi - arg_p
 
@@ -643,7 +596,7 @@ def orbit_from_rv(r:np.ndarray, v:np.ndarray, sgp:float, time:float=0)->Orbit:
         if e_vec[1] < 0: arg_p = 2*m.pi - arg_p
 
     elif e == 0 and i != 0: # circular inclined
-        
+
         arg_p = 0 # "periapsis" on node
         theta = m.acos(n_vec.dot(r)/(r_mag*np.linalg.norm(n_vec)))
         if r[2] < 0: theta = 2*m.pi - theta
@@ -669,15 +622,519 @@ def orbit_from_lambert(r1:np.ndarray, r2:np.ndarray, start_time:float,
     ob = orbit_from_rv(r1,v1, sgp, start_time)
     return ob
 
-def orbit_from_lambert_transfer(origin:Orbit, destination:Orbit, start_time:float,
-                        end_time:float, short_way:bool = True)->Orbit:
-    r1 = origin.time_to_rv(start_time)[0]
-    r2 = destination.time_to_rv(end_time)[0]
-    return orbit_from_lambert(r1,r2,start_time,end_time,origin.sgp,short_way)
-    
+def orbit_from_periapsis_point_and_point(
+    rp_loc: np.ndarray,
+    int_loc: np.ndarray,
+    sgp: float,
+    t_p: float = 0
+):
+
+    rp_loc = np.asarray(rp_loc, dtype=float).reshape(3,)
+    int_loc = np.asarray(int_loc, dtype=float).reshape(3,)
+
+
+
+    r_p = np.linalg.norm(rp_loc)
+    r_i = np.linalg.norm(int_loc)
+
+    # if np.dot(rp_loc,int_loc) > r_p**2:
+    #     #print("unreachable point")
+    #     return np.nan, np.nan
+
+    if r_p == 0 or r_i == 0:
+        #print("R_p is zero")
+        return np.nan, np.nan
+
+    # --- plane ---
+    h_vec = np.cross(rp_loc, int_loc)
+    h_norm = np.linalg.norm(h_vec)
+
+    if h_norm < 1e-10:
+        #print("Colinear")
+        return np.nan, np.nan  # nearly collinear → unstable
+
+    h_hat = h_vec / h_norm
+
+    # --- perifocal frame ---
+    p_hat = rp_loc / r_p
+    # #print(h_hat, p_hat)
+    q_hat = np.cross(h_hat, p_hat)
+    q_norm = np.linalg.norm(q_hat)
+
+    if q_norm < 1e-10:
+        #print("q_norm is small")
+        return np.nan, np.nan
+
+    q_hat /= q_norm
+    Q = np.column_stack((p_hat, q_hat, h_hat))
+
+    # --- express intercept ---
+    r_i_pqw = Q.T @ int_loc
+    x, y = r_i_pqw[0], r_i_pqw[1]
+
+    theta = np.arctan2(y, x)
+    if theta < 0:
+        theta += 2 * np.pi
+    cos_theta = np.cos(theta)
+
+    denom = (r_i * cos_theta - r_p)
+
+    if abs(denom) < 1e-8:
+        #print("Small denominator")
+        return np.nan
+
+    e = (r_p - r_i) / denom
+
+    # FIX: handle negative eccentricity
+    if e < 0:
+        e = -e
+        theta += np.pi
+        theta = (theta + np.pi) % (2 * np.pi) - np.pi
+
+    # --- sanity checks ---
+    if not np.isfinite(e):
+        #print("not finite eccentricity")
+        return np.nan, np.nan
+
+    # --- parameter ---
+    p = r_p * (1 + e)
+
+    if p <= 0 or not np.isfinite(p):
+        #print("not finite parameter")
+        return np.nan, np.nan
+
+    # --- angular momentum ---
+    h = np.sqrt(p * sgp)
+
+    # --- orbital elements ---
+    k_hat = np.array([0, 0, 1])
+    n_vec = np.cross(k_hat, h_hat)
+    n_norm = np.linalg.norm(n_vec)
+
+    i = np.arccos(np.clip(h_hat[2], -1, 1))
+
+    # RAAN
+    if n_norm < 1e-10:
+        RAAN = 0
+    else:
+        RAAN = np.arccos(np.clip(n_vec[0] / n_norm, -1, 1))
+        if n_vec[1] < 0:
+            RAAN = 2*np.pi - RAAN
+
+    # argument of periapsis
+    if n_norm < 1e-10:
+        arg_p = np.arctan2(p_hat[1], p_hat[0])
+    else:
+        arg_p = np.arccos(np.clip(np.dot(n_vec, p_hat) / n_norm, -1, 1))
+        if p_hat[2] < 0:
+            arg_p = 2*np.pi - arg_p
+
+    # --- build orbit ---
+    orbit = Orbit(p, e, i, RAAN, arg_p, t_p, sgp)
+
+    # # --- consistency check ---
+    # try:
+    #     r_check, _ = orbit.theta_to_rv(theta)
+    #     if not np.isfinite(r_check).all():
+    #         return np.nan, np.nan
+    #
+    #     # ensure we actually hit the intercept point
+    #     if np.linalg.norm(r_check - int_loc) > 1e-3 * r_i:
+    #         return np.nan, np.nan
+
+    # except Exception:
+    #     return np.nan, np.nan
+
+    # --- time ---
+    try:
+        dt = true_2_time(theta, e, h, sgp)
+        if not np.isfinite(dt):
+            return np.nan, np.nan
+    except Exception:
+        return np.nan, np.nan
+
+    return orbit, dt
+
+def dt_from_periapsis_point_and_point(
+    rp_loc: np.ndarray,
+    int_loc: np.ndarray,
+    sgp: float
+):
+
+    rp_loc = np.asarray(rp_loc, dtype=float).reshape(3,)
+    int_loc = np.asarray(int_loc, dtype=float).reshape(3,)
+
+
+
+    r_p = np.linalg.norm(rp_loc)
+    r_i = np.linalg.norm(int_loc)
+
+    # if np.dot(rp_loc,int_loc) > r_p**2:
+    #     #print("unreachable point")
+    #     return np.nan
+
+    if r_p == 0 or r_i == 0:
+        #print("R_p is zero")
+        return np.nan
+
+    # --- plane ---
+    h_vec = np.cross(rp_loc, int_loc)
+    h_norm = np.linalg.norm(h_vec)
+
+    if h_norm < 1e-10:
+        #print("Colinear")
+        return np.nan  # nearly collinear → unstable
+
+    h_hat = h_vec / h_norm
+
+    # --- perifocal frame ---
+    p_hat = rp_loc / r_p
+    # #print(h_hat, p_hat)
+    q_hat = np.cross(h_hat, p_hat)
+    q_norm = np.linalg.norm(q_hat)
+
+    if q_norm < 1e-10:
+        #print("q_norm is small")
+        return np.nan
+
+    q_hat /= q_norm
+    Q = np.column_stack((p_hat, q_hat, h_hat))
+
+    # --- express intercept ---
+    r_i_pqw = Q.T @ int_loc
+    x, y = r_i_pqw[0], r_i_pqw[1]
+
+    theta = np.arctan2(y, x)
+    if theta < 0:
+        theta += 2 * np.pi
+    cos_theta = np.cos(theta)
+
+    denom = (r_i * cos_theta - r_p)
+
+    if abs(denom) < 1e-8:
+        return np.nan
+
+    e = (r_p - r_i) / denom
+
+    # FIX: handle negative eccentricity
+    if e < 0:
+        e = -e
+        theta += np.pi
+        theta = (theta + np.pi) % (2 * np.pi) - np.pi
+
+    # --- sanity checks ---
+    if not np.isfinite(e):
+        #print("not finite eccentricity")
+        return np.nan
+
+
+    # --- parameter ---
+    p = r_p * (1 + e)
+
+    if p <= 0 or not np.isfinite(p):
+        #print("not finite parameter")
+        return np.nan
+
+    # --- angular momentum ---
+    h = np.sqrt(p * sgp)
+
+    # --- time ---
+    try:
+        dt = true_2_time(theta, e, h, sgp)
+        if not np.isfinite(dt):
+            #print("not finite flight time")
+            return np.nan
+    except Exception:
+        #print("exception in flight time")
+        return np.nan
+
+    return dt
+
+
+def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
+
+    def f(t):
+        try:
+            int_loc = destination.time_to_rv(tp + t)[0]
+            transfer_time = dt_from_periapsis_point_and_point(rp, int_loc, sgp)
+            #print("Transfer time: ", transfer_time)
+
+            # if not np.isfinite(transfer_time):
+            #     #print("Non finite transfer time")
+                # return np.nan
+
+            if transfer_time < 0:
+                #print("Transfer time cannot be negative")
+                return np.nan
+
+            if transfer_time < min_time or transfer_time > max_time:
+                #print("Transfer time out of bounds")
+                return np.nan
+
+            return transfer_time - t
+
+        except Exception as e:
+            #print("Exception at dt_from_periapsis_point_and_point: ", e)
+            return np.nan
+
+    # --- dense sampling ---
+    N = 50
+    ts = np.linspace(min_time, max_time, N)
+    vals = np.array([f(t) for t in ts])
+    #print(vals)
+    valid = np.isfinite(vals)
+    #print(valid)
+
+    if not np.any(valid):
+        return np.nan, np.nan  # graceful failure
+
+    # --- find brackets (sign change OR near zero) ---
+    brackets = []
+    tol = 1e-3
+
+    for i in range(N - 1):
+        if not valid[i] or not valid[i+1]:
+            continue
+
+        # sign change
+        if vals[i] * vals[i+1] < 0:
+            brackets.append((ts[i], ts[i+1]))
+
+        # near-zero detection
+        elif abs(vals[i]) < tol:
+            brackets.append((ts[i] - (ts[1]-ts[0]), ts[i] + (ts[1]-ts[0])))
+
+    # --- solve root if possible ---
+    t_sol = np.nan
+
+    if brackets:
+        best_root = None
+        best_residual = float("inf")
+
+        for a, b in brackets:
+            try:
+                #print("brackets: ", a , ",  ", b)
+                #print("values: ", f(a), ",  ", f(b))
+                root = root_finder_bisection(
+                    f, a, b,
+                    f_tolerance=1000,
+                    tolerance=1000,
+                    max_iter=100
+                )
+                res = abs(f(root))
+                #print("root: ", root)
+                #print("residual: ", res)
+                if res < best_residual:
+                    best_residual = res
+                    best_root = root
+            except Exception:
+                #print("No roots found")
+                continue
+
+        t_sol = best_root
+        if t_sol is None or not np.isfinite(t_sol):
+            return np.nan, np.nan
+
+    # # --- fallback: best approximate solution ---
+    # if t_sol is None:
+    #     valid_vals = vals[valid]
+    #     valid_ts = ts[valid]
+    #
+    #     idx = np.argmin(np.abs(valid_vals))
+    #     t_sol = valid_ts[idx]
+
+    # final safety
+    if not np.isfinite(t_sol):
+        #print("Transfer time not finite")
+        return np.nan, np.nan
+
+    # --- construct orbit ---
+    try:
+        int_loc = destination.time_to_rv(tp + t_sol)[0]
+        orbit, transfer_time = orbit_from_periapsis_point_and_point(rp, int_loc, sgp, tp)
+    except Exception as e:
+        #print("No orbit transfer found: ", e)
+        return np.nan, np.nan
+
+    return orbit, transfer_time
+
+
+
+
+
+
+def oberth_effect_optimzer(
+        target_object: Orbit,
+        rp: np.ndarray,
+        vp: np.ndarray,
+        tp: float,
+        min_time: float,
+        max_time: float,
+        periods: int | None = None,
+        period: float | None = None,
+        optimize_rendezvous: bool = False,
+        detect_time: float | None = None,
+        tp_window_width: float | None = None,
+        debug: bool = False
+):
+    """
+    Optimizes an Oberth-style transfer by scanning candidate departure times
+    and using `oberth_transfer_finder` to construct each trajectory.
+    """
+
+    sgp = target_object.sgp
+
+    # Optional periodic departure windows
+    period_offsets = [0.0]
+    if period is not None and periods is not None:
+        period_offsets = [k * period for k in range(periods)]
+    if period is not None and detect_time is not None:
+        while tp<detect_time:
+            tp += period
+    best_score = np.inf
+    best_result = None
+
+    for offset in period_offsets:
+
+        departure_time = tp + offset
+        try:
+            if tp_window_width is None:
+                transfer_orbit, flight_time = oberth_transfer_finder(
+                    rp,
+                    departure_time,
+                    target_object,
+                    sgp,
+                    min_time=min_time,
+                    max_time=max_time
+                )
+                if flight_time is not None and np.isfinite(flight_time):
+                    #print("Found solution, flight_time: ", flight_time)
+                    # velocity on transfer orbit at departure (Oberth burn point)
+                    v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
+                    dv_insertion = abs(v_transfer_dep - vp)
+                    # velocity at intercept
+                    intercept_time = departure_time + flight_time
+                    _, v_target = target_object.time_to_rv(intercept_time)
+                    v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+                    dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
+                    if optimize_rendezvous:
+                        score = dv_rdv + dv_insertion
+                        #print("Score: ", score)
+                    else:
+                        score = dv_insertion
+                        #print("Score: ", score)
+                else:
+                    #print("No solution found, skipping: ", flight_time)
+                    continue
+            else:
+                def f(t_p):
+                    transfer_orbit, flight_time = oberth_transfer_finder(
+                        rp,
+                        t_p,
+                        target_object,
+                        sgp,
+                        min_time=min_time,
+                        max_time=max_time
+                    )
+                    if flight_time is not None:
+                        # velocity on transfer orbit at departure (Oberth burn point)
+                        v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(t_p)[1])
+                        dv_insertion = abs(v_transfer_dep - vp)
+                        # velocity at intercept
+                        intercept_time = t_p + flight_time
+                        _, v_target = target_object.time_to_rv(intercept_time)
+                        v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+                        dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
+                        if optimize_rendezvous:
+                            score = dv_rdv + dv_insertion
+                        else:
+                            score = dv_insertion
+                        return score
+                    else:
+                        return 10e6
+
+                def debug_plot_f():
+                    ts = np.linspace(
+                        departure_time - tp_window_width,
+                        departure_time + tp_window_width,
+                        200
+                    )
+
+                    vals = []
+
+                    for t in ts:
+                        try:
+                            val = f(t)
+                            if not np.isfinite(val):
+                                val = np.nan
+                        except Exception:
+                            val = np.nan
+                        vals.append(val)
+
+                    vals = np.array(vals)
+
+                    plt.figure(figsize=(8, 4))
+                    plt.plot(ts, vals, label="f(t_p)")
+                    plt.axvline(departure_time, linestyle="--", label="initial guess")
+                    plt.xlabel("t_p")
+                    plt.ylabel("score")
+                    plt.title("Oberth optimizer landscape")
+                    plt.legend()
+                    plt.grid()
+                    plt.show()
+
+                if debug:
+                    debug_plot_f()
+
+                optimum_tp = minimize(f, departure_time, method="nelder-mead", bounds=((departure_time-tp_window_width,departure_time+tp_window_width))).x[0]
+                transfer_orbit, flight_time = oberth_transfer_finder(
+                    rp,
+                    optimum_tp,
+                    target_object,
+                    sgp,
+                    min_time=min_time,
+                    max_time=max_time
+                )
+                # velocity on transfer orbit at departure (Oberth burn point)
+                v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
+                dv_insertion = abs(v_transfer_dep - vp)
+                # velocity at intercept
+                intercept_time = departure_time + flight_time
+                _, v_target = target_object.time_to_rv(intercept_time)
+                v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+                dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
+                if optimize_rendezvous:
+                    score = dv_rdv + dv_insertion
+                else:
+                    score = dv_insertion
+
+            if score < best_score:
+                best_score = score
+                #print("Best score: ", best_score)
+                best_result = (
+                    dv_insertion,
+                    dv_rdv,
+                    transfer_orbit,
+                    departure_time,
+                    intercept_time
+                )
+                #print("Best result:" , best_result)
+        except Exception as e:
+            #print("Error in optimizer run: ", e)
+            continue
+
+
+    if best_result is None:
+        raise RuntimeError("No valid Oberth transfer found")
+
+    #print("Optimizer converged, best solution: ", best_result)
+
+    return best_result
+
+
 
 def orbit_from_gauss(observations:list[np.ndarray],
-                        times:list[float], 
+                        times:list[float],
                         positions:list[np.ndarray],
                         sgp:float)->"Orbit":
     '''Uses Gauss' method to find an orbit from 3 observations, taken at 3 different times.
@@ -691,8 +1148,8 @@ def orbit_from_gauss(observations:list[np.ndarray],
                             f"({len(observations)}/3) observations"
                             f"({len(times)}/3) times"
                             f"({len(positions)}/3) positions")
-    
-    
+
+
     # unpack the values
     rho1, rho2, rho3 = observations
     t1, t2, t3 = times
@@ -714,7 +1171,7 @@ def orbit_from_gauss(observations:list[np.ndarray],
 
     #calculate the D matrix (0 indexed unlike the Curtis variables)
     D = np.outer(np.array([R1,R2,R3]),np.array([p1,p2,p3]))
-    
+
     # if anything is wrong, check D first
 
     # calculate more intermediates
@@ -838,7 +1295,7 @@ def trajectory_optimizer(
         w_relv:float = 0,
         w_travel_time:float = 0,
         w_intercept_distance:float=0,
-        w_intercept_time:float=0,
+        w_intercept_time:float=0
 )->tuple[float,float,float,float,float]:
     '''
     Function to optimize the trajectory between two keplerian orbits.
@@ -863,7 +1320,7 @@ def trajectory_optimizer(
     :param w_intercept_time: how much the time after start_time intercept occurs is weighted in the optimizer (per day)
     :type: float:
 
-    
+
     :returns insertion dV:
     :returns rendezvouz dV:
     :returns start time:
@@ -882,58 +1339,34 @@ def trajectory_optimizer(
         except (ArithmeticError, ValueError): return m.inf # doesn't work
         weight = float(
             np.linalg.norm(vl1-v1) * w_insertion +
-            np.linalg.norm(vl2-v2) * w_relv + 
+            np.linalg.norm(vl2-v2) * w_relv +
             t/DAY * w_travel_time +
             np.linalg.norm(r2)/AU * w_intercept_distance +
             (s+t)/DAY * w_intercept_time
         )
         return weight
-    
-    dt = end_time-start_time
 
-    pois = _times_of_interest(origin,destination,start_time,end_time)
-    extremes = np.array([ # to fill out in case pois is empty
-        [start_time, end_time],
-        [start_time,start_time+dt/10],
-        [end_time-dt/10,end_time],
-        [start_time,start_time + dt/2]
-    ])
-    pois = np.vstack((pois, extremes))
-    pois[:,1] -= pois[:,0] # make travel time
-    
-    # pick best of pois:
-    dv_pois = []
-    for poi in pois:
-        try:
-            dv = F(poi[0], poi[1])
-        except (ArithmeticError, ValueError): 
-            dv = m.inf
-        dv_pois.append(dv)
-    idx = np.argsort(dv_pois)
-    pois = pois[idx]
-    best = pois[0:5] if len(pois) >= 5 else pois
+    # TODO
+
+    # define points of interest (apses, nodes, ideal hohmann points, etc.)
+    # get points in net, do some optimization, then pick best
+
+    # poi_start = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
+    # poi_end = [origin.theta_to_time(x) for x in [0,m.pi, -origin.arg_p, m.pi - origin.arg_p]]
+
 
 
     # find starting point with sampling the range:
-    # sample_range = np.linspace(start_time,end_time,20)
-    # ss,ee = np.meshgrid(sample_range,sample_range)
-    # tt = ee - ss
-    # FF = np.vectorize(F,otypes=[float])(ss,tt)
-    # idx = np.unravel_index(FF.argmin(), FF.shape)
-    # s = ss[idx]
-    # t = tt[idx]
-    # dt = sample_range[1]-sample_range[0]
+    sample_range = np.linspace(start_time,end_time,20)
+    ss,ee = np.meshgrid(sample_range,sample_range)
+    tt = ee - ss
+    FF = np.vectorize(F,otypes=[float])(ss,tt)
+    idx = np.unravel_index(FF.argmin(), FF.shape)
+    s = ss[idx]
+    t = tt[idx]
+    dt = sample_range[1]-sample_range[0]
 
-    # try the five best:
-    for p in best:
-        try:
-            s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
-            break # found one
-        except (ValueError, ArithmeticError):
-            # this one didn't work
-            continue
-    else:
-        raise ArithmeticError("no trajectory could be found")
+    s_opt,t_opt = nelder_mead_2d(F,np.array([s,t]),-dt/2, 1e-6)
 
     # compute properties:
     r1,v1 = origin.time_to_rv(s_opt)
@@ -955,7 +1388,7 @@ def porkchop_plot(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
     dv_best = m.inf
     idx_best = (0,0)
     array = np.zeros((len(start_range), len(end_range)))
-    
+
     for i in range(len(start_range)):
         start_time = start_range[i]
         r1,v1 = rv1_fn(start_time)
@@ -975,7 +1408,7 @@ def porkchop_plot(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
                 continue
 
             # check for minimum altitude
-            
+
             if min_alt != 0 and r1.dot(vinit) < 0: # starting by going down
                 # check periapsis (stealing from the orbit_from_rv function):
                 #peri = a(1-e) = h^2/sgp * 1/(1+e)
@@ -996,15 +1429,15 @@ def porkchop_plot(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
             if rendezvous: dv += dv2;
 
             array[i,j] = dv
-            
+
             # check for best:
             if dv < dv_best:
                 dv_best = dv
                 idx_best = (i,j)
-    
+
     return array, idx_best
 
-def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
+def porkchop_intercept(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
                         short_way:bool = True, rendezvous = True, min_alt=0):
     '''calculates the porkchop plot between two orbits, assumes sgp based on the first orbit
     returns a 2d array of all Dv values, and index of the lowest one.\n
@@ -1019,54 +1452,6 @@ def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range
 
 
 # ======= misc ========
-
-def _times_of_interest(origin:Orbit, destination:Orbit, lower_time:float, upper_time:float)->np.ndarray:
-    '''helper functions to generate times of interest for the trajectory optimizer'''
-
-    # apses and nodes
-    ori_cross = origin.relative_node_crossing(destination)
-    dest_cross = destination.relative_node_crossing(origin)
-    if origin.e < 1:
-        ori_nodes = [0,m.pi, ori_cross, ori_cross + m.pi]
-    else:
-        ori_nodes = [0.0]
-        if abs(ori_cross) < origin.asymptote_angle(): ori_nodes.append(ori_cross) 
-
-        if abs(ori_cross - m.pi) < origin.asymptote_angle(): ori_nodes.append(ori_cross - m.pi) 
-
-    if destination.e < 1:
-        dest_nodes = [0,m.pi, dest_cross, dest_cross + m.pi]
-    else:
-        dest_nodes = [0.0]
-        if abs(dest_cross) < destination.asymptote_angle(): dest_nodes.append(dest_cross) 
-
-        if abs(dest_cross - m.pi) < destination.asymptote_angle(): dest_nodes.append(dest_cross - m.pi) 
-    
-
-    starts = []
-    ends = []
-    for n in ori_nodes:
-        starts.extend(inside_modulo_bounds(lower_time, origin.theta_to_time(n), upper_time, origin.period))
-    for n in dest_nodes:
-        ends.extend(inside_modulo_bounds(lower_time, destination.theta_to_time(n), upper_time, destination.period))
-
-    pois = np.array(np.meshgrid(starts,ends)).T.reshape(-1,2)
-    # mesh of nodes/apses
-
-    # hohmann:
-    if (origin.e < 1 and destination.e < 1):
-        t = origin.hohmann_time(destination)
-        t = np.array(inside_modulo_bounds(lower_time,t,upper_time, origin.synodic_period(destination)))
-        t2 = t + origin.hohmann_travel_time(destination)
-        poi = np.column_stack((t,t2))
-        pois = np.vstack((pois,poi))
-    # presort invalids:
-    pois = pois[pois[:,1] < upper_time]
-    pois = pois[pois[:,0] < pois[:,1]]
-    return pois
-
-
-
 
 def propagate(r_0:np.ndarray, v_0:np.ndarray, dt:float, sgp:float, tolerance:float = 1e-9)->tuple[np.ndarray, np.ndarray]:
     '''
@@ -1086,14 +1471,14 @@ def propagate(r_0:np.ndarray, v_0:np.ndarray, dt:float, sgp:float, tolerance:flo
     if abs(vr_0) < tolerance: vr_0 = 0 # same deal for propagating from apses
     root_mu = m.sqrt(sgp)
     chi = root_mu*dt*abs(alpha) # good first guess
-    def F(chi): 
+    def F(chi):
         z = alpha * chi**2
         return (mag_r_0*vr_0/root_mu) * chi**2 * stumpff_c(z) + (1-alpha*mag_r_0) * chi**3 * stumpff_s(z) + mag_r_0*chi - root_mu*dt
-    
+
     def F_prime(chi):
         z = alpha * chi**2
         return (mag_r_0*vr_0/root_mu) * chi * (1-alpha*chi**2 * stumpff_s(z)) + (1-alpha*mag_r_0) * chi**2 * stumpff_c(z) + mag_r_0
-    
+
     chi = root_finder_newton(F, F_prime, chi)
     assert abs(F(chi)) < 1e-5
 
@@ -1101,7 +1486,7 @@ def propagate(r_0:np.ndarray, v_0:np.ndarray, dt:float, sgp:float, tolerance:flo
     f = 1 - (chi**2/mag_r_0)*stumpff_c(chi**2 * alpha)
     g = dt - 1/root_mu * chi**3 * stumpff_s(chi**2 * alpha)
     r_1 = f*r_0 + g*v_0
-    
+
     f_dot = root_mu/(mag_r_0 * np.linalg.norm(r_1)) * (chi**3 * alpha * stumpff_s(chi**2 * alpha) - chi)
     g_dot = 1 - chi**2/np.linalg.norm(r_1) * stumpff_c(chi**2 * alpha)
     v_1 = f_dot*r_0 + g_dot*v_0
@@ -1133,43 +1518,34 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
     r2 /= DU
     time /= TU
     sgp = 1
-    timerootsgp = time*m.sqrt(sgp)
-    r1r2 = r1 + r2
+
     A = m.sin(d_theta) * m.sqrt((r1*r2)/(1-m.cos(d_theta)))
     S = stumpff_s
     C = stumpff_c
-    
-    y = lambda z, S, C: r1r2 + A*(z*S-1)/np.sqrt(C)
-    
+    y = lambda z: r1 + r2 + A*(z*S(z)-1)/np.sqrt(C(z))
+
     # equation to solve is time*sqrt(mu) = x^3*S(z) + A*sqrt(y(z))
     # with x = sqrt(y(z)/C(z))
     # means:
-    def F(z):
-        Sz = S(z)
-        Cz = C(z)
-        yz = y(z,Sz,Cz)
-        return m.sqrt(yz/Cz)**3 * Sz + A * m.sqrt(yz) - timerootsgp
+    chi = lambda z: m.sqrt(y(z)/C(z))
+    F = lambda z: chi(z)**3 * S(z) + A * m.sqrt(y(z)) - time*m.sqrt(sgp)
 
     a= 4*m.pi**2 # upper bound
     b = -4*m.pi**2 # lower bound (expand for hyperbolas)
-    while y(b, S(b), C(b)) < 0: b += 0.1 # adjust lower bound (so y is +ve)
+    while y(b) < 0: b += 0.1 # adjust lower bound (so y is +ve)
     while not m.isfinite(F(a)): a *= 0.9 # adjust upper bound (otherwise it's NaNs)
 
     z = root_finder_bisection(F,b,a)
     # assert abs(F(z)) < 1e-5
 
     # f and g_dot are unitless, g is not, having units of [TU]
-    Sz = S(z)
-    Cz = C(z)
-    f = 1 - y(z,Sz,Cz)/r1
-    g_dot = 1 - y(z,Sz,Cz)/r2
-    g = A*m.sqrt(y(z,Sz,Cz)/sgp) * TU
-    
+    f = 1 - y(z)/r1
+    g_dot = 1 - y(z)/r2
+    g = A*m.sqrt(y(z)/sgp) * TU
+
     v1_vec = (r2_vec - f*r1_vec)/g
     v2_vec = (g_dot*r2_vec - r1_vec)/g
     return v1_vec, v2_vec
-
-
 
 def orbit_within_1_precent(ob1:Orbit,ob2:Orbit):
     '''are the orbits within 1% on the 6 elements?
@@ -1187,35 +1563,27 @@ def orbit_within_1_precent(ob1:Orbit,ob2:Orbit):
     if not within(ob1.t_p, ob2.t_p): return False
     return True
 
-def plot_orbit(ax,ob:Orbit,time:float|tuple[float,float]=0.0,trail:float=2*m.pi, ThreeDee:bool=True,hyper_predict:bool=False, max_alt:float=m.inf, **kwargs)->None:
+def plot_orbit(ax,ob:Orbit,time:float=0,trail:float=2*m.pi, ThreeDee:bool=True,hyper_predict:bool=False, max_alt:float=m.inf, **kwargs)->None:
     '''Plot orbit in the given axis, trail determines how far behind the orbit is plotted (defaults to entire orbit)
     hyperbolic orbits will only be plotted up to the current point, if hyper_predict is true, a dashed line will be plotted ahead,
-    max_size determines how far out to plot,
-    if time is a tuple, trail is ignored and instead using the two times'''
+    max_size determines how far out to plot'''
 
-    if isinstance(time, float):
-        theta = ob.time_to_theta(time)
+    theta = ob.time_to_theta(time)
 
-        if trail != 2*m.pi:
-            # add trail:
-            end_theta = theta
-            start_theta = theta-trail
-        else: # no trail, 
-            end_theta = m.pi
-            start_theta = -m.pi
-        if ob.e >= 1: end_theta = theta
-    else:
-        start_theta = ob.time_to_theta(time[0]) #type:ignore
-        end_theta = ob.time_to_theta(time[1]) # type:ignore
-        theta = end_theta
-
+    if trail != 2*m.pi:
+        # add trail:
+        end_theta = theta
+        start_theta = theta-trail
+    else: # no trail,
+        end_theta = m.pi
+        start_theta = -m.pi
+    if ob.e >= 1: end_theta = theta
 
     cross = ob.crosses_altitude(max_alt)
     if cross is None and ob.periapsis > max_alt: return # don't render anything
     elif not cross is None:
         start_theta = bounds(-cross,start_theta,cross)
         end_theta = bounds(-cross,end_theta,cross)
-
 
     locus = ob.point_locus(start_theta,end_theta)
     if cross is None or abs(theta) < cross:
@@ -1226,12 +1594,12 @@ def plot_orbit(ax,ob:Orbit,time:float|tuple[float,float]=0.0,trail:float=2*m.pi,
         kwargs['color'] = np.random.random(3)
     if ThreeDee: ax.plot(locus[:,0],locus[:,1],locus[:,2], **kwargs)
     else: ax.plot(locus[:,0],locus[:,1], **kwargs)
-        
+
     kwargs.pop('label',None) # to not duplicate labels
     if np.linalg.norm(point) <= max_alt:
         if ThreeDee: ax.scatter(point[0],point[1],point[2], **kwargs)
         else: ax.scatter(point[0],point[1], **kwargs)
-    
+
     if hyper_predict and ob.e >= 1:
         start_theta = end_theta
         end_theta = cross
@@ -1240,7 +1608,3 @@ def plot_orbit(ax,ob:Orbit,time:float|tuple[float,float]=0.0,trail:float=2*m.pi,
         else: ax.plot(locus[:,0],locus[:,1], **kwargs)
     return;
 
-def get_solar_system_ax():
-    ax = plt.figure().add_subplot(projection='3d')
-    ax.scatter(0,0,0, lw=3, color="red")
-    return ax

@@ -41,11 +41,9 @@ def stumpff_s(z:float)->float:
     if z==0:
         return 1/6
     elif z > 0:
-        z_sqrt = m.sqrt(z)
-        return (z_sqrt - m.sin(z_sqrt))/(z_sqrt**3)
+        return (m.sqrt(z) - m.sin(m.sqrt(z)))/(m.sqrt(z)**3)
     else:
-        z_sqrt = m.sqrt(-z)
-        return (-z_sqrt + m.sinh(z_sqrt))/(z_sqrt**3)
+        return (-m.sqrt(-z) + m.sinh(m.sqrt(-z)))/(m.sqrt(-z)**3)
 
 def stumpff_c(z:float)->float:
     ''' Stumpff cosine functionalso known as c_2,
@@ -59,53 +57,45 @@ def stumpff_c(z:float)->float:
     else:
         return (-1 + m.cosh(m.sqrt(-z)))/(-z)
 
-def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8)->float:
+def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8, max_iter=10000, f_tolerance=1e-8)->float:
     '''takes a univariate function and finds the root of that function
     through recursive bisection.
     converges on a root between bounds, provided bounds are of different sign'''
 
     if not ( f(lower) * f(upper) < 0): # check the initial interval contains a root
-        raise ValueError("bounds have same sign")   
-    middle = (lower + upper)/2
+        raise ValueError("bounds have same sign")
+    iter=0
+    middle = (lower + upper) / 2
     while 0.5*np.abs(upper-lower) > tolerance:  # check that we're not converged
         middle = (lower + upper)/2                  # midpoint of current interval
-        if f(lower) * f(middle) < 0:           # select which 1/2 interval to continue with
-            upper = middle
+        f_lower =f(lower)
+        f_middle = f(middle)
+        if abs(f_lower-f_middle) < f_tolerance:
+            return middle
+        elif np.isfinite(f_middle) and np.isfinite(f_lower):
+            if f_lower * f_middle < 0:           # select which 1/2 interval to continue with
+                upper = middle
+            else:
+                lower = middle
+            if iter>max_iter:
+                raise ValueError("iteration limit exceeded")
         else:
-            lower = middle
+            raise ValueError("Function has non finite outputs (non continuous)")
     return middle
 
-def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, max_iter:int = 100, precision=1e-6)->float:
+def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, iterations:int = 50)->float:
     '''runs newton's method of root finding, will throw an arithmetic error on divergence'''
 
-    for i in range(max_iter):
-        fx = f(x0)
-        if abs(fx) < precision: return x0
-        dx = fx/df(x0)
+    for i in range(iterations):
+        dx = f(x0)/df(x0)
         x0 = x0 - dx
-    else: raise ArithmeticError("Newton's method failed to converge")
+        if not np.isfinite(x0): raise ArithmeticError("Newton's method failed to converge")
+    return x0
 
-def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500, allow_nonconvergence:bool=False)->tuple[float,float]:
+def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500)->tuple[float,float]:
     '''Implementation of the Nelder Mead optimization algorithm,
     uses default values for the coefficients,
-    (minimizes the value)
-
-    :param f: function to minimize
-    :type f: Callable[[float,float],float]
-    :param x0: initial point
-    :type x0: np.ndarray
-    :param x0_size: initial step size
-    :type x0_size: float
-    :param precision: standard deviation required to terminate, defaults to 1e-6
-    :type precision: float, optional
-    :param max_iter: maximum allowed iterations, each iteration samples the function a maximum of 3 times, defaults to 500
-    :type max_iter: int, optional
-    :param allow_nonconvergence: if this is true, the function will return current value on reaching maximum iterations, even
-    if it hasn't converged, defaults to False
-    :type allow_nonconvergence: bool, optional
-    :return: coordinates of minimum value of f
-    :rtype: tuple[float,float]
-    '''
+    (minimizes the value)'''
     a = 1
     b = 0.5
     c = 2
@@ -121,7 +111,6 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
     p3[0] = f(*p3[1])
     # arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
     # plt.plot(arrr[0], arrr[1])
-    avg_point = lambda p1,p2,p3: ((p1[1][0] + p2[1][0] + p3[1][0])/3, (p1[1][1] + p2[1][1] + p3[1][1])/3)
 
     for _ in range(max_iter):
             
@@ -134,7 +123,7 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
         m = (p1[0] + p2[0] + p3[0])/3
         var = (((p1[0]-m)**2 + (p2[0]-m)**2 + (p3[0]-m)**2)/2)
         if var < precision**2:
-            return avg_point(p1,p2,p3)
+            return p1[1][0], p1[1][1]
 
         # centroid:
         cent = 0.5*(p1[1] + p2[1])
@@ -172,30 +161,12 @@ def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float,
             p2 = [f(*p2_p), p2_p]
             continue
     else:
-        if allow_nonconvergence: return avg_point(p1,p2,p3)
-        else: raise ArithmeticError("Nelder-mead failed to converge")
+        raise ArithmeticError("Nelder-mead failed to converge")
 
 def bounds(lower, value, upper):
     '''alias of min(upper, max(lower, value))\n
     works using numpy minimum so can work on arrays'''
     return np.minimum(upper, np.maximum(lower, value))
-
-def inside_modulo_bounds(lower, value, upper, modulo):
-    '''
-    Moves value into the given bounds by moving wth the modulo,
-    if multiple bounds work, will return each instance as a list
-    if it cannot be moved into the region, will return empty list
-    '''
-    
-    # move value below lower:
-    while value-modulo > lower: value -= modulo
-    # go through to add to list
-    l = []
-    while value <= upper:
-        if lower < value < upper: l.append(value)
-        value += modulo
-    return l
-
 
 def lerp(a,b,r, clamped=False):
     '''lerps between value a and value b,
@@ -488,42 +459,28 @@ def true_2_mean(theta:float, e:float)->float:
 def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     '''time to true anomaly via the universal variable method'''
     
-    if t == 0: return 0 # by definition
-
     # time -> chi -> true
     rp = h*h/(sgp*(1+e))
-    
     alpha = (sgp*(1-e*e))/(h*h) # 1/a
     S = stumpff_s
     C = stumpff_c
     # sqrt(sgp) * t = (1-rp*alpha)chi^3 S(chi^2*alpha) + rp*chi (after periapsis)
-    F = lambda chi: (1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi - m.sqrt(sgp)*t
+    F = lambda chi: (1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi - sgp**(1/2)*t
     dF = lambda chi: (1-rp*alpha)*chi**2 * C(chi**2*alpha) + rp
     # find root:
-
-    # root finder behaves strangely, so hybrid/bisection is used instead
-    # prussing conway say it's in the range: (sqrt(mu)dt/r_max) -- (sqrt(mu)dt/r_min)
-    # where r_min is periapsis 
-    # and r_max is apoapsis (or for e>=1 infinity s.t. chi = 0)
-    chi_max = m.sqrt(sgp)*t/rp
-    chi_min = m.sqrt(sgp)*t/(h*h/(sgp*(1-e))) if e < 1 else 0.0
-    try:
-        chi0 = 0.5*(chi_min+chi_max)
-        chi = root_finder_newton(F,dF,chi0)
-        if not (chi_min < chi < chi_max): raise ArithmeticError("Converged wrong")
-    except ArithmeticError:
-        # fall back on bisection
-        chi = root_finder_bisection(F,chi_min,chi_max)
-
+    chi0 = sgp**(1/2) * t * abs(alpha)
+    chi = root_finder_newton(F,dF,chi0)
     if e == 1: # parabolic:
-        return 2 * m.atan(m.sqrt(sgp)*chi/h)
+        return 2 * np.arctan(sgp**(1/2)*chi/h)
     elif e < 1: # elliptic
-        E = chi * m.sqrt(alpha)
-        return 2*m.atan(m.sqrt((1+e)/(1-e)) * m.tan(E/2))
+        E = chi * alpha**(1/2)
+        return 2*np.arctan(
+            ((1+e)/(1-e))**(1/2) * np.tan(E/2)
+        )
     else: # hyperbolic
-        Eh = chi * m.sqrt(-alpha)
-        return 2*m.atan(
-            m.sqrt((e+1)/(e-1)) * m.tanh(Eh/2)
+        Eh = chi * (-alpha)**(1/2)
+        return 2*np.arctan(
+            ((e+1)/(e-1))**(1/2) * np.tanh(Eh/2)
         )
 
 
@@ -534,15 +491,15 @@ def true_2_time(theta:float, e:float, h:float, sgp:float)->float:
     S = stumpff_s
 
     if e == 1:
-        chi = h/(m.sqrt(sgp))*m.tan(theta/2)
+        chi = h/(sgp**(1/2))*np.tan(theta/2)
     elif e < 1:
-        E = 2 * m.tan(m.sqrt((1-e)/(1+e)) * m.tan(theta/2))
-        chi = E/(m.sqrt(alpha))
+        E = 2 * np.arctan(((1-e)/(1+e))**(1/2) * np.tan(theta/2))
+        chi = E/(alpha**(1/2))
     else:
-        Eh = 2 * m.atanh(m.sqrt((e-1)/(e+1)) * m.tan(theta/2))
-        chi = Eh/(m.sqrt(-alpha))
+        Eh = 2 * np.arctanh(((e-1)/(e+1))**(1/2) * np.tan(theta/2))
+        chi = Eh/((-alpha)**(1/2))
     
-    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/(m.sqrt(sgp))
+    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/(sgp**(1/2))
     return time
     
 

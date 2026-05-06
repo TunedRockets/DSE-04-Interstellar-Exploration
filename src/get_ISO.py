@@ -14,7 +14,7 @@ from tqdm import tqdm
 LSST_sensitivity_magnitude = 24.38
 
 
-def get_ISO(T:float=0, rm:float=10)->list[tuple[Orbit, float, float]]:
+def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float, float,str]]:
     '''Generates synthetic orbits of ISOs,
     If T is 0 (default), a snapshot of the population is generated,
     If T is a number (years), an expectation over that time
@@ -56,31 +56,47 @@ def get_ISO(T:float=0, rm:float=10)->list[tuple[Orbit, float, float]]:
         
         # figure out detection:
         try:
-            H = generate_abs_magnitude()
+            H,gen_type = generate_abs_magnitude(gen_type=gen_type)
             d_time = detection_time(ob, H, LSST_sensitivity_magnitude)
-        except ArithmeticError:
+        except (ArithmeticError, ValueError):
             # wasn't detected. skip
             continue
 
 
-        oobb.append((ob, d_time, H))
+        oobb.append((ob, d_time, H, gen_type))
     print(f"\t{len(oobb)}/{len(p)} orbits were detected and passed on to analysis")
     return oobb
 
 
-
-def generate_abs_magnitude()->float:
+generation_types = ['omuamua', 'atlas-borisov', 'asteroidal', 'cometary']
+def generate_abs_magnitude(gen_type:str='')->tuple[float,str]:
     '''(somehow) generate a random magnitude for the ISO
+    return magnitude and generation type
 
     :return: absolute magnitude
     :rtype: float
     '''
     # ref:
-    # - 'Omuamua: ~22.08
+    # - 'Omuamua: ~22.4
     # - Borisiv: ~12 (including coma)
     # - ATLAS ~12.5  (including coma)
+    if gen_type == '':
+        gen_type = generation_types[np.random.randint(len(generation_types))]
+    
 
-    return 15 + np.random.randn() * 5 # IDK, find this TODO
+    match gen_type.lower():
+
+        case 'omuamua':
+            H = 22.4
+        case 'atlas-borisov':
+            H = 12.5
+        case _:
+            H = 15
+            gen_type = 'fallback generation'
+
+
+
+    return H, gen_type
 
 def HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     '''return the apparent magnitude of an orbit as seen from earth given an
@@ -128,7 +144,7 @@ def detection_time(ob:Orbit, absolute_magnitude:float, sensitivity:float)->float
     enter_system = ob.crosses_altitude(5*AU)
     if enter_system is None: raise ArithmeticError("does not enter inner system")
     e_time = ob.theta_to_time(-enter_system)
-    ex_time = ob.time_to_theta(enter_system)
+    p_time = ob.time_to_theta(0)
 
     # already detected?
     if F(e_time) < 0:
@@ -137,15 +153,11 @@ def detection_time(ob:Orbit, absolute_magnitude:float, sensitivity:float)->float
         return root_finder_bisection(F,e2_time, e_time, tolerance=1) # look in outer system
     # else find detection time:
 
-    # sample the space for magnitudes to preselect where to sample:
-    times = np.linspace(e_time, ex_time)
-    mags = np.vectorize(F)(times)
-    idx = np.argmin(mags)
-    min_time = times[idx]
-    F_low = mags[idx]
+    # assume if it's visible it's visible at periapsis
+    F_low = F(p_time)
     if F_low > 0: # same sign, bad
         raise ArithmeticError(f"min magnitude is {F_low}, which is still positive (should be negative), periapsis is: {ob.periapsis/AU} AU")
-    d_time = root_finder_bisection(F,e_time,min_time,tolerance=1) # within 1 second
+    d_time = root_finder_bisection(F,e_time,p_time,tolerance=1) # within 1 second
     return d_time
 
 

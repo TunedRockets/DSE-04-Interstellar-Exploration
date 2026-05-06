@@ -1152,10 +1152,19 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
 
     a= 4*m.pi**2 # upper bound
     b = -4*m.pi**2 # lower bound (expand for hyperbolas)
+
+    # need that 
+
     while y(b, S(b), C(b)) < 0: b += 0.1 # adjust lower bound (so y is +ve)
     while not m.isfinite(F(a)): a *= 0.9 # adjust upper bound (otherwise it's NaNs)
-
-    z = root_finder_bisection(F,b,a)
+    root_prec = 1e-8
+    if F(b) > 0: # bisection to find start of bisection. requred for fast times 
+        b = root_finder_bisection(lambda b: y(b, S(b), C(b)),b-0.1,b, root_prec) 
+        b += root_prec # so we are actually above the root
+    
+    try:
+        z = root_finder_bisection(F,b,a)
+    except: raise ArithmeticError("Lambert failed to find root, probably too short time")
     # assert abs(F(z)) < 1e-5
 
     # f and g_dot are unitless, g is not, having units of [TU]

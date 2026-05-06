@@ -96,7 +96,7 @@ then dv and stats for different types of intercept (flyby, rdvz, jupiter_flyby, 
 
 Units: time in days, speeds in km/s, distances in AU (not applicable to internal values)
 '''
-col_names = ["detection_r", "periapsis", "magitude_generation_method",
+col_names = ["detection_r", "periapsis", "magnitude_generation_method", 'time_until_periapsis',
              "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
              "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
              "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
@@ -117,7 +117,8 @@ def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     '''
     # initial data
     detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
-    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magitude_generation_method": gen_type,
+    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
+           'time_until_periapsis':(ISO.t_p - detect_t)/DAY,
              "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, }
     
     # check detection distance/time
@@ -203,8 +204,6 @@ def _fix_data():
     data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # ==== change here ====
-
-    # data["icpt_t_arrival"] = data["icpt_t_arrival"]/DAY
     # data["icpt_t_launch"] = data["icpt_t_launch"]/DAY
     # data["rdvz_t_launch"] = data["rdvz_t_launch"]/DAY
     # data["rdvz_t_arrival"] = data["rdvz_t_arrival"]/DAY
@@ -310,10 +309,10 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     
     
     t_detect = ISO.theta_to_time(-ISO.crosses_altitude(detect_r*AU)) # type:ignore
-    icpt_s = t_detect + row["icpt_t_launch"]
-    icpt_e = t_detect + row["icpt_t_arrival"]
-    rdvz_s = t_detect + row["rdvz_t_launch"]
-    rdvz_e = t_detect + row["rdvz_t_arrival"]
+    icpt_s = t_detect + row["icpt_t_launch"]*DAY
+    icpt_e = t_detect + row["icpt_t_arrival"]*DAY
+    rdvz_s = t_detect + row["rdvz_t_launch"]*DAY
+    rdvz_e = t_detect + row["rdvz_t_arrival"]*DAY
     max_t = max(rdvz_e, icpt_e)
 
     # get the intercept:
@@ -330,10 +329,10 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     plot_orbit(ax,Jupiter, max_t, label="Jupiter", color="orange")
 
     # printing:
-    print(f'intercept:\nlaunches: {row["icpt_t_launch"]/DAY:.2f} days after detection, arrives {row["icpt_t_arrival"]/DAY:.2f} days after detection at a distance of {row["icpt_r"]} AU')
+    print(f'intercept:\nlaunches: {row["icpt_t_launch"]:.2f} days after detection, arrives {row["icpt_t_arrival"]:.2f} days after detection at a distance of {row["icpt_r"]} AU')
     print(f"initial delta v cost is: {row["icpt_idv"]:.2f} km/s, and relative velocity at intercept is {row['icpt_rdv']} km/s\n")
 
-    print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]/DAY:.2f} days after detection, arrives {row["rdvz_t_arrival"]/DAY:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
+    print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]:.2f} days after detection, arrives {row["rdvz_t_arrival"]:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
     print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
 
 
@@ -341,14 +340,17 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
 
 if __name__ == "__main__":
 
-    df = get_data(1, "omuamua")
-    print(df)
-    input()
-    dv_histogram(False, df=df)
+    # _fix_data()
+    df = get_data(1,'atlas-borisov')
+    df = df[df['magnitude_generation_method'] == 'atlas-borisov']
+    df = df[pd.notna(df['time_until_periapsis'])]
+    df = df.sort_values("rdvz_total", ignore_index=True)
+    print(df[["rdvz_total", "periapsis", "rdvz_r", "detection_r", "icpt_idv", "icpt_rdv", "icpt_t_launch", "icpt_t_arrival","time_until_periapsis",'magnitude_generation_method']])
+    ax = get_solar_system_ax()
+    plot_from_row(ax,df.iloc[0])
+    plt.axis("scaled")
+    plt.legend()
     plt.show()
-    dv_histogram(True, df=df)
-    plt.show()
-
     # df_om = df[df['magitude_generation_method'] == 'omuamua']
     # df_bori = df[df['magitude_generation_method'] == 'atlas-borisov']
     # # probability_map(df_om, False)
@@ -367,7 +369,7 @@ if __name__ == "__main__":
         
         df = get_data(1,gen_type="omuamua")
         print("Current # of rows:")
-        print(len(df[df['magitude_generation_method'] == 'omuamua']))
+        print(len(df[df['magnitude_generation_method'] == 'omuamua']))
         print('---------\n')
 
 

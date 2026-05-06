@@ -3,15 +3,100 @@ Interface with the Synthetic-population-of-Interstellar-Objects
 package by Dusan Marceta.
 '''
 
+# import matplotlib as mpl
+# mpl.use('TkAgg')
+
 from lib.Synthetic_population_of_Interstellar_Objects.synthetic_population import synthetic_population
-from .orbit import Orbit
-from .utilities import SGP_SUN, AU, YEAR, root_finder_bisection
-from .examples import Earth
+from src2.orbit import Orbit, plot_orbit
+from src2.utilities import SGP_SUN, AU, YEAR, root_finder_bisection
+from src2.examples import Earth
 import numpy as np
 import math as m
 from tqdm import tqdm
+from mpl_toolkits.mplot3d import Axes3D  # noqa
+from src2.examples import Earth, Jupiter
+from src2.utilities import AU
 
 LSST_sensitivity_magnitude = 24.38
+
+import pickle
+from pathlib import Path
+
+import pickle
+import matplotlib.pyplot as plt
+
+def load_ISOs(filename: str, plot: bool = False, time: float = None):
+    """
+    Load ISOs from pickle file.
+    Optionally plot all orbits in one 3D figure.
+    """
+
+
+
+    with open(filename, "rb") as f:
+        ISOs = pickle.load(f)
+
+    print(f"Loaded {len(ISOs)} ISOs from {filename}")
+
+    if not plot:
+        return ISOs
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    # default time = detection time if not provided
+    for ob, d_time, H in tqdm(ISOs, desc="Plotting ISOs"):
+        t = d_time if time is None else time
+
+        try:
+            plot_orbit(ax, ob, ThreeDee=True, label=None)
+        except Exception:
+            continue
+
+    # context orbits
+    plot_orbit(ax, Earth, ThreeDee=True, label="Earth")
+    plot_orbit(ax, Jupiter, ThreeDee=True, label="Jupiter")
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+    plt.axis("equal")
+    plt.title("Synthetic ISO population")
+
+    plt.show()
+
+    return ISOs
+
+def generate_and_save_ISOs(
+    n: int,
+    rm: float = 10,
+    T: float = 0,
+    filename: str = "isos.pkl"
+):
+    """
+    Generate n detected ISOs and save them to a pickle file.
+    """
+
+    ISOs = []
+    attempts = 0
+
+    while len(ISOs) < n:
+        batch = get_ISO(T=T, rm=rm)
+        ISOs.extend(batch)
+        attempts += 1
+
+        print(f"Batch {attempts}: collected {len(ISOs)}/{n}")
+
+    ISOs = ISOs[:n]
+
+    path = Path(filename)
+    with open(path, "wb") as f:
+        pickle.dump(ISOs, f)
+
+    print(f"Saved {len(ISOs)} ISOs to {path.resolve()}")
+    return path
+
+
 
 
 def get_ISO(T:float=0, rm:float=10)->list[tuple[Orbit, float, float]]:
@@ -149,3 +234,5 @@ def detection_time(ob:Orbit, absolute_magnitude:float, sensitivity:float)->float
     return d_time
 
 
+# generate_and_save_ISOs(10000, filename="10000_ISOs")
+# load_ISOs(filename="10000_ISOs", plot=True)

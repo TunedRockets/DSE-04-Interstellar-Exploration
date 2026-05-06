@@ -637,9 +637,9 @@ def orbit_from_periapsis_point_and_point(
     r_p = np.linalg.norm(rp_loc)
     r_i = np.linalg.norm(int_loc)
 
-    # if np.dot(rp_loc,int_loc) > r_p**2:
-    #     #print("unreachable point")
-    #     return np.nan, np.nan
+    if np.dot(rp_loc,int_loc)/r_p > r_p:
+        #print("unreachable point")
+        return np.nan, np.nan
 
     if r_p == 0 or r_i == 0:
         #print("R_p is zero")
@@ -769,9 +769,9 @@ def dt_from_periapsis_point_and_point(
     r_p = np.linalg.norm(rp_loc)
     r_i = np.linalg.norm(int_loc)
 
-    # if np.dot(rp_loc,int_loc) > r_p**2:
-    #     #print("unreachable point")
-    #     return np.nan
+    if np.dot(rp_loc,int_loc)/r_p > r_p:
+        #print("unreachable point")
+        return np.nan
 
     if r_p == 0 or r_i == 0:
         #print("R_p is zero")

@@ -1,6 +1,7 @@
 '''
 Interface with the Synthetic-population-of-Interstellar-Objects
-package by Dusan Marceta.
+package by Dusan Marceta, and turn this into orbit objects and their detection times
+for further analysis, interface is the get_ISO function, rest is supporting function for that
 '''
 
 from lib.Synthetic_population_of_Interstellar_Objects.synthetic_population import synthetic_population
@@ -16,11 +17,24 @@ LSST_sensitivity_magnitude = 24.38
 
 
 def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,str]]:
-    '''Generates synthetic orbits of ISOs,
-    If T is 0 (default), a snapshot of the population is generated,
-    If T is a number (years), an expectation over that time
-    is generated.
-    rm is the sphere inside which the orbits generated'''
+    '''Use Marčeta's model for ISO generation to create a batch of synthetic ISOs. 
+
+    :param T: Time passed to the synthetic_population model. 
+    If 0, will return a snapshot at one point in time. for our analysis, keep as 0.\n defaults to 0
+    :type T: float, optional
+    :param rm: size in AU of the generating sphere in the synthetic_population model.
+    generated objects will necessarily have their periapsis inside the sphere.
+    for our analysis, keep as 10.\n defaults to 10
+    :type rm: float, optional
+    :param gen_type: what type of generation function is used for the absolute magnitude,
+    options are 'omuamua' or 'atlas-borisov', if omitted will randomize for each ISO.\n defaults to ''
+    :type gen_type: str, optional
+    :return: list of tuples containing the ISO orbit, time of detection (in same epoch as ISO orbit), and type of generation function
+    :rtype: list[tuple[Orbit, float,str]]
+    '''
+    
+
+   
 
     # CONSTANTS (sourced from example, case 1):
     rm = rm # radius of model sphere [AU]
@@ -50,8 +64,8 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
         ob.t_p = np.random.rand()*YEAR
         # figure out detection:
         try:
-            H,gen_type = generate_abs_magnitude(gen_type=gen_type)
-            d_time = detection_time(ob, H, LSST_sensitivity_magnitude)
+            H,gen_type = _generate_abs_magnitude(gen_type=gen_type)
+            d_time = _detection_time(ob, H, LSST_sensitivity_magnitude)
         except (ArithmeticError, ValueError):
             # wasn't detected. skip
             continue
@@ -63,9 +77,15 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
 
 
 generation_types = ['omuamua', 'atlas-borisov']
-def generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:
+def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:
     '''generate a absolute magnitude function for use in figuring out detection distance.
     takes in distance (in km) and returns absolute magnitude
+
+    :param gen_type:what type of generation function is used for the absolute magnitude,
+    options are 'omuamua' or 'atlas-borisov', if omitted will randomize for each ISO.\n defaults to ''
+    :type gen_type: str, optional
+    :return: Absolute magnitude function, takes in orbital height and returns absolute magnitude
+    :rtype: tuple[Callable[[float],float],str]
     '''
     # ref:
     # - 'Omuamua: ~22.4
@@ -84,7 +104,7 @@ def generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:
             H:Callable[[float],float] = lambda r: 12.5 # no brightening with distance? TODO fix!
     return H, gen_type
 
-def HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
+def _HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     '''return the apparent magnitude of an orbit as seen from earth given an
     absolute magnitude
 
@@ -122,10 +142,21 @@ def HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     V = absolute_magnitude + 5*m.log10(au_delta) + 5*m.log10(au_ob) - phase
     return V
 
-def detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensitivity:float)->float:
+def _detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensitivity:float)->float:
+    '''figure out time of detection for the given ISO orbit, an absolute magnitude function, and the sensitivity of the detecting telescope(s)
+
+    :param ob: Orbit of the ISO
+    :type ob: Orbit
+    :param absolute_magnitude: Absolute magnitude function
+    :type absolute_magnitude: Callable[[float],float]
+    :param sensitivity: sensitivity of the telescope(s)/survey
+    :type sensitivity: float
+    :return: time of detection to an accuracy of 1 second
+    :rtype: float
+    '''
 
     # excess magnitude (negative means detected)
-    F = lambda t: HG_magnitude(ob,t,absolute_magnitude(ob.polar_equation(ob.time_to_theta(t)))) - sensitivity
+    F = lambda t: _HG_magnitude(ob,t,absolute_magnitude(ob.polar_equation(ob.time_to_theta(t)))) - sensitivity
 
     enter_system = ob.crosses_altitude(5*AU)
     if enter_system is None: raise ArithmeticError("does not enter inner system")

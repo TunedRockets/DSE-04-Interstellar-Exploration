@@ -29,8 +29,8 @@ MU_EARTH = 398600.0  # km^3/s^2
 
 @pytest.fixture
 def circular_orbits():
-    r1 = 12000.0
-    r2 = 7000.0
+    r1 = 7000.0
+    r2 = 12000.0
 
     ob1 = orbit_from_keplerian(r1, 0, 0, 0, 0, 0, MU_EARTH)
     ob2 = orbit_from_keplerian(r2, 0, 0, 0, 0, np.pi/2, MU_EARTH)

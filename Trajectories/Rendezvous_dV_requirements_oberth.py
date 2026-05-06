@@ -7,18 +7,21 @@ from src2.orbit import Orbit, oberth_effect_optimzer, plot_orbit, orbit_from_lam
 from src2.get_ISO import get_ISO
 from src2.examples import Earth, Jupiter
 from src2.utilities import AU, YEAR, SGP_SUN
-import matplotlib.pyplot as plt
-import numpy as np
-import math as m
-from tqdm import tqdm
-from pathlib import Path
-import random
+
 import matplotlib as mpl
 
 PLOT= False
 
 if PLOT:
     mpl.use('TkAgg')
+
+import matplotlib.pyplot as plt
+import numpy as np
+import math as m
+from tqdm import tqdm
+from pathlib import Path
+import random
+
 
 rdvz = False
 
@@ -27,6 +30,7 @@ rdvz = False
 def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
     '''Adds to the dv histogram for the different weights'''
     np.seterr(all="ignore")
+    # np.seterr(all="raise")
     if lon_per is None:
         lon_per_str=""
     else:
@@ -79,7 +83,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
                 optimize_rendezvous=(weights["w_relv"] > 0),
                 period=or_period,
                 detect_time=detect_time,
-                periods=4,
+                periods=3
                 # tp_window_width=10*YEAR/365
             )
 
@@ -98,7 +102,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             # # ===============================
             cos_dtheta = np.clip(np.dot(v0_hat, v_req_hat), -1, 1)
             delta = m.acos(cos_dtheta)
-            if weights[1]>0:
+            if weights['w_relv']>0:
                 insert_dv+=rdvz_dv
             #
             # # ===============================
@@ -162,7 +166,8 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
                 origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
                 origin_rot.link_time_and_theta(theta_ap, t_ap)
                 origin_rot.normalize()
-            except:
+            except Exception as e:
+                print("Orbit rebuilding failed: ", e)
                 continue
 
             # ==== plotting ====
@@ -188,7 +193,7 @@ def add_dv_hist(rm, weights, N, PLOT=False, lon_per=None)->None:
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             ax.set_zlabel("z")
-            plt.axis("scaled")
+            plt.axis("equal")
             textstr = (
                 f"ΔV inclination: {inc_dv:.2f} km/s\n"
                 f"ΔV insert: {insert_dv:.2f} km/s\n"
@@ -334,7 +339,7 @@ if __name__ == "__main__":
     for lon_per in lon_vals:
         aphelion = 1*5.4507 * AU # Jupiter aphelion
         solar_radius = 696_340
-        perihelion = 6*solar_radius
+        perihelion = 10*solar_radius
         semi_major_axis = (aphelion + perihelion) / 2
         eccentricity = (aphelion - perihelion) / (aphelion + perihelion)
         origin = orbit_from_ephemeris(

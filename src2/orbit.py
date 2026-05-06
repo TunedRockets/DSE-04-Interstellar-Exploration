@@ -637,9 +637,9 @@ def orbit_from_periapsis_point_and_point(
     r_p = np.linalg.norm(rp_loc)
     r_i = np.linalg.norm(int_loc)
 
-    if np.dot(rp_loc,int_loc) > r_p:
-        #print("unreachable point")
-        return np.nan, np.nan
+    # if np.dot(rp_loc,int_loc) > r_p**2:
+    #     #print("unreachable point")
+    #     return np.nan, np.nan
 
     if r_p == 0 or r_i == 0:
         #print("R_p is zero")
@@ -673,26 +673,27 @@ def orbit_from_periapsis_point_and_point(
     x, y = r_i_pqw[0], r_i_pqw[1]
 
     theta = np.arctan2(y, x)
-
+    if theta < 0:
+        theta += 2 * np.pi
     cos_theta = np.cos(theta)
 
-    # --- solve eccentricity safely ---
     denom = (r_i * cos_theta - r_p)
 
     if abs(denom) < 1e-8:
-        #print("small denom")
-        return np.nan, np.nan  # near-singular geometry
+        #print("Small denominator")
+        return np.nan
 
     e = (r_p - r_i) / denom
+
+    # FIX: handle negative eccentricity
+    if e < 0:
+        e = -e
+        theta += np.pi
+        theta = (theta + np.pi) % (2 * np.pi) - np.pi
 
     # --- sanity checks ---
     if not np.isfinite(e):
         #print("not finite eccentricity")
-        return np.nan, np.nan
-
-    # reject unphysical values
-    if e < 0:
-        #print("negative eccentricity")
         return np.nan, np.nan
 
     # --- parameter ---
@@ -768,9 +769,9 @@ def dt_from_periapsis_point_and_point(
     r_p = np.linalg.norm(rp_loc)
     r_i = np.linalg.norm(int_loc)
 
-    if np.dot(rp_loc,int_loc) > r_p:
-        #print("unreachable point")
-        return np.nan
+    # if np.dot(rp_loc,int_loc) > r_p**2:
+    #     #print("unreachable point")
+    #     return np.nan
 
     if r_p == 0 or r_i == 0:
         #print("R_p is zero")
@@ -804,27 +805,28 @@ def dt_from_periapsis_point_and_point(
     x, y = r_i_pqw[0], r_i_pqw[1]
 
     theta = np.arctan2(y, x)
-
+    if theta < 0:
+        theta += 2 * np.pi
     cos_theta = np.cos(theta)
 
-    # --- solve eccentricity safely ---
     denom = (r_i * cos_theta - r_p)
 
     if abs(denom) < 1e-8:
-        #print("small denom")
-        return np.nan  # near-singular geometry
+        return np.nan
 
     e = (r_p - r_i) / denom
+
+    # FIX: handle negative eccentricity
+    if e < 0:
+        e = -e
+        theta += np.pi
+        theta = (theta + np.pi) % (2 * np.pi) - np.pi
 
     # --- sanity checks ---
     if not np.isfinite(e):
         #print("not finite eccentricity")
         return np.nan
 
-    # reject unphysical values
-    if e < 0:
-        #print("negative eccentricity")
-        return np.nan
 
     # --- parameter ---
     p = r_p * (1 + e)
@@ -840,8 +842,10 @@ def dt_from_periapsis_point_and_point(
     try:
         dt = true_2_time(theta, e, h, sgp)
         if not np.isfinite(dt):
+            #print("not finite flight time")
             return np.nan
     except Exception:
+        #print("exception in flight time")
         return np.nan
 
     return dt
@@ -879,6 +883,7 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
     vals = np.array([f(t) for t in ts])
     #print(vals)
     valid = np.isfinite(vals)
+    #print(valid)
 
     if not np.any(valid):
         return np.nan, np.nan  # graceful failure
@@ -900,7 +905,7 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
             brackets.append((ts[i] - (ts[1]-ts[0]), ts[i] + (ts[1]-ts[0])))
 
     # --- solve root if possible ---
-    t_sol = None
+    t_sol = np.nan
 
     if brackets:
         best_root = None
@@ -908,6 +913,8 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
 
         for a, b in brackets:
             try:
+                #print("brackets: ", a , ",  ", b)
+                #print("values: ", f(a), ",  ", f(b))
                 root = root_finder_bisection(
                     f, a, b,
                     f_tolerance=1000,
@@ -915,13 +922,18 @@ def oberth_transfer_finder(rp, tp, destination, sgp, min_time, max_time):
                     max_iter=100
                 )
                 res = abs(f(root))
+                #print("root: ", root)
+                #print("residual: ", res)
                 if res < best_residual:
                     best_residual = res
                     best_root = root
             except Exception:
+                #print("No roots found")
                 continue
 
         t_sol = best_root
+        if t_sol is None or not np.isfinite(t_sol):
+            return np.nan, np.nan
 
     # # --- fallback: best approximate solution ---
     # if t_sol is None:
@@ -995,18 +1007,25 @@ def oberth_effect_optimzer(
                     min_time=min_time,
                     max_time=max_time
                 )
-                # velocity on transfer orbit at departure (Oberth burn point)
-                v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
-                dv_insertion = abs(v_transfer_dep - vp)
-                # velocity at intercept
-                intercept_time = departure_time + flight_time
-                _, v_target = target_object.time_to_rv(intercept_time)
-                v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
-                dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
-                if optimize_rendezvous:
-                    score = dv_rdv + dv_insertion
+                if flight_time is not None and np.isfinite(flight_time):
+                    #print("Found solution, flight_time: ", flight_time)
+                    # velocity on transfer orbit at departure (Oberth burn point)
+                    v_transfer_dep = np.linalg.norm(transfer_orbit.time_to_rv(departure_time)[1])
+                    dv_insertion = abs(v_transfer_dep - vp)
+                    # velocity at intercept
+                    intercept_time = departure_time + flight_time
+                    _, v_target = target_object.time_to_rv(intercept_time)
+                    v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+                    dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
+                    if optimize_rendezvous:
+                        score = dv_rdv + dv_insertion
+                        #print("Score: ", score)
+                    else:
+                        score = dv_insertion
+                        #print("Score: ", score)
                 else:
-                    score = dv_insertion
+                    #print("No solution found, skipping: ", flight_time)
+                    continue
             else:
                 def f(t_p):
                     transfer_orbit, flight_time = oberth_transfer_finder(
@@ -1091,6 +1110,7 @@ def oberth_effect_optimzer(
 
             if score < best_score:
                 best_score = score
+                #print("Best score: ", best_score)
                 best_result = (
                     dv_insertion,
                     dv_rdv,
@@ -1098,12 +1118,16 @@ def oberth_effect_optimzer(
                     departure_time,
                     intercept_time
                 )
-        except Exception:
+                #print("Best result:" , best_result)
+        except Exception as e:
+            #print("Error in optimizer run: ", e)
             continue
 
 
     if best_result is None:
         raise RuntimeError("No valid Oberth transfer found")
+
+    #print("Optimizer converged, best solution: ", best_result)
 
     return best_result
 

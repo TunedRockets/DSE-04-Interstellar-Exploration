@@ -913,6 +913,15 @@ def trajectory_optimizer(
     pois = pois[idx]
     best = pois[0:5] if len(pois) >= 5 else pois
 
+    # Prestudy best points TODO: make this only when points are close in value and far away in position:
+    bestopt = [simple_hill_descent_2d(F,x, dt/10) for x in best]
+    bof = []
+    for bo in bestopt:
+        bof.append(F(bo[0],bo[1]))
+    idx = np.argsort(bof)
+    bestopt = np.array(bestopt)[idx]
+
+
 
     # find starting point with sampling the range:
     # sample_range = np.linspace(start_time,end_time,20)
@@ -925,7 +934,7 @@ def trajectory_optimizer(
     # dt = sample_range[1]-sample_range[0]
 
     # try the five best:
-    for p in best:
+    for p in bestopt:
         try:
             s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
             break # found one

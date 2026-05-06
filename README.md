@@ -17,7 +17,7 @@ Perhaps change from Nelder-mead to iterated local search, see: [this KSP KOS cod
 TODO:
 - [x] read Dorsey to get a detection model
 - [x] incorporate this for FINAL iso generation and detection
-- [ ] fix trajectory optimization b/c it STILL misses values :(
+- [ ] fix trajectory optimization b/c it's slow from fix
 - [ ] figure out absolute magnitude curve for ATLAS/Borisov
 - [ ] doublecheck FINAL dv values for icpt & rdvz
 - [ ] incoporate Jupiter model

@@ -488,6 +488,8 @@ def true_2_mean(theta:float, e:float)->float:
 def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     '''time to true anomaly via the universal variable method'''
     
+    if t == 0: return 0 # by definition
+
     # time -> chi -> true
     rp = h*h/(sgp*(1+e))
     

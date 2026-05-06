@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import math as m
 from tqdm import tqdm
 import warnings
-
+from functools import cache
 
 
 # ===========================
@@ -315,6 +315,19 @@ class Orbit():
         theta = m.acos(N.dot(e)/(np.linalg.norm(N) * np.linalg.norm(e))) # anomaly of node vector (i.e. crossing)
         return theta
     
+    def distance_to(self,other:"Orbit", time:float)->np.ndarray:
+        '''return vector between two orbits at given time,
+        starting at self, and going to origin
+
+        :param other: orther orbit to compare distance to
+        :type other: Orbit
+        :param time: time at which to measure the range
+        :type time: float
+        :return: vector to the other orbit
+        :rtype: np.ndarray
+        '''
+        return self.time_to_rv(time)[0] - other.time_to_rv(time)[0]
+    
     # ================= getting vectors ====================
     @property
     def e_vec(self)->np.ndarray:
@@ -332,26 +345,29 @@ class Orbit():
         also works as a transformation matrix from pqw to ijk (global),
         I.e. x_glob = Q*x_peri'''
 
+        return self._get_pqw(self.RAAN,self.i,self.arg_p)
+    
+    @staticmethod
+    @cache
+    def _get_pqw(RAAN, i, arg_p)->np.ndarray:
+        '''small helper to allow caching of the pqw array'''
         # in effect the combined rotation matrix of 
         # rot3(-RAAN)rot1(-i)rot3(-arg_p)
         # from Vallado
         
         # normalize angles:
-        i = self.i
-        RAAN = self.RAAN
-        arg_p = self.arg_p
         if i < 0:
             i *= -1
             RAAN += m.pi
             arg_p += m.pi
 
         # for ease of writing:
-        co = m.cos(self.RAAN)
-        so = m.sin(self.RAAN)
-        ci = m.cos(self.i)
-        si = m.sin(self.i)
-        cp = m.cos(self.arg_p)
-        sp = m.sin(self.arg_p)
+        co = m.cos(RAAN)
+        so = m.sin(RAAN)
+        ci = m.cos(i)
+        si = m.sin(i)
+        cp = m.cos(arg_p)
+        sp = m.sin(arg_p)
 
         Q = np.array([
             [co*cp - so*sp*ci, -co*sp -so*cp*ci, so*si],
@@ -359,6 +375,7 @@ class Orbit():
             [sp*si, cp*si, ci]
         ])
         return Q
+
 
     def time_to_rv(self,time:float)->tuple[np.ndarray, np.ndarray]:
         '''

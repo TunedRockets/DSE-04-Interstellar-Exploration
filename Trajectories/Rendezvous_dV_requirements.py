@@ -24,15 +24,15 @@ PATH_TO_DATA = Path(__file__).parent.parent / "data"
 PICKLE_NAME = "dvreq.pic"
 icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
 rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-detection_ranges = np.array([2,3,5,8])
+# detection_ranges = np.array([2,3,5,8])
+MAX_MISSION_TIME = 20 # [years]
 
 # === probability functions =====
 
-def mission_success_probability(detection_distance:int, dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
+def mission_success_probability(dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
     '''
     Generates total mission probability for the given scenario.
-    :param detection_distance: distance (in AU) from the sun that ISOs are detected
-    :type: float
+
     :param dV_buget: total mission dV budget
     :type: int
     :param N: Number of ISOs during the mission
@@ -40,17 +40,15 @@ def mission_success_probability(detection_distance:int, dV_budget:int, N:int, rd
     :param weight: optimizer weight, i.e. an intercept or rendezvouz
     :type: dict
     '''
-    p_ISO = ISO_probability(detection_distance,dV_budget, rdvz, df)
+    p_ISO = ISO_probability(dV_budget, rdvz, df)
     p_least_one = 1-(1-p_ISO)**N
     return p_least_one
 
     
-def ISO_probability(detection_distance:int,dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
+def ISO_probability(dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
     '''calculate individual chance of success for given dv budget and detection distance,
     currently only works with integer dV budgets
 
-    :param detection_distance: distance (in AU) from the sun that ISOs are detected
-    :type: float
     :param dV_buget: total mission dV budget
     :type: int
     :param weight: optimizer weight, i.e. an intercept or rendezvouz
@@ -58,7 +56,7 @@ def ISO_probability(detection_distance:int,dV_budget:int, rdvz:bool, df:pd.DataF
     # hist = get_dv_hist(rm,weight)
     # return np.sum(hist[:m.floor(dV_budget)+1])
 
-    p = dv_below_budget(dV_budget,detection_distance,rdvz, df)
+    p = dv_below_budget(dV_budget,rdvz, df)
     return p
 
 
@@ -75,56 +73,51 @@ then dv and stats for different types of intercept (flyby, rdvz, jupiter_flyby, 
 
 Units: time in days, speeds in km/s, distances in AU (not applicable to internal values)
 '''
-col_names = ["generated_rm", "detection_r", "periapsis", 
+col_names = ["generated_rm", "detection_r", "absolute_magnitude", "periapsis", 
              "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
              "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
              "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
              ]
 
-def study_ISO(ISO:Orbit, detect_r:float)->dict:
+def study_ISO(ISO:Orbit, detect_t:float, abs_mag:float)->dict:
     '''study an ISO orbit and return data as a row to be added to a pandas table
 
     :param ISO: the generated ISO in question
     :type ISO: Orbit
-    :param rm: value of rm used in generation
-    :type rm: float
-    :param detect_r: radius of detection for the ISO in AU from the sun
-    :type detect_r: float
+    :param detect_t: time of detection
+    :type detect_t: float
     :return: dict corresponding to pandas row
     :rtype: dict
     '''
     # initial data
-    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU,
+    detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
+    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "absolute_magnitude": abs_mag,
              "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, }
     
     # check detection distance/time
-    detect_theta = ISO.crosses_altitude(detect_r*AU)
-    if detect_theta is None:
-        return out # no detection :(
-    detect_time = ISO.theta_to_time(-detect_theta)
     
     # intercept:
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+10*YEAR, **icpt_weights)
+        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_t,detect_t+MAX_MISSION_TIME*YEAR, **icpt_weights)
         out.update({
             "icpt_idv":insert_dv, 
             "icpt_rdv": rdvz_dv, 
             "icpt_r": er/AU, 
-            "icpt_t_launch":(st - detect_time), 
-            "icpt_t_arrival":(et - detect_time)
+            "icpt_t_launch":(st - detect_t), 
+            "icpt_t_arrival":(et - detect_t)
         })
     except (ArithmeticError,ValueError):
         pass # no intercept :(
     # rendezvous:
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+10*YEAR, **rdvz_weights)
+        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_t,detect_t+MAX_MISSION_TIME*YEAR, **rdvz_weights)
         out.update({
             "rdvz_idv":insert_dv, 
             "rdvz_rdv": rdvz_dv, 
             "rdvz_total": insert_dv + rdvz_dv,
             "rdvz_r": er/AU, 
-            "rdvz_t_launch":(st - detect_time), 
-            "rdvz_t_arrival":(et - detect_time)
+            "rdvz_t_launch":(st - detect_t), 
+            "rdvz_t_arrival":(et - detect_t)
         })
     except (ArithmeticError,ValueError):
         pass # no rendezvous :(
@@ -142,12 +135,9 @@ def study_batch()->pd.DataFrame:
     np.seterr(divide='ignore', invalid='ignore') # since we don't care about the errors
     ISOs = get_ISO()
     # shuffle timings so that does not influence study:
-    for ISO in ISOs:
-        ISO.t_p += YEAR*np.random.rand()
     res_list= []
-    for r in detection_ranges:
-        for ISO in tqdm(ISOs, desc=f"Studying ISOs with detection range {r}"):
-            res_list.append(study_ISO(ISO,r))
+    for (ISO, detect_t, H) in tqdm(ISOs, desc=f"Studying ISOs"):
+        res_list.append(study_ISO(ISO,detect_t,H))
     return pd.DataFrame(res_list)
 
 
@@ -170,7 +160,9 @@ def get_data(extra_batches:int=0)->pd.DataFrame:
     if extra_batches > 0:
         new = [data]
         for i in range(extra_batches):
+            print('============================================')
             print(f"Generating batch {i+1} of {extra_batches}:")
+            print('============================================')
             new.append(study_batch())
         data = pd.concat(new,ignore_index=True)
         # save result:
@@ -190,12 +182,11 @@ def _fix_data():
 
     data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
 
-def dv_histogram(detect_r:int, rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kwargs):
+def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kwargs):
     '''plot a histogram of the delta v requirenent for given detection range and if there's a rendezvous
     '''
     # get right cols
     if df is None: df = get_data()
-    df = df[df["detection_r"] == detect_r]
     if not rdvz:
         dv = df['icpt_idv']
     else:
@@ -203,9 +194,9 @@ def dv_histogram(detect_r:int, rdvz:bool,printing:bool = False,df:pd.DataFrame|N
     plt.hist(dv,bins=100, range=(0,100), density=True, **kwargs)
     plt.xlabel("dV requirement")
     plt.ylabel("probability density")
-    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if rdvz else "intercept"}\nwith detection range {detect_r} AU. (Normalization includes unreachable ISOs)")
+    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if rdvz else "intercept"}\n(Normalization includes unreachable ISOs)")
     if printing:
-        func = lambda x: (dv_below_budget(x,detect_r,rdvz,df))*100
+        func = lambda x: (dv_below_budget(x,rdvz,df))*100
         print("Portion below:")
         print(f"5 km/s: {func(5):.2f}%")
         print(f"10 km/s: {func(10):.2f}%")
@@ -249,11 +240,10 @@ def probability_map(detect_r:int, rdvz:bool, guesses:bool = True, show:bool=True
         plt.show()
 
 
-def dv_below_budget(dv_budget:float, detect_r:int, rdvz:bool,df:pd.DataFrame|None=None)->float:
+def dv_below_budget(dv_budget:float, rdvz:bool,df:pd.DataFrame|None=None)->float:
     '''get fraction of orbits that are at or below a dv_budget
     '''
     if df is None: df = get_data()
-    df = df[df["detection_r"] == detect_r]
     if not rdvz:
         dv = df['icpt_idv']
     else:
@@ -311,31 +301,18 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
 
 if __name__ == "__main__":
 
-    # compare different generation with same detection:
-    # generate:
-    # for r in detection_ranges:
-    #     get_data(10,r)
-    dv_histogram(2,False,True)
-    plt.show()
-    dv_histogram(3,False,True)
-    plt.show()
-    dv_histogram(5,False,True)
-    plt.show()
-    probability_map(2,False,True)
-    probability_map(3,False,True)
-    probability_map(5,False,True)
-    
+
+    df = get_data(1)
+    df = df[np.isfinite(df["absolute_magnitude"])]
+    print(df[["detection_r", "absolute_magnitude", "periapsis", 
+             "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival"]])
+    input()
     while True:
         
         df = get_data(1)
         print("Current # of rows:")
         print(len(df))
         print('---------\n')
-
-    # compare for detectr:
-    dv_histogram(3, False, True)
-    plt.legend()
-    plt.show()
 
 
 

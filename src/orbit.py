@@ -376,6 +376,20 @@ class Orbit():
         ])
         return Q
 
+    def hyperbolic_origin(self, destination:bool=False)->np.ndarray:
+        '''get a unit vector in the direction of the origin of a hyperbolic orbit
+
+        :param destination: if true, returns the direction to the destination instead of the origin, defaults to False
+        :return: unit vector pointing to the origin
+        :rtype: np.ndarray
+        '''
+        e = self.e_vec
+        h = self.h_vec
+
+        theta = self.asymptote_angle()
+        if destination: theta *= -1
+        origin = rodrigues_rot(e,h,theta)
+        return unit(origin)
 
     def time_to_rv(self,time:float)->tuple[np.ndarray, np.ndarray]:
         '''

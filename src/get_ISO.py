@@ -60,8 +60,11 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
         ob.t_p = np.random.rand()*YEAR
         # figure out detection:
         try:
-            H,gen_type = _generate_abs_magnitude(gen_type=gen_type)
-            d_time = _detection_time(ob, H, LSST_sensitivity_magnitude)
+            if gen_type == 'sun': # debug, always let through
+                d_time = -m.inf
+            else:
+                H,gen_type = _generate_abs_magnitude(gen_type=gen_type)
+                d_time = _detection_time(ob, H, LSST_sensitivity_magnitude)
         except (ArithmeticError, ValueError):
             # wasn't detected. skip
             continue
@@ -70,7 +73,7 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
     print(f"\t{len(oobb)}/{len(p)} orbits were detected and passed on to analysis")
     return oobb
 
-generation_types = ['omuamua', 'atlas-borisov']
+generation_types = ['omuamua', 'atlas-borisov', 'sun']
 def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:
     '''generate a absolute magnitude function for use in figuring out detection distance.
     takes in distance (in km) and returns absolute magnitude
@@ -87,7 +90,7 @@ def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]
     # - ATLAS ~12.5  (including coma)
     gen_type = gen_type.lower()
     if not gen_type in generation_types:
-        gen_type = generation_types[np.random.randint(len(generation_types))]
+        gen_type = generation_types[np.random.randint(len(generation_types)-1)]
     
     match gen_type:
 
@@ -97,6 +100,8 @@ def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]
             H:Callable[[float],float] = lambda r: 12.5 # no brightening with distance
             # technically it should brighten by 1-2 magnitudes as it moves into the system, but this doesn't impact
             # the detection times that much so is ignored
+        case 'sun':
+            H:Callable[[float],float] = lambda r: -2 # very bright
     return H, gen_type
 
 def _HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:

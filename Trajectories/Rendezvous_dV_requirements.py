@@ -241,7 +241,7 @@ def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kw
         print(f"20 km/s: {func(20):.2f}%")
         print(f"40 km/s: {func(40):.2f}%")
 
-def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, show:bool=True):
+def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True):
     '''Generate a probability make of dv_budget against number of detected ISOs
 
     :param df: dataframe with the ISO data to consider, defaults to None
@@ -347,7 +347,6 @@ def run_in_background():
 if __name__ == "__main__":
     
 
-    
 
 
     # example of using the functions:
@@ -357,20 +356,18 @@ if __name__ == "__main__":
 
     print(f'fraction omuamua: {len(dfo)/len(df):.2f}, number omuamua: {len(dfo)}')
     print(f'fraction borisov: {len(dfb)/len(df):.2f}, number borisov: {len(dfb)}')
-    dv_histogram(False,True,df=dfo)
-    plt.title("Omuamua-like dv distribution")
+    plt.hist(dfb[dfb['rdvz_total'] <= 20]['rdvz_r'],density=True, bins=20)
+    print(f"{len(dfb[dfb['rdvz_total'] <= 20])/len(dfb):.3f}")
     plt.show()
-    dv_histogram(False,True,df=dfb)
-    plt.title("borisov-like dv distribution")
+    dv_histogram(True,True,dfb)
+    plt.show()
+    probability_map(dfb,True)
     plt.show()
 
+    
+    dfb = dfb.sort_values('rdvz_total')
+    print(dfb[["rdvz_total", "detection_r","periapsis","time_until_periapsis","rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival"]])
 
-    df = df.sort_values('icpt_idv',ignore_index=True)
-    print(df)
-    ax = get_solar_system_ax()
-    plot_from_row(ax,df.iloc[0], 20)
-    plt.axis('equal')
-    plt.legend()
-    plt.show()
+
 
     run_in_background()

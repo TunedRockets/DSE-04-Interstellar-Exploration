@@ -15,7 +15,6 @@ from typing import Callable
 
 LSST_sensitivity_magnitude = 24.38
 
-
 def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,str]]:
     '''Use Marčeta's model for ISO generation to create a batch of synthetic ISOs. 
 
@@ -33,9 +32,6 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
     :rtype: list[tuple[Orbit, float,str]]
     '''
     
-
-   
-
     # CONSTANTS (sourced from example, case 1):
     rm = rm # radius of model sphere [AU]
     n0 = 0.1 # number density in interstellar space [AU^-1]
@@ -70,11 +66,9 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
             # wasn't detected. skip
             continue
 
-
         oobb.append((ob, d_time, gen_type))
     print(f"\t{len(oobb)}/{len(p)} orbits were detected and passed on to analysis")
     return oobb
-
 
 generation_types = ['omuamua', 'atlas-borisov']
 def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:
@@ -82,7 +76,7 @@ def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]
     takes in distance (in km) and returns absolute magnitude
 
     :param gen_type:what type of generation function is used for the absolute magnitude,
-    options are 'omuamua' or 'atlas-borisov', if omitted will randomize for each ISO.\n defaults to ''
+    options are 'omuamua' or 'atlas-borisov', if omitted will randomize for each ISO.\n
     :type gen_type: str, optional
     :return: Absolute magnitude function, takes in orbital height and returns absolute magnitude
     :rtype: tuple[Callable[[float],float],str]
@@ -95,13 +89,14 @@ def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]
     if not gen_type in generation_types:
         gen_type = generation_types[np.random.randint(len(generation_types))]
     
-
     match gen_type:
 
         case 'omuamua':
             H:Callable[[float],float] = lambda r: 22.4 # no brightening with distance 
         case 'atlas-borisov':
-            H:Callable[[float],float] = lambda r: 12.5 # no brightening with distance? TODO fix!
+            H:Callable[[float],float] = lambda r: 12.5 # no brightening with distance
+            # technically it should brighten by 1-2 magnitudes as it moves into the system, but this doesn't impact
+            # the detection times that much so is ignored
     return H, gen_type
 
 def _HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
@@ -118,7 +113,6 @@ def _HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     :rtype: float
     '''
 
-
     # HG constants:
     A1 = 3.332
     A2 = 1.862
@@ -133,10 +127,8 @@ def _HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     au_ob = np.linalg.norm(r_ob)/AU
 
     phi = m.acos(r_delta.dot(-r_e)/(np.linalg.norm(r_e)*np.linalg.norm(r_delta)))
-
     varphi1 = m.exp(-A1 * m.tan(phi/2)**B1)
     varphi2 = m.exp(-A2 * m.tan(phi/2)**B2)
-    
     phase = 2.5*m.log10((1-G)*varphi1 + G*varphi2)
 
     V = absolute_magnitude + 5*m.log10(au_delta) + 5*m.log10(au_ob) - phase
@@ -162,16 +154,26 @@ def _detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensit
     if enter_system is None: raise ArithmeticError("does not enter inner system")
     e_time = ob.theta_to_time(-enter_system)
     p_time = ob.time_to_theta(0)
-
+    
     # already detected?
     if F(e_time) < 0:
         e2_time = e_time - YEAR # look further back
         while F(e2_time) < 0: e2_time -= YEAR
         return root_finder_bisection(F,e2_time, e_time, tolerance=1) # look in outer system
     # else find detection time:
-
-    # assume if it's visible it's visible at periapsis
     F_low = F(p_time)
+    if not (cross_earth:=ob.crosses_altitude(AU)) is None: # check when it crosses earth
+        x1_time = ob.theta_to_time(-cross_earth)
+        x2_time = ob.time_to_theta(cross_earth)
+        x1F = F(x1_time)
+        x2F = F(x2_time)
+        if F_low > 0 and x1F < 0:
+            p_time = x1_time
+            F_low = x1F
+        elif F_low > 0 and x2F < 0:
+            p_time = x2_time
+            F_low = x2F
+            
     if F_low > 0: # same sign, bad
         raise ArithmeticError(f"min magnitude is {F_low}, which is still positive (should be negative), periapsis is: {ob.periapsis/AU} AU")
     d_time = root_finder_bisection(F,e_time,p_time,tolerance=1) # within 1 second

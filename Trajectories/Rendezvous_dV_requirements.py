@@ -21,10 +21,10 @@ import pandas as pd
 # SETTINGS:
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data" 
-PICKLE_NAME = "dvreq.pic"
+PICKLE_NAME = "ISOdata.pic"
 icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
 rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-MAX_MISSION_TIME = 20 # [years]
+MAX_MISSION_TIME = 10 # [years]
 
 # === probability functions =====
 
@@ -282,7 +282,6 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, show:bool=T
         plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
         plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
 
-
 def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
 
@@ -325,7 +324,7 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
 
     # plot earth, jupiter and iso:
     plot_orbit(ax,Earth, max_t, label="Earth", color="Blue")
-    plot_orbit(ax,ISO,max_t, max_alt=AU*max_r + 100, label="ISO")
+    plot_orbit(ax,ISO,(t_detect, max_t), max_alt=AU*max_r + 100, label="ISO")
     plot_orbit(ax,Jupiter, max_t, label="Jupiter", color="orange")
 
     # printing:
@@ -335,60 +334,43 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]:.2f} days after detection, arrives {row["rdvz_t_arrival"]:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
     print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
 
+def run_in_background():
+    '''run forever generating new datapoints'''
+    while True: 
+        df = get_data(1)
+        print("Current # of rows:")
+        print(len(df))
+        print('---------\n')
 
 # ======= plotting and analysis ========
 
 if __name__ == "__main__":
+    
 
-    # _fix_data()
-    df = get_data(1,'atlas-borisov')
-    df = df[df['magnitude_generation_method'] == 'atlas-borisov']
-    df = df[pd.notna(df['time_until_periapsis'])]
-    df = df.sort_values("rdvz_total", ignore_index=True)
-    print(df[["rdvz_total", "periapsis", "rdvz_r", "detection_r", "icpt_idv", "icpt_rdv", "icpt_t_launch", "icpt_t_arrival","time_until_periapsis",'magnitude_generation_method']])
+    
+
+
+    # example of using the functions:
+    df = get_data()
+    dfb = df[df['magnitude_generation_method']=='atlas-borisov']
+    dfo = df[df['magnitude_generation_method']=='omuamua']
+
+    print(f'fraction omuamua: {len(dfo)/len(df):.2f}, number omuamua: {len(dfo)}')
+    print(f'fraction borisov: {len(dfb)/len(df):.2f}, number borisov: {len(dfb)}')
+    dv_histogram(False,True,df=dfo)
+    plt.title("Omuamua-like dv distribution")
+    plt.show()
+    dv_histogram(False,True,df=dfb)
+    plt.title("borisov-like dv distribution")
+    plt.show()
+
+
+    df = df.sort_values('icpt_idv',ignore_index=True)
+    print(df)
     ax = get_solar_system_ax()
-    plot_from_row(ax,df.iloc[0])
-    plt.axis("scaled")
+    plot_from_row(ax,df.iloc[0], 20)
+    plt.axis('equal')
     plt.legend()
     plt.show()
-    # df_om = df[df['magitude_generation_method'] == 'omuamua']
-    # df_bori = df[df['magitude_generation_method'] == 'atlas-borisov']
-    # # probability_map(df_om, False)
-    # probability_map(df_bori, False)
-    
-    # print(len(df_om))
-    # print(len(df_bori))
-    # plt.hist(df[df['magitude_generation_method'] == 'omuamua']['detection_r'],density=True, label="omuamua-like",fill=False, edgecolor="blue")
-    # plt.hist(df[df['magitude_generation_method'] == 'atlas-borisov']['detection_r'],density=True, label="atlas-borisov-like",fill=False, edgecolor="red")
-    # plt.title("detection range probability distribution(AU)")
-    # plt.legend()
-    # plt.show()
 
-
-    while True:
-        
-        df = get_data(1,gen_type="omuamua")
-        print("Current # of rows:")
-        print(len(df[df['magnitude_generation_method'] == 'omuamua']))
-        print('---------\n')
-
-
-
-
-
-
-    # detect_r = 5
-    # dv_histogram(detect_r,False)
-    # print(f"fraction below 5 km/s: {dv_below_budget(5,detect_r,False):.3f}\n10 km/s: {dv_below_budget(10,detect_r,False):.3f}\n20 km/s: {dv_below_budget(20,detect_r,False):.3f}\n40km/s: {dv_below_budget(40,detect_r,False):.3f}")
-    # plt.show()
-    
-    # data = get_data()
-    # data = data.sort_values("icpt_idv", ignore_index=True)
-    # # print(data[["rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival","generated_rm", "detection_r", "periapsis"]])
-
-    # row = data.iloc[0]
-    # # print(row)
-    # ax = get_solar_system_ax()
-    # plot_from_row(ax,row) # type:ignore
-    # plt.legend()
-    # plt.show()
+    run_in_background()

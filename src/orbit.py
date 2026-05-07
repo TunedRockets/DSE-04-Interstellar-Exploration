@@ -862,8 +862,6 @@ def trajectory_optimizer(
     :type: float:
     :param w_intercept_time: how much the time after start_time intercept occurs is weighted in the optimizer (per day)
     :type: float:
-
-    
     :returns insertion dV:
     :returns rendezvouz dV:
     :returns start time:
@@ -910,30 +908,21 @@ def trajectory_optimizer(
             dv = m.inf
         dv_pois.append(dv)
     idx = np.argsort(dv_pois)
+    dv_pois = np.array(dv_pois)[idx]
     pois = pois[idx]
     best = pois[0:5] if len(pois) >= 5 else pois
+    dv_best = dv_pois[0:5] if len(dv_pois) >= 5 else dv_pois
 
-    # Prestudy best points TODO: make this only when points are close in value and far away in position:
-    bestopt = [simple_hill_descent_2d(F,x, dt/10) for x in best]
+    # prestudy those close to optimal:
+    best = best[dv_best < dv_best[0]*1.05]
+    bestopt = [simple_hill_descent_2d(F,x, dt/10, 5) for x in best]
     bof = []
     for bo in bestopt:
         bof.append(F(bo[0],bo[1]))
     idx = np.argsort(bof)
     bestopt = np.array(bestopt)[idx]
 
-
-
-    # find starting point with sampling the range:
-    # sample_range = np.linspace(start_time,end_time,20)
-    # ss,ee = np.meshgrid(sample_range,sample_range)
-    # tt = ee - ss
-    # FF = np.vectorize(F,otypes=[float])(ss,tt)
-    # idx = np.unravel_index(FF.argmin(), FF.shape)
-    # s = ss[idx]
-    # t = tt[idx]
-    # dt = sample_range[1]-sample_range[0]
-
-    # try the five best:
+    # try the best:
     for p in bestopt:
         try:
             s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore

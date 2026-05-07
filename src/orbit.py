@@ -851,8 +851,13 @@ def trajectory_optimizer(
         w_insertion:float = 1,
         w_relv:float = 0,
         w_travel_time:float = 0,
-        w_intercept_distance:float=0,
-        w_intercept_time:float=0,
+        w_intercept_distance:float = 0,
+        w_intercept_time:float = 0,
+        max_insertion:float = m.inf,
+        max_relv:float = m.inf,
+        max_travel_time:float = m.inf,
+        max_intercept_distance:float = m.inf,
+        max_intercept_time:float = m.inf,
 )->tuple[float,float,float,float,float]:
     '''
     Function to optimize the trajectory between two keplerian orbits.
@@ -876,6 +881,16 @@ def trajectory_optimizer(
     :type: float:
     :param w_intercept_time: how much the time after start_time intercept occurs is weighted in the optimizer (per day)
     :type: float:
+    :param max_insertion: the maximum value for insertion dV considered by the optimizer.
+    :type: float:
+    :param max_relv: the maximum value for relative velocity considered by the optimizer.
+    :type: float:
+    :param max_travel_time: the maximum value for travel time considered by the optimizer.
+    :type: float:
+    :param max_intercept_distance: the maximum value for intercept distance considered by the optimizer.
+    :type: float:
+    :param max_intercept_time: the maximum value for intercept time considered by the optimizer.
+    :type: float:
     :returns insertion dV:
     :returns rendezvouz dV:
     :returns start time:
@@ -892,6 +907,12 @@ def trajectory_optimizer(
         try:
             vl1,vl2 = lambert_vectors(r1,r2,t,origin.sgp)
         except (ArithmeticError, ValueError): return m.inf # doesn't work
+
+        # exclude maximums:
+        if np.linalg.norm(vl1-v1) > max_insertion: return m.inf
+        if np.linalg.norm(vl2-v2) > max_relv: return m.inf
+        if np.linalg.norm(r2)/AU > max_intercept_distance: return m.inf
+
         weight = float(
             np.linalg.norm(vl1-v1) * w_insertion +
             np.linalg.norm(vl2-v2) * w_relv + 
@@ -911,7 +932,15 @@ def trajectory_optimizer(
         [start_time,start_time + dt/2]
     ])
     pois = np.vstack((pois, extremes))
+
+    # exclude times based on max:
+    pois = pois[pois[:,1] < max_intercept_time]
+
     pois[:,1] -= pois[:,0] # make travel time
+
+    # exclude times based on max:
+    pois = pois[pois[:,1] < max_travel_time]
+
     
     # pick best of pois:
     dv_pois = []

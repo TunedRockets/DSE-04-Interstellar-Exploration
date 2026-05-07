@@ -293,21 +293,10 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     :type max_r: float, optional
     '''
 
-    # extract orbit:
-    ISO = Orbit(
-        row['parameter'],
-        row['e'],
-        row['i'],
-        row['RAAN'],
-        row['arg_p'],
-        row['t_p'],
-        SGP_SUN
-    )
-    detect_r = row['detection_r']
+
     max_r = min(max_r,max(row["icpt_r"], row["rdvz_r"]))
-    
-    
-    t_detect = ISO.theta_to_time(-ISO.crosses_altitude(detect_r*AU)) # type:ignore
+
+    ISO, t_detect, _ = recreate_ISO(row)
     icpt_s = t_detect + row["icpt_t_launch"]*DAY
     icpt_e = t_detect + row["icpt_t_arrival"]*DAY
     rdvz_s = t_detect + row["rdvz_t_launch"]*DAY
@@ -334,6 +323,31 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]:.2f} days after detection, arrives {row["rdvz_t_arrival"]:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
     print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
 
+def recreate_ISO(row:pd.Series)->tuple[Orbit,float,str]:
+    '''recreate the ISO orbit, detection time, and gen_type from row
+
+    :param row: _description_
+    :type row: pd.Series
+    :return: ISO orbit
+    :return: ISO detection time
+    :return: ISO generation method
+    :rtype: tuple[Orbit,float,str]
+    '''
+    # extract orbit:
+    ISO = Orbit(
+        row['parameter'],
+        row['e'],
+        row['i'],
+        row['RAAN'],
+        row['arg_p'],
+        row['t_p'],
+        SGP_SUN
+    )
+    detect_r = row['detection_r']
+    t_detect = ISO.theta_to_time(-ISO.crosses_altitude(detect_r*AU)) # type:ignore
+    return ISO, t_detect, row['magnitude_generation_method']
+
+
 def run_in_background():
     '''run forever generating new datapoints'''
     while True: 
@@ -345,8 +359,17 @@ def run_in_background():
 # ======= plotting and analysis ========
 
 if __name__ == "__main__":
-    
 
+
+    df = get_data()
+    df = df[df['rdvz_total'] < 20]
+    print(np.average(df['rdvz_r']))
+    print(np.std(df['rdvz_r']))
+    print(df)
+    input()
+
+
+    run_in_background()
 
 
     # example of using the functions:

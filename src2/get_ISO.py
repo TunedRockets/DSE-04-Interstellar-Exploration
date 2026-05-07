@@ -269,5 +269,7 @@ def _detection_time(ob: Orbit, absolute_magnitude: Callable[[float], float], sen
     d_time = root_finder_bisection(F, e_time, p_time, tolerance=1)  # within 1 second
     return d_time
 
-# generate_and_save_ISOs(10000, filename="10000_ISOs_new.pkl")
-# load_ISOs(filename="10000_ISOs_new.pkl", plot=True)
+
+if __name__ == '__main__':
+    generate_and_save_ISOs(10000, filename="10000_ISOs_new.pkl")
+    load_ISOs(filename="10000_ISOs_new.pkl", plot=True)

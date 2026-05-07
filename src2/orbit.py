@@ -1039,7 +1039,8 @@ def oberth_effect_optimzer(
                     # velocity at intercept
                     intercept_time = departure_time + flight_time
                     _, v_target = target_object.time_to_rv(intercept_time)
-                    v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+                    int_r, v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)
+                    er = np.linalg.norm(int_r)
                     dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
                     if optimize_rendezvous:
                         score = dv_rdv + dv_insertion
@@ -1067,7 +1068,8 @@ def oberth_effect_optimzer(
                         # velocity at intercept
                         intercept_time = t_p + flight_time
                         _, v_target = target_object.time_to_rv(intercept_time)
-                        v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)[1]
+                        int_r, v_transfer_arr = transfer_orbit.time_to_rv(intercept_time)
+                        er = np.linalg.norm(int_r)
                         dv_rdv = np.linalg.norm(v_transfer_arr - v_target)
                         if optimize_rendezvous:
                             score = dv_rdv + dv_insertion
@@ -1140,7 +1142,8 @@ def oberth_effect_optimzer(
                     dv_rdv,
                     transfer_orbit,
                     departure_time,
-                    intercept_time
+                    intercept_time,
+                    er
                 )
                 #print("Best result:" , best_result)
         except Exception as e:
@@ -1631,4 +1634,6 @@ def plot_orbit(ax,ob:Orbit,time:float=0,trail:float=2*m.pi, ThreeDee:bool=True,h
         if ThreeDee: ax.plot(locus[:,0],locus[:,1],locus[:,2], ls='--', **kwargs)
         else: ax.plot(locus[:,0],locus[:,1], **kwargs)
     return;
+
+
 

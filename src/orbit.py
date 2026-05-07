@@ -1205,7 +1205,7 @@ def lambert_vectors(r1_vec:np.ndarray, r2_vec:np.ndarray, time:float, sgp:float,
     
     try:
         z = root_finder_bisection(F,b,a)
-    except: raise ArithmeticError("Lambert failed to find root, probably too short time")
+    except ValueError: raise ArithmeticError("Lambert failed to find root, probably too short time")
     # assert abs(F(z)) < 1e-5
 
     # f and g_dot are unitless, g is not, having units of [TU]

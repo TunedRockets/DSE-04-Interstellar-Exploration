@@ -241,6 +241,17 @@ def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kw
         print(f"20 km/s: {func(20):.2f}%")
         print(f"40 km/s: {func(40):.2f}%")
 
+def distance_histogram(df:pd.DataFrame, **kwargs):
+    '''USE as reference for histograms
+
+    :param df: _description_
+    :type df: pd.DataFrame
+    '''
+    plt.hist(df['detection_r'], bins=20, density=True, **kwargs)
+    plt.title("Heliocentric altitude at time of detection probability distribution")
+    plt.xlabel("Heliocentric altitude (AU)")
+    plt.ylabel("probability density")
+
 def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True):
     '''Generate a probability make of dv_budget against number of detected ISOs
 
@@ -360,25 +371,32 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-
     df = get_data()
-    df = df[df['rdvz_total'] < 20]
-    print(np.average(df['rdvz_r']))
-    print(np.std(df['rdvz_r']))
-    print(df)
-    input()
+    dfb = df[df['magnitude_generation_method']=='atlas-borisov']
+    dfo = df[df['magnitude_generation_method']=='omuamua']
+    print(f'fraction omuamua: {len(dfo)/len(df):.2f}, number omuamua: {len(dfo)}')
+    print(f'fraction borisov: {len(dfb)/len(df):.2f}, number borisov: {len(dfb)}')
+
+
+
+    plt.hist(dfb['rdvz_t_launch'], bins=50, density=True)
+    plt.title("time to launch probability distribution (rendezvous)")
+    plt.xlabel("time to launch (Days)")
+    plt.ylabel("probability density")
+    plt.show()
+    plt.hist(dfb['icpt_t_launch'], bins=50, density=True)
+    plt.title("time to launch probability distribution (intercept)")
+    plt.xlabel("time to launch (Days)")
+    plt.ylabel("probability density")
+    plt.show()
 
 
     run_in_background()
 
 
     # example of using the functions:
-    df = get_data()
-    dfb = df[df['magnitude_generation_method']=='atlas-borisov']
-    dfo = df[df['magnitude_generation_method']=='omuamua']
+    
 
-    print(f'fraction omuamua: {len(dfo)/len(df):.2f}, number omuamua: {len(dfo)}')
-    print(f'fraction borisov: {len(dfb)/len(df):.2f}, number borisov: {len(dfb)}')
     plt.hist(dfb[dfb['rdvz_total'] <= 20]['rdvz_r'],density=True, bins=20)
     print(f"{len(dfb[dfb['rdvz_total'] <= 20])/len(dfb):.3f}")
     plt.show()

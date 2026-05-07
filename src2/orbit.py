@@ -1152,7 +1152,8 @@ def oberth_effect_optimzer(
 
 
     if best_result is None:
-        raise RuntimeError("No valid Oberth transfer found")
+        # raise RuntimeError("No valid Oberth transfer found")
+        return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
     #print("Optimizer converged, best solution: ", best_result)
 

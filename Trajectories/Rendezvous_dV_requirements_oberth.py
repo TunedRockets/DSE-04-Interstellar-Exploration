@@ -8,8 +8,13 @@ from src2.get_ISO import get_ISO, load_ISOs
 from src2.examples import Mercury, Venus, Mars, Earth, Jupiter, Saturn, Uranus, Neptune, Pluto, get_solar_system_ax
 from src2.utilities import AU, YEAR, SGP_SUN, DAY
 import pandas as pd
+import sys
+from pathlib import Path
 
-PLOT= False
+
+sys.path.append(str(Path(__file__).parent.parent.resolve()))
+
+PLOT= True
 
 if PLOT:
     import matplotlib as mpl
@@ -22,6 +27,7 @@ import math as m
 from tqdm import tqdm
 from pathlib import Path
 import random
+# plt.xkcd(scale=1, length=100, randomness=2)
 
 
 rdvz = True
@@ -551,7 +557,45 @@ def dv_histogram(rdvz: bool, printing: bool = False, df: pd.DataFrame | None = N
         print(f"40 km/s: {func(40):.2f}%")
 
 
-def probability_map(df: pd.DataFrame, rdvz: bool, guesses: bool = True, show: bool = True):
+def mission_success_probability_df(dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
+    '''Generates total mission probability for the given scenario.
+
+    :param dV_budget: Delta V budget of the mission
+    :type dV_budget: int
+    :param N: number of ISOs detected during the mission
+    :type N: int
+    :param rdvz: Whether to consider rendezvous or flyby
+    :type rdvz: bool
+    :param df: dataframe with the ISO data to consider, defaults to None
+    :type df: pd.DataFrame | None, optional
+    :return: success probability
+    :rtype: float
+    '''
+    p_ISO = ISO_probability_df(dV_budget, rdvz, df)
+    p_least_one = 1-(1-p_ISO)**N
+    return p_least_one
+
+def ISO_probability_df(dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
+    '''calculate individual chance of success for given dv budget and detection distance,
+    currently only works with integer dV budgets
+
+    :param dV_budget: Delta V budget of the mission
+    :type dV_budget: int
+    :param rdvz: Whether to consider rendezvous or flyby
+    :type rdvz: bool
+    :param df: dataframe with the ISO data to consider, defaults to None
+    :type df: pd.DataFrame | None, optional
+    :return: probability of intercepting/rendezvousing with one ISO
+    :rtype: float
+    '''
+    # hist = get_dv_hist(rm,weight)
+    # return np.sum(hist[:m.floor(dV_budget)+1])
+
+    p = dv_below_budget(dV_budget,rdvz, df)
+    return p
+
+
+def probability_map_df(df: pd.DataFrame, rdvz: bool, guesses: bool = True, show: bool = True):
     '''Generate a probability make of dv_budget against number of detected ISOs
 
     :param df: dataframe with the ISO data to consider, defaults to None
@@ -574,7 +618,7 @@ def probability_map(df: pd.DataFrame, rdvz: bool, guesses: bool = True, show: bo
     N_range = np.arange(10, MS_N + 30, 5)
     V_range = np.arange(4, 50)
     NN, VV = np.meshgrid(N_range, V_range)
-    F = lambda v, n: mission_success_probability(v, n, rdvz, df)
+    F = lambda v, n: mission_success_probability_df(v, n, rdvz, df)
     PP = np.vectorize(F)(VV, NN)
     plt.imshow(PP, origin="lower", aspect="auto", extent=(N_range[0], N_range[-1], V_range[0], V_range[-1]))
     plt.colorbar(location="right", label="Probability of mission success")
@@ -594,7 +638,7 @@ def probability_map(df: pd.DataFrame, rdvz: bool, guesses: bool = True, show: bo
         plt.text(MS_N - 1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
 
 
-def plot_from_row(ax, row: pd.Series, max_r: float = m.inf):
+def plot_from_row(ax, row: pd.Series, max_r: float = m.inf, origin=origin_124):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
 
     :param ax: matplotlib axes to plot in, needs to be 3d
@@ -625,19 +669,156 @@ def plot_from_row(ax, row: pd.Series, max_r: float = m.inf):
     rdvz_e = t_detect + row["rdvz_t_arrival"] * DAY
     max_t = max(rdvz_e, icpt_e)
 
-    # get the intercept:
-    ICPT = orbit_from_lambert_transfer(Earth, ISO, icpt_s, icpt_e)
-    plot_orbit(ax, ICPT, (icpt_s, icpt_e), max_alt=AU * max_r + 100,
-               label="Flyby trajectory")  # slight margin on max alt
+    # ===============================
+    # Oberth optimization at periapsis
+    # ===============================
+    theta_pe = 0
+    # tp = origin.theta_to_time(theta_pe)
+    or_period = origin.period
+    tp = random.uniform(0.5 * or_period, 1.5 * or_period)
 
-    # get the rendezvouz:
-    RDVZ = orbit_from_lambert_transfer(Earth, ISO, rdvz_s, rdvz_e)
-    plot_orbit(ax, RDVZ, (rdvz_s, rdvz_e), max_alt=AU * max_r + 100, label="Rendezvous trajectory")
+    rp_vec, vp_vec = origin.theta_to_rv(theta_pe)
+    vp_mag = np.linalg.norm(vp_vec)
 
-    # plot earth, jupiter and iso:
-    plot_orbit(ax, Earth, max_t, label="Earth", color="Blue")
-    plot_orbit(ax, ISO, (t_detect, max_t), max_alt=AU * max_r + 100, label="ISO")
-    plot_orbit(ax, Jupiter, max_t, label="Jupiter", color="orange")
+    min_time = 100
+
+    insert_dv, rdvz_dv, transfer_orbit, st, et, er = oberth_effect_optimzer(
+        ISO,
+        rp_vec,
+        vp_mag,
+        tp,
+        min_time,
+        max_t,
+        optimize_rendezvous=(True),
+        period=or_period,
+        detect_time=t_detect,
+        periods=None
+        # tp_window_width=10*YEAR/365
+    )
+
+    # ===============================
+    # Compute required periapsis direction
+    # ===============================
+    r_req, v_req = transfer_orbit.theta_to_rv(theta_pe)
+    v_req_hat = v_req / np.linalg.norm(v_req)
+
+    # current orbit periapsis direction
+    r0, v0 = origin.theta_to_rv(theta_pe)
+    v0_hat = v0 / np.linalg.norm(v0)
+    #
+    # # ===============================
+    # # Angle between directions
+    # # ===============================
+    cos_dtheta = np.clip(np.dot(v0_hat, v_req_hat), -1, 1)
+    delta = m.acos(cos_dtheta)
+    total_dv = insert_dv
+
+    total_dv += rdvz_dv
+    #
+    # # ===============================
+    # # Apoapsis velocity
+    # # ===============================
+    # r_a = origin.apoapsis
+    # a = origin.a
+    # mu = origin.sgp
+    #
+    # v_ap = m.sqrt(mu * (2 / r_a - 1 / a))
+    #
+    # # ===============================
+    # # Plane change Δv at apoapsis
+    # # ===============================
+    # dv_plane = 2 * v_ap * m.sin(delta / 2)
+    #
+    # # ===============================
+    # # Total insertion Δv
+    # # ===============================
+    # insert_dv += dv_plane
+    # ===============================
+    # Reconstruct rotated orbit (after apoapsis burn)
+    # ===============================
+
+    # rotation axis from current to required direction
+    axis = np.cross(v0_hat, v_req_hat)
+    norm = np.linalg.norm(axis)
+
+    if norm < 1e-10:
+        axis = np.array([0, 0, 1])  # fallback
+    else:
+        axis /= norm
+
+    def rotate(vec):
+        return (
+                vec * m.cos(delta) +
+                np.cross(axis, vec) * m.sin(delta) +
+                axis * np.dot(axis, vec) * (1 - m.cos(delta))
+        )
+
+    # get apoapsis state
+    theta_ap = m.pi
+    t_ap = origin.theta_to_time(theta_ap)
+    r_ap, v_ap_vec = origin.theta_to_rv(theta_ap)
+
+    # rotate state
+    r_rot = rotate(r_ap)
+    v_rot = rotate(v_ap_vec)
+    inc_dv = np.linalg.norm((v_rot - v_ap_vec))
+    total_dv += inc_dv
+
+    total_dv = round(total_dv)
+
+    print("Transfer a: ", transfer_orbit.a)
+    print("Transfer e: ", transfer_orbit.e)
+    print()
+
+    # ==== plotting ====
+    # fig = plt.figure()
+    ax = get_solar_system_ax()
+
+    # plot original orbit
+    plot_orbit(ax, origin, time=t_detect, ThreeDee=True, label="Original")
+    # rebuild orbit
+    try:
+        origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
+        # origin_rot.link_time_and_theta(theta_ap, t_ap)
+        # origin_rot.normalize()
+        # plot rotated orbit
+        plot_orbit(ax, origin_rot, time=t_detect, ThreeDee=True, label="Rotated")
+    except Exception as e:
+        print()
+        print("Rotated orbit rebuilding failed: ", e)
+        print("Delta V: ", total_dv)
+
+    try:
+        plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(100 * AU))
+    except:
+        pass  # lambert sometimes fails
+
+    # plot ISO, earth and jupiter orbit for context
+    plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(100 * AU))
+    plot_orbit(ax, Earth, time=t_detect, ThreeDee=True, label="Earth")
+    plot_orbit(ax, Jupiter, time=t_detect, ThreeDee=True, label="Jupiter")
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+    plt.axis("equal")
+    textstr = (
+        f"ΔV inclination: {inc_dv:.2f} km/s\n"
+        f"ΔV insert: {insert_dv:.2f} km/s\n"
+        f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
+        f"ΔV total: {total_dv:.2f} km/s\n"
+        f"Intercept distance: {np.linalg.norm(ISO.time_to_rv(et)[0]) / AU:.2f} AU\n"
+        f"Intercept time: {(et - t_detect) / YEAR:.2f} years\n"
+    )
+
+    ax.text2D(0.02, 0.98, textstr,
+              transform=ax.transAxes,
+              fontsize=10,
+              verticalalignment='top',
+              bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+
+    ax.legend()
+
 
     # printing:
     print(
@@ -802,3 +983,28 @@ def find_optimum_lon_per():
 
 if __name__ == "__main__":
     find_optimum_lon_per()
+    # example of using the functions:
+
+    # df = get_data(10)
+    # dfb = df[df['magnitude_generation_method'] == 'atlas-borisov']
+    # dfo = df[df['magnitude_generation_method'] == 'omuamua']
+    #
+    # print(f'fraction omuamua: {len(dfo) / len(df):.2f}, number omuamua: {len(dfo)}')
+    # print(f'fraction borisov: {len(dfb) / len(df):.2f}, number borisov: {len(dfb)}')
+    # dv_histogram(False, True, df=dfo)
+    # plt.title("Omuamua-like dv distribution")
+    # plt.show()
+    # dv_histogram(False, True, df=dfb)
+    # plt.title("borisov-like dv distribution")
+    # plt.show()
+    #
+    # df = df.sort_values('icpt_idv', ignore_index=True)
+    # print(df)
+    # if PLOT:
+    #     ax = get_solar_system_ax()
+    #     plot_from_row(ax, df.iloc[0], 20)
+    #     plt.axis('equal')
+    #     plt.legend()
+    #     plt.show()
+    #
+    # run_in_background()

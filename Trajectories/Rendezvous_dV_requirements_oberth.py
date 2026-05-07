@@ -408,25 +408,29 @@ def study_ISO(ISO: Orbit, detect_t: float, gen_type: str, origin: Orbit=origin_1
 
     # check detection distance/time
 
+    t_p = random.uniform(0.5 * origin.period, 1.5 * origin.period)
+
     # intercept:
     try:
         # insert_dv, rdvz_dv, st, et, er = trajectory_optimizer(Earth, ISO, detect_t, detect_t + MAX_MISSION_TIME * YEAR,
                                                               # **icpt_weights)
-        insert_dv, rdvz_dv, st, et, er = oberth_effect_optimzer(ISO, origin.theta_to_rv(0)[0], origin.theta_to_rv(0)[1], origin.theta_to_time(0), 0, 40*YEAR, period=origin.period, optimize_rendezvous=False, detect_time=detect_t)
+        insert_dv, rdvz_dv, transfer_o, st, et, er = oberth_effect_optimzer(ISO, origin.theta_to_rv(0)[0], np.linalg.norm(origin.theta_to_rv(0)[1]), t_p, 0, 40*YEAR, period=origin.period, optimize_rendezvous=False, detect_time=detect_t)
         out.update({
             "icpt_idv": insert_dv,
             "icpt_rdv": rdvz_dv,
             "icpt_r": er / AU,
-            "icpt_t_launch": (st - detect_t) / DAY,
+            "icpt_t_launch": t_p / DAY,
             "icpt_t_arrival": (et - detect_t) / DAY
         })
-    except (ArithmeticError, ValueError):
+    except (ArithmeticError, ValueError, RuntimeError) as e:
+        # print("No intercept lmao: ", e)
+        # raise e
         pass  # no intercept :(
     # rendezvous:
     try:
         # insert_dv, rdvz_dv, st, et, er = trajectory_optimizer(Earth, ISO, detect_t, detect_t + MAX_MISSION_TIME * YEAR,
         #                                                       **rdvz_weights)
-        insert_dv, rdvz_dv, transfer_o, st, et, er = oberth_effect_optimzer(ISO, origin.theta_to_rv(0)[0], origin.theta_to_rv(0)[1], origin.theta_to_time(0), 0, 40*YEAR, period=origin.period, optimize_rendezvous=True, detect_time=detect_t)
+        insert_dv, rdvz_dv, transfer_o, st, et, er = oberth_effect_optimzer(ISO, origin.theta_to_rv(0)[0], np.linalg.norm(origin.theta_to_rv(0)[1]), t_p, 0, 40*YEAR, period=origin.period, optimize_rendezvous=True, detect_time=detect_t)
 
         out.update({
             "rdvz_idv": insert_dv,
@@ -436,8 +440,10 @@ def study_ISO(ISO: Orbit, detect_t: float, gen_type: str, origin: Orbit=origin_1
             "rdvz_t_launch": (st - detect_t) / DAY,
             "rdvz_t_arrival": (et - detect_t) / DAY
         })
-    except (ArithmeticError, ValueError):
-        pass  # no rendezvous :(
+    except (ArithmeticError, ValueError, RuntimeError) as e:
+        # print("No intercept lmao: ", e)
+        # raise e
+        pass  # no intercept :(
 
     return out
 
@@ -673,28 +679,31 @@ def plot_from_row(ax, row: pd.Series, max_r: float = m.inf, origin=origin_124):
     # Oberth optimization at periapsis
     # ===============================
     theta_pe = 0
-    # tp = origin.theta_to_time(theta_pe)
+    tp = row['icpt_t_launch']*DAY
     or_period = origin.period
-    tp = random.uniform(0.5 * or_period, 1.5 * or_period)
+    # tp = random.uniform(0.5 * or_period, 1.5 * or_period)
 
     rp_vec, vp_vec = origin.theta_to_rv(theta_pe)
     vp_mag = np.linalg.norm(vp_vec)
 
     min_time = 100
-
-    insert_dv, rdvz_dv, transfer_orbit, st, et, er = oberth_effect_optimzer(
-        ISO,
-        rp_vec,
-        vp_mag,
-        tp,
-        min_time,
-        max_t,
-        optimize_rendezvous=(True),
-        period=or_period,
-        detect_time=t_detect,
-        periods=None
-        # tp_window_width=10*YEAR/365
-    )
+    try:
+        insert_dv, rdvz_dv, transfer_orbit, st, et, er = oberth_effect_optimzer(
+            ISO,
+            rp_vec,
+            vp_mag,
+            tp,
+            min_time,
+            max_t,
+            optimize_rendezvous=(True),
+            period=or_period,
+            detect_time=t_detect,
+            periods=None
+            # tp_window_width=10*YEAR/365
+        )
+    except:
+        print("No Oberth transfer found")
+        return
 
     # ===============================
     # Compute required periapsis direction
@@ -772,7 +781,6 @@ def plot_from_row(ax, row: pd.Series, max_r: float = m.inf, origin=origin_124):
 
     # ==== plotting ====
     # fig = plt.figure()
-    ax = get_solar_system_ax()
 
     # plot original orbit
     plot_orbit(ax, origin, time=t_detect, ThreeDee=True, label="Original")
@@ -798,26 +806,16 @@ def plot_from_row(ax, row: pd.Series, max_r: float = m.inf, origin=origin_124):
     plot_orbit(ax, Earth, time=t_detect, ThreeDee=True, label="Earth")
     plot_orbit(ax, Jupiter, time=t_detect, ThreeDee=True, label="Jupiter")
 
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_zlabel("z")
-    plt.axis("equal")
-    textstr = (
-        f"ΔV inclination: {inc_dv:.2f} km/s\n"
-        f"ΔV insert: {insert_dv:.2f} km/s\n"
-        f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
-        f"ΔV total: {total_dv:.2f} km/s\n"
-        f"Intercept distance: {np.linalg.norm(ISO.time_to_rv(et)[0]) / AU:.2f} AU\n"
-        f"Intercept time: {(et - t_detect) / YEAR:.2f} years\n"
-    )
 
-    ax.text2D(0.02, 0.98, textstr,
-              transform=ax.transAxes,
-              fontsize=10,
-              verticalalignment='top',
-              bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+    print(
+                f"ΔV inclination: {inc_dv:.2f} km/s\n"
+                f"ΔV insert: {insert_dv:.2f} km/s\n"
+                f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
+                f"ΔV total: {total_dv:.2f} km/s\n"
+                f"Intercept distance: {np.linalg.norm(ISO.time_to_rv(et)[0])/AU:.2f} AU\n"
+                f"Intercept time: {(et-t_detect)/YEAR:.2f} years\n"
+            )
 
-    ax.legend()
 
 
     # printing:
@@ -881,10 +879,10 @@ def find_optimum_lon_per():
 
         hist = get_dv_hist(weight, lon_per=np.radians(lon_per))
         # distribution_histogram(weight, True, lon_per=np.radians(lon_per))
-        plt.figure()
+        # plt.figure()
         all_hists.append(hist)
 
-        probability_map(weight, lon_per=np.radians(lon_per))
+        # probability_map(weight, lon_per=np.radians(lon_per))
 
     # Convert degrees radians for polar plot
     theta = np.radians(lon_vals)
@@ -981,30 +979,67 @@ def find_optimum_lon_per():
     print("Required ΔV budget: ",
           f"{dv_90_EL[best_idx_EL]:.2f} km/s")
 
+def what():
+    PLOT=True
+    rdvz=True
+    # ==== settings =====
+    icpt_weights = {"w_insertion": 1, "w_relv": 0, "w_travel_time": 0, "w_intercept_distance": 0, "w_intercept_time": 0}
+    rdvz_weights = {"w_insertion": 1, "w_relv": 1, "w_travel_time": 0, "w_intercept_distance": 0, "w_intercept_time": 0}
+    if rdvz:
+        weight = rdvz_weights
+    else:
+        weight = icpt_weights
+
+    max_time = 40 * YEAR
+    lon_per = 124.14 + 360
+    aphelion = 1 * 5.4507 * AU  # Jupiter aphelion
+    solar_radius = 696_340
+    perihelion = 10 * solar_radius
+    semi_major_axis = (aphelion + perihelion) / 2
+    eccentricity = (aphelion - perihelion) / (aphelion + perihelion)
+    # print("Semi major axis: {:.6f} AU".format(semi_major_axis/AU))
+    # print("Eccentricity: {:.6f}".format(eccentricity))
+    origin = orbit_from_ephemeris(
+        semi_major_axis,
+        eccentricity,
+        m.radians(1.303),
+        m.radians(100.46457166),
+        m.radians(lon_per),
+        m.radians(100.464),
+        SGP_SUN
+    )
+    # N=2000
+    # N=5000
+    N = 10000
+    add_dv_hist(origin, max_time, weight, N, PLOT=PLOT, lon_per=np.radians(lon_per))
+
+
 if __name__ == "__main__":
-    find_optimum_lon_per()
+    # what()
+
+    # find_optimum_lon_per()
     # example of using the functions:
 
-    # df = get_data(10)
-    # dfb = df[df['magnitude_generation_method'] == 'atlas-borisov']
-    # dfo = df[df['magnitude_generation_method'] == 'omuamua']
-    #
-    # print(f'fraction omuamua: {len(dfo) / len(df):.2f}, number omuamua: {len(dfo)}')
-    # print(f'fraction borisov: {len(dfb) / len(df):.2f}, number borisov: {len(dfb)}')
-    # dv_histogram(False, True, df=dfo)
-    # plt.title("Omuamua-like dv distribution")
-    # plt.show()
-    # dv_histogram(False, True, df=dfb)
-    # plt.title("borisov-like dv distribution")
-    # plt.show()
-    #
-    # df = df.sort_values('icpt_idv', ignore_index=True)
-    # print(df)
-    # if PLOT:
-    #     ax = get_solar_system_ax()
-    #     plot_from_row(ax, df.iloc[0], 20)
-    #     plt.axis('equal')
-    #     plt.legend()
-    #     plt.show()
-    #
-    # run_in_background()
+    df = get_data()
+    dfb = df[df['magnitude_generation_method'] == 'atlas-borisov']
+    dfo = df[df['magnitude_generation_method'] == 'omuamua']
+
+    print(f'fraction omuamua: {len(dfo) / len(df):.2f}, number omuamua: {len(dfo)}')
+    print(f'fraction borisov: {len(dfb) / len(df):.2f}, number borisov: {len(dfb)}')
+    dv_histogram(True, True, df=dfo)
+    plt.title("Omuamua-like dv distribution")
+    plt.show()
+    dv_histogram(True, True, df=dfb)
+    plt.title("borisov-like dv distribution")
+    plt.show()
+
+    df = df.sort_values('rdvz_idv', ignore_index=True)
+    print(df)
+    if PLOT:
+        ax = get_solar_system_ax()
+        plot_from_row(ax, df.iloc[0], 20)
+        plt.axis('equal')
+        plt.legend()
+        plt.show()
+
+    run_in_background()

@@ -7,6 +7,7 @@ from src2.orbit import Orbit, oberth_effect_optimzer, plot_orbit, orbit_from_lam
 from src2.get_ISO import get_ISO, load_ISOs
 from src2.examples import Earth, Jupiter
 from src2.utilities import AU, YEAR, SGP_SUN
+import pandas as pd
 
 
 
@@ -29,7 +30,7 @@ rdvz = True
 
 
 
-def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
+def add_dv_hist(origin, max_time, weights, N, PLOT=False, lon_per=None)->None:
     '''Adds to the dv histogram for the different weights'''
     np.seterr(all="ignore")
     # np.seterr(all="raise")
@@ -45,7 +46,8 @@ def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
             lines = file.readlines()
             count = int(lines[0])
             hist = [int(x) for x in lines[1:]]
-        
+            if count>=N:
+                return
 
     except:
         hist = [0 for _ in range(100)]
@@ -53,7 +55,7 @@ def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
 
 
     # ISOs = get_ISO() # sample of ISOs
-    ISOs = load_ISOs("10000_ISOs.pkl", plot=False)
+    ISOs = load_ISOs("10000_ISOs_new.pkl", plot=False)
 
     # --- trim if too many ---
     if len(ISOs) > N:
@@ -118,8 +120,9 @@ def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
             # # ===============================
             cos_dtheta = np.clip(np.dot(v0_hat, v_req_hat), -1, 1)
             delta = m.acos(cos_dtheta)
+            total_dv=insert_dv
             if weights['w_relv']>0:
-                insert_dv+=rdvz_dv
+                total_dv +=rdvz_dv
             #
             # # ===============================
             # # Apoapsis velocity
@@ -168,23 +171,16 @@ def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
             r_rot = rotate(r_ap)
             v_rot = rotate(v_ap_vec)
             inc_dv = np.linalg.norm((v_rot - v_ap_vec))
-            # insert_dv += inc_dv
+            total_dv += inc_dv
 
         except:
             continue
 
-        insert_dv = round(insert_dv)
-        if PLOT:
-
-
-            # rebuild orbit
-            try:
-                origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
-                origin_rot.link_time_and_theta(theta_ap, t_ap)
-                origin_rot.normalize()
-            except Exception as e:
-                print("Orbit rebuilding failed: ", e)
-                continue
+        total_dv = round(total_dv)
+        if PLOT and total_dv < 20:
+            print("Transfer a: ", transfer_orbit.a)
+            print("Transfer e: ", transfer_orbit.e)
+            print()
 
             # ==== plotting ====
             fig = plt.figure()
@@ -192,9 +188,18 @@ def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
 
             # plot original orbit
             plot_orbit(ax, origin, time=detect_time, ThreeDee=True, label="Original")
+            # rebuild orbit
+            try:
+                origin_rot = orbit_from_rv(r_rot, v_rot, origin.sgp, t_ap)
+                # origin_rot.link_time_and_theta(theta_ap, t_ap)
+                # origin_rot.normalize()
+                # plot rotated orbit
+                plot_orbit(ax, origin_rot, time=detect_time, ThreeDee=True, label="Rotated")
+            except Exception as e:
+                print()
+                print("Rotated orbit rebuilding failed: ", e)
+                print("Delta V: ", total_dv)
 
-            # plot rotated orbit
-            plot_orbit(ax, origin_rot, time=detect_time, ThreeDee=True, label="Rotated")
 
             try:
                 plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(50*AU))
@@ -214,6 +219,7 @@ def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
                 f"ΔV inclination: {inc_dv:.2f} km/s\n"
                 f"ΔV insert: {insert_dv:.2f} km/s\n"
                 f"ΔV rendezvous: {rdvz_dv:.2f} km/s\n"
+                f"ΔV total: {total_dv:.2f} km/s\n"
                 f"Intercept distance: {np.linalg.norm(ISO[0].time_to_rv(et)[0])/AU:.2f} AU\n"
                 f"Intercept time: {(et-detect_time)/YEAR:.2f} years\n"
             )
@@ -227,9 +233,9 @@ def add_dv_hist(weights, N, PLOT=False, lon_per=None)->None:
             ax.legend()
 
             plt.show()
-        if insert_dv > 99 or insert_dv < 0 or not np.isfinite(insert_dv): continue
+        if total_dv > 99 or total_dv < 0 or not np.isfinite(total_dv): continue
         else:
-            hist[round(insert_dv)] += 1
+            hist[round(total_dv)] += 1
     
     # Save
     path = Path(__file__).parent.parent / "data_oberth" / (f"dVhist-{weights["w_insertion"]},{weights["w_relv"]},"+lon_per_str)
@@ -341,7 +347,7 @@ def dv_for_confidence(weight, N, target_prob, lon_per=None, dv_max=100):
 
 
 
-if __name__ == "__main__":
+def find_optimum_lon_per():
 
     # ==== settings =====
     icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
@@ -353,7 +359,7 @@ if __name__ == "__main__":
 
     max_time = 40*YEAR
 
-    lon_vals = np.linspace(0, 360, 10)
+    lon_vals = np.linspace(0, 360, 30)
     # lon_vals = np.array(([30]))
     all_hists = []
 
@@ -375,31 +381,55 @@ if __name__ == "__main__":
         # N=2000
         # N=5000
         N=10000
-        add_dv_hist(weight, N, PLOT=PLOT, lon_per=np.radians(lon_per))
+        add_dv_hist(origin, max_time, weight, N, PLOT=PLOT, lon_per=np.radians(lon_per))
 
         hist = get_dv_hist(weight, lon_per=np.radians(lon_per))
         # distribution_histogram(weight, True, lon_per=np.radians(lon_per))
         plt.figure()
         all_hists.append(hist)
 
-        # probability_map(weight, lon_per=np.radians(lon_per))
+        probability_map(weight, lon_per=np.radians(lon_per))
 
     # Convert degrees radians for polar plot
     theta = np.radians(lon_vals)
 
-    # Compute all three thresholds
-    dv_90 = []
+    dv_90_MS = []
+    dv_90_HSP = []
+    dv_90_EL = []
 
-    MS_N = 35 * 10  # or reuse your variable
+    Ezell_Loeb_avg_per_annum = 5
+    Hoover_seligman_payne_per_annum = 14
+    Marceta_seligman_per_annum = 35
+    years = 10
+
+    EL_N = Ezell_Loeb_avg_per_annum * years
+    HSP_N = Hoover_seligman_payne_per_annum * years
+    MS_N = Marceta_seligman_per_annum * years
 
     for lon_per, hist in zip(lon_vals, all_hists):
-        dv_req = dv_for_confidence(
+        dv_req_MS = dv_for_confidence(
             weight,
             MS_N,
             0.9,
             lon_per=np.radians(lon_per)
         )
-        dv_90.append(dv_req)
+        dv_90_MS.append(dv_req_MS)
+
+        dv_req_EL = dv_for_confidence(
+            weight,
+            EL_N,
+            0.9,
+            lon_per=np.radians(lon_per)
+        )
+        dv_90_EL.append(dv_req_EL)
+
+        dv_req_HSP = dv_for_confidence(
+            weight,
+            HSP_N,
+            0.9,
+            lon_per=np.radians(lon_per)
+        )
+        dv_90_HSP.append(dv_req_HSP)
 
 
 
@@ -409,12 +439,14 @@ if __name__ == "__main__":
     plt.figure()
     ax = plt.subplot(111, projection='polar')
 
-    ax.plot(theta, dv_90, marker='o', label="ΔV for 90% success")
+    ax.plot(theta, dv_90_MS, marker='o', label="Marčeta–Seligman")
+    ax.plot(theta, dv_90_EL, marker='o', label="Ezell-Loeb")
+    ax.plot(theta, dv_90_HSP, marker='o', label="Hoover-Seligman")
 
     ax.set_theta_zero_location("E")
     ax.set_theta_direction(1)
 
-    ax.set_title("ΔV required for 90% mission success (Marčeta–Seligman rates)")
+    ax.set_title("ΔV required for 90% mission success")
     ax.set_rlabel_position(135)
     ax.set_ylabel("ΔV (km/s)")
     ax.grid(True)
@@ -422,3 +454,35 @@ if __name__ == "__main__":
 
     plt.show()
 
+    # ==== Results printout ====
+    best_idx_MS = np.nanargmin(dv_90_MS)
+    best_idx_EL = np.nanargmin(dv_90_EL)
+    best_idx_HSP = np.nanargmin(dv_90_HSP)
+
+    print()
+    print()
+    print("-------------- Marčeta–Seligman Assumption --------------")
+    print("Number of ISOs detected: ", MS_N)
+    print("Optimum longitude of perihelion: ",
+          f"{lon_vals[best_idx_MS]:.2f} deg")
+    print("Required ΔV budget: ",
+          f"{dv_90_MS[best_idx_MS]:.2f} km/s")
+    print()
+
+    print("-------------- Ezell–Loeb Assumption --------------")
+    print("Number of ISOs detected: ", EL_N)
+    print("Optimum longitude of perihelion: ",
+          f"{lon_vals[best_idx_EL]:.2f} deg")
+    print("Required ΔV budget: ",
+          f"{dv_90_EL[best_idx_EL]:.2f} km/s")
+    print()
+
+    print("-------------- Hoover–Seligman–Payne Assumption --------------")
+    print("Number of ISOs detected: ", HSP_N)
+    print("Optimum longitude of perihelion: ",
+          f"{lon_vals[best_idx_HSP]:.2f} deg")
+    print("Required ΔV budget: ",
+          f"{dv_90_HSP[best_idx_HSP]:.2f} km/s")
+
+if __name__ == "__main__":
+    find_optimum_lon_per()

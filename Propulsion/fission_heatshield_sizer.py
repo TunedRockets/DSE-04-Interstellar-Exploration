@@ -1,6 +1,9 @@
+import copy
+
 import numpy as np
 from scipy.optimize import minimize_scalar
 from src2.utilities import DAY, YEAR
+from src2.orbit import *
 
 
 # ------------------ Propulsion ------------------
@@ -97,17 +100,42 @@ def print_maneuver(name, delta_v, burn_time, start_mass, Isp, power):
 # ------------------ Mission Setup ------------------
 
 total_dv = 20_000  # m/s
-plane_change_delta_v = 1_000  # m/s
-Isp = 2000
+plane_change_delta_v = 3_000  # m/s
+Isp = 3000
 dry_mass = 3000  # kg
 
-oberth_dv = (total_dv - plane_change_delta_v) / 2
+oberth_dv = 3_000
 rdvz_dv = (total_dv - plane_change_delta_v - oberth_dv)
 
-plane_change_max_burn_time = 40 * DAY
-oberth_max_burn_time = 10 * DAY
-rdvz_max_burn_time = 60 * DAY
+lon_per = 40
 
+aphelion = 1*5.4507 * AU # Jupiter aphelion
+solar_radius = 696_340
+perihelion = 10*solar_radius
+semi_major_axis = (aphelion + perihelion) / 2
+eccentricity = (aphelion - perihelion) / (aphelion + perihelion)
+origin = orbit_from_ephemeris(
+    semi_major_axis,
+    eccentricity,
+    m.radians(1.303),
+    m.radians(100.46457166),
+    m.radians(lon_per),
+    m.radians(100.464),
+    SGP_SUN
+)
+
+# plane_change_max_burn_time = 40 * DAY
+# oberth_max_burn_time = 10 * DAY
+# rdvz_max_burn_time = 60 * DAY
+
+transfer_orbit = copy.deepcopy(origin)
+# transfer_orbit.a = -123686841.89123283
+transfer_orbit.e = 1.0562986320414216
+transfer_orbit.a = -123686841.89123283
+
+plane_change_max_burn_time = origin.max_impulsive_burn_time(np.pi,10)
+oberth_max_burn_time = (origin.max_impulsive_burn_time(0,20) + transfer_orbit.max_impulsive_burn_time(0,20))/2
+rdvz_max_burn_time = 2*YEAR
 
 # ------------------ Mass Budget ------------------
 
@@ -197,8 +225,6 @@ print("Solar flux at 10 solar radii:", solar_flux/1000, "kW/m^2")
 # Heatshield at 1400°C (assumed max working temp)
 T_hot = 1673  # K
 
-# If you're using a thermal engine, you do NOT use emissivity here.
-# Instead we assume absorbed thermal power ~ incident flux.
 
 absorptivity = 0.2  # Parker solar probe
 

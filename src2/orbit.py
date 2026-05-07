@@ -495,6 +495,30 @@ class Orbit():
         use lambert_orbit() to obtain the orbit itself (a combination of this and from_rv)'''
         return lambert_vectors(r1_vec, r2_vec, time, sgp, short_way)
 
+    def max_impulsive_burn_time(
+            self,
+            theta_center: float,
+            max_angle_deg: float = 10
+    ) -> float:
+        """
+        Computes max burn duration by integrating actual Keplerian motion.
+
+        Burn is assumed centered on theta_center and extends
+        equally before and after.
+
+        Returns total burn duration [s].
+        """
+
+        dtheta = np.radians(max_angle_deg) / 2
+
+        theta1 = theta_center - dtheta
+        theta2 = theta_center + dtheta
+
+        t1 = self.theta_to_time_after_periapsis(theta1)
+        t2 = self.theta_to_time_after_periapsis(theta2)
+
+        return abs(t2 - t1)
+
 
 # ==========================================================
 

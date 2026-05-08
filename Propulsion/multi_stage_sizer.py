@@ -95,7 +95,12 @@ class Stage():
         self.ref_LEO_velocity = ref_LEO_velocity
         self.ref_escape_velocity = ref_escape_velocity
         self.max_excess_dv = self.max_dv + self.ref_LEO_velocity - self.ref_escape_velocity
+        self.total_mass = max_prop_mass + dry_mass
     def get_remaining_dv(self, remaining_prop_mass, extra_mass):
+        remaining_dv = get_dv(remaining_prop_mass+extra_mass+self.dry_mass, extra_mass+self.dry_mass, self.Isp)
+        return remaining_dv
+    def get_total_dv(self, extra_mass):
+        remaining_prop_mass = self.max_prop_mass
         remaining_dv = get_dv(remaining_prop_mass+extra_mass+self.dry_mass, extra_mass+self.dry_mass, self.Isp)
         return remaining_dv
     def get_excess_dv(self, remaining_prop_mass, extra_mass):
@@ -570,13 +575,286 @@ def show_v_inf_with_helios():
 
 
 
-def size():
+def size_hypergolic(
+    bus_mass,
+    launchers,
+    kickstages,
+    total_dv,
+    rdvz_dv,
+    tolerance=0.001,
+    verbose=False
+):
     assumed_spacecraft_isp = 320  # s
-    total_dv = 19.3 * 1000 #
-    rdvz_dv = 4
+    needed_excess_dv = float(total_dv-rdvz_dv)
+    structural_fraction = 0.12
+
+    # ============================================================
+    # Spacecraft sizing (prop + tank iteration)
+    # ============================================================
+    required_prop = get_prop_mass_with_end_mass(
+        rdvz_dv, bus_mass, assumed_spacecraft_isp
+    )
+
+    tank_mass = structural_fraction * required_prop
+    previous_prop_mass = 0
+
+    while abs(required_prop - previous_prop_mass) / required_prop > tolerance:
+        previous_prop_mass = required_prop
+
+        required_prop = get_prop_mass_with_end_mass(
+            rdvz_dv,
+            bus_mass + tank_mass,
+            assumed_spacecraft_isp
+        )
+
+        tank_mass = structural_fraction * required_prop
+
+    Space_Craft = Stage(
+        assumed_spacecraft_isp,
+        required_prop,
+        tank_mass + bus_mass
+    )
+
+    wet_mass = Space_Craft.total_mass
+    dry_mass = bus_mass + tank_mass
+    prop_mass = required_prop
+    prop_mass_fraction = prop_mass / wet_mass
+
+    # ============================================================
+    # Launcher + kickstage feasibility sweep
+    # ============================================================
+    viable = []
+
+    for launcher, launcher_name in launchers:
+        for kick, kick_name in kickstages:
+
+
+            best_margin = -1e9
+
+            m=wet_mass
+            if kick is not None:
+                v_inf_launcher = launcher.get_vinf_performance(m+kick.total_mass)
+                kick_dv = kick.get_total_dv(
+                    m
+                )
+            else:
+                v_inf_launcher = launcher.get_vinf_performance(m)
+                kick_dv = 0
+
+
+
+
+            total_vinf = v_inf_launcher + kick_dv
+            margin = total_vinf - needed_excess_dv
+
+            if margin > best_margin:
+                best_margin = margin
+
+            if best_margin > 0:
+                viable.append({
+                    "launcher_name": launcher_name,
+                    "kick_name": kick_name,
+                    "launcher": launcher,
+                    "kickstage": kick,
+                    "margin_m_s": best_margin
+                })
+
+    viable.sort(key=lambda x: x["margin_m_s"], reverse=True)
+
+    # ============================================================
+    # Output
+    # ============================================================
+    if verbose:
+        print("\n========== SPACECRAFT SIZING ==========")
+        print(f"Bus mass:             {bus_mass:.1f} kg")
+        print(f"Tank mass:            {tank_mass:.1f} kg")
+        print(f"Prop mass:            {prop_mass:.1f} kg")
+        print(f"Wet mass:             {wet_mass:.1f} kg")
+        print(f"Prop fraction:        {prop_mass_fraction:.4f}")
+
+        print("\n========== VIABLE LAUNCH STACKS ==========")
+
+        if not viable:
+            print("No viable launcher–kickstage combinations found.")
+        else:
+            for v in viable:
+                print(
+                    f"{v['launcher_name']:25s} + "
+                    f"{v['kick_name']:15s} | "
+                    f"margin: {v['margin_m_s']:.1f} m/s"
+                )
+
+    return {
+        "wet_mass": wet_mass,
+        "dry_mass": dry_mass,
+        "prop_mass": prop_mass,
+        "prop_fraction": prop_mass_fraction,
+        "viable_combinations": viable,
+        "spacecraft": Space_Craft
+    }
+
+def plot_available_launchers_vs_bus_mass(
+    launchers,
+    kickstages,
+    total_dv,
+    rdvz_dv,
+    bus_mass_range=np.linspace(10, 1000, 80)
+):
+    counts = []
+
+    for bus_mass in bus_mass_range:
+
+        result = size_hypergolic(
+            bus_mass,
+            launchers,
+            kickstages,
+            total_dv,
+            rdvz_dv,
+            verbose=False
+        )
+
+        counts.append(len(result["viable_combinations"]))
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.plot(bus_mass_range, counts)
+
+    ax.set_xlabel("Bus Mass [kg]")
+    ax.set_ylabel("Number of Viable Launchers")
+    ax.set_title("Launcher Availability vs Spacecraft Bus Mass")
+    ax.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+def plot_launcher_busmass_feasibility(
+    bus_mass_range,
+    launchers,
+    kickstages,
+    total_dv,
+    rdvz_dv
+):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    launcher_names = [name for _, name in launchers]
+
+    # color grid:
+    # 0 = not viable (red)
+    # 1 = kickstage only (blue)
+    # 2 = direct viable (green)
+    colors = np.zeros((len(launchers), len(bus_mass_range)))
+
+    for j, bus_mass in enumerate(bus_mass_range):
+
+        # -----------------------------
+        # compute feasibility ONCE
+        # -----------------------------
+        result = size_hypergolic(
+            bus_mass,
+            launchers,
+            kickstages,
+            total_dv,
+            rdvz_dv,
+            verbose=False
+        )
+
+        viable = result["viable_combinations"]
+
+        viable_with_kick = set()
+        viable_without_kick = set()
+
+        for v in viable:
+            lname = v["launcher_name"]
+            if v["kickstage"] is None:
+                viable_without_kick.add(lname)
+            else:
+                viable_with_kick.add(lname)
+
+        # -----------------------------
+        # classify each launcher
+        # -----------------------------
+        for i, (_, lname) in enumerate(launchers):
+
+            if lname in viable_without_kick:
+                colors[i, j] = 2  # green (best case)
+
+            elif lname in viable_with_kick:
+                colors[i, j] = 1  # blue (needs kickstage)
+
+            else:
+                colors[i, j] = 0  # red
+
+    # -----------------------------
+    # PLOT
+    # -----------------------------
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    cmap = plt.cm.colors.ListedColormap(["black", "blue", "green"])
+
+    im = ax.imshow(
+        colors,
+        aspect="auto",
+        origin="lower",
+        extent=[
+            bus_mass_range[0],
+            bus_mass_range[-1],
+            -0.5,
+            len(launchers) - 0.5
+        ],
+        cmap=cmap,
+        interpolation="nearest"
+    )
+
+    ax.set_yticks(range(len(launchers)))
+    ax.set_yticklabels(launcher_names)
+
+    ax.set_xlabel("Bus Mass [kg]")
+    ax.set_title("Launcher Feasibility vs Bus Mass")
+
+    # legend
+    from matplotlib.patches import Patch
+    legend = [
+        Patch(color="black", label="Not viable"),
+        Patch(color="blue", label="Viable (kickstage required)"),
+        Patch(color="green", label="Viable (no kickstage)")
+    ]
+    ax.legend(handles=legend, loc="upper right")
+
+    plt.tight_layout()
+    plt.show()
+
 
 
 
 if __name__ == "__main__":
-    show_v_inf()
-    show_v_inf_with_helios()
+    # show_v_inf()
+    # show_v_inf_with_helios()
+
+    launchers = [
+        (Ariane64_Launcher, "Ariane 64"),
+        (Ariane62_Launcher, "Ariane 62"),
+        (FalconHeavy_Expendable, "Falcon Heavy (Expendable)"),
+        (FalconHeavy_Reusable, "Falcon Heavy (Reusable)"),
+        (SLS_Block1_ICPS, "SLS Block 1 (ICPS)"),
+        (Starship_SuperHeavy, "Starship + Super Heavy"),
+        (Vulcan, "Vulcan Centaur"),
+        (SLS_CentaurV, "SLS + Centaur V"),
+        (Falcon9, "Falcon 9"),
+    ]
+
+    kickstages = [(Helios, "Helios"), (None, (""))]
+
+    total_dv = float(19300)  # m/s
+    rdvz_dv = float(3000) # m/s
+
+    size_hypergolic(100, launchers, kickstages, total_dv, rdvz_dv,  verbose=True)
+    # plot_available_launchers_vs_bus_mass(launchers, kickstages, total_dv, rdvz_dv)
+    bus_mass_range = np.linspace(100, 1000, 100)
+
+    # plot_launcher_busmass_feasibility(
+    #     bus_mass_range,
+    #     launchers,
+    #     kickstages,
+    #     total_dv,
+    #     rdvz_dv
+    # )

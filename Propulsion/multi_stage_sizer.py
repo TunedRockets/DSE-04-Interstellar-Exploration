@@ -8,7 +8,7 @@ from src2.orbit import *
 import numpy as np
 from tqdm import tqdm
 import matplotlib as mpl
-mpl.use('TkAgg')
+# mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 
 # ============================================================
@@ -22,18 +22,60 @@ R_universal = 8.314462618
 F_1AU = 1361
 R_sun = 6.96e5
 
-LEO_velocity = 7790 # m/s
-escape_velocity = np.sqrt(2)*LEO_velocity
 # Earth constants
 mu_earth = 3.986004418e14   # m^3/s^2
 R_earth = 6371e3            # m
 
+LEO_altitude = 200_000
+r_LEO = R_earth + LEO_altitude
+
+LEO_velocity = np.sqrt(mu_earth / r_LEO)
+escape_velocity = np.sqrt(2 * mu_earth / r_LEO)
+
+# ============================================================
+#                    ORBITAL ENERGY UTILITIES
+# ============================================================
+
+def dv_to_vinf(dv, v_circ, v_esc):
+    """
+    Convert impulsive periapsis burn delta-v from circular orbit
+    into resulting hyperbolic excess velocity.
+    """
+
+    v_post = v_circ + dv
+
+    if v_post <= v_esc:
+        return 0.0
+
+    return np.sqrt(v_post**2 - v_esc**2)
 
 
+def vinf_to_required_dv(vinf, v_circ, v_esc):
+    """
+    Required impulsive periapsis delta-v to achieve target v∞.
+    """
+
+    return np.sqrt(vinf**2 + v_esc**2) - v_circ
 
 
+def combine_vinf_and_dv(vinf_initial, dv, v_esc):
+    """
+    Apply impulsive periapsis burn onto existing hyperbolic trajectory.
+    """
+
+    v_peri_initial = np.sqrt(vinf_initial**2 + v_esc**2)
+
+    v_peri_final = v_peri_initial + dv
+
+    return np.sqrt(v_peri_final**2 - v_esc**2)
+
+
+# ============================================================
+#                    PROPULSION UTILITIES
+# ============================================================
 
 def get_prop_mass_with_end_mass(delta_v, end_mass, Isp):
+
     return (
         np.exp(delta_v / (g0 * Isp))
         * end_mass
@@ -42,6 +84,7 @@ def get_prop_mass_with_end_mass(delta_v, end_mass, Isp):
 
 
 def get_prop_mass_with_start_mass(delta_v, start_mass, Isp):
+
     return (
         start_mass
         * (
@@ -83,56 +126,92 @@ def get_required_electric_power(
         / (2 * efficiency)
     )
 
+
 def get_dv(start_mass, end_mass, Isp):
-    return Isp*g0*np.log(start_mass/end_mass)
+
+    return Isp * g0 * np.log(start_mass / end_mass)
+
+
+# ============================================================
+#                         STAGE
+# ============================================================
 
 class Stage():
-    def __init__(self, Isp, max_prop_mass, dry_mass, ref_LEO_velocity=LEO_velocity, ref_escape_velocity=escape_velocity):
+
+    def __init__(
+        self,
+        Isp,
+        max_prop_mass,
+        dry_mass
+    ):
+
         self.Isp = Isp
         self.max_prop_mass = max_prop_mass
         self.dry_mass = dry_mass
-        self.max_dv = get_dv(max_prop_mass+dry_mass, dry_mass, Isp)
-        self.ref_LEO_velocity = ref_LEO_velocity
-        self.ref_escape_velocity = ref_escape_velocity
-        self.max_excess_dv = self.max_dv + self.ref_LEO_velocity - self.ref_escape_velocity
-        self.total_mass = max_prop_mass + dry_mass
-    def get_remaining_dv(self, remaining_prop_mass, extra_mass):
-        remaining_dv = get_dv(remaining_prop_mass+extra_mass+self.dry_mass, extra_mass+self.dry_mass, self.Isp)
-        return remaining_dv
-    def get_total_dv(self, extra_mass):
-        remaining_prop_mass = self.max_prop_mass
-        remaining_dv = get_dv(remaining_prop_mass+extra_mass+self.dry_mass, extra_mass+self.dry_mass, self.Isp)
-        return remaining_dv
-    def get_excess_dv(self, remaining_prop_mass, extra_mass):
-        remaining_dv = get_dv(remaining_prop_mass, extra_mass, self.Isp)
-        excess_dv = remaining_dv + self.ref_LEO_velocity - self.ref_escape_velocity
-        return excess_dv
+
+        self.total_mass = (
+            max_prop_mass + dry_mass
+        )
+
+    def get_total_dv(self, payload_mass):
+
+        start_mass = (
+            self.max_prop_mass
+            + self.dry_mass
+            + payload_mass
+        )
+
+        end_mass = (
+            self.dry_mass
+            + payload_mass
+        )
+
+        return get_dv(
+            start_mass,
+            end_mass,
+            self.Isp
+        )
+
+    def get_remaining_dv(
+        self,
+        remaining_prop_mass,
+        payload_mass
+    ):
+
+        start_mass = (
+            remaining_prop_mass
+            + self.dry_mass
+            + payload_mass
+        )
+
+        end_mass = (
+            self.dry_mass
+            + payload_mass
+        )
+
+        return get_dv(
+            start_mass,
+            end_mass,
+            self.Isp
+        )
+
+
+# ============================================================
+#                         VEHICLE
+# ============================================================
 
 class Vehicle():
+
     def __init__(self, StageList):
+
         self.StageList = StageList
 
     def get_total_dv(self, payload_mass=0):
-        """
-        Computes total stacked delta-v of the vehicle.
-
-        Parameters
-        ----------
-        payload_mass : float
-            Mass carried above the uppermost stage [kg]
-
-        Returns
-        -------
-        total_dv : float
-            Total ideal rocket delta-v [m/s]
-        """
 
         total_dv = 0
 
-        # Mass above current stage
         upper_mass = payload_mass
 
-        # Work from top stage downward
         for stage in reversed(self.StageList):
 
             start_mass = (
@@ -154,7 +233,6 @@ class Vehicle():
 
             total_dv += stage_dv
 
-            # Entire stage becomes payload for lower stages
             upper_mass += (
                 stage.dry_mass
                 + stage.max_prop_mass
@@ -162,61 +240,74 @@ class Vehicle():
 
         return total_dv
 
-    def get_total_excess_dv(self, payload_mass=0):
-        """
-        Computes total hyperbolic excess delta-v capability.
 
-        Uses:
-            excess_dv = total_dv + v_LEO - v_escape
-
-        Parameters
-        ----------
-        payload_mass : float
-            Payload mass above uppermost stage [kg]
-
-        Returns
-        -------
-        excess_dv : float
-            Hyperbolic excess delta-v [m/s]
-        """
-
-        total_dv = self.get_total_dv(payload_mass)
-
-        return (
-            total_dv
-            + LEO_velocity
-            - escape_velocity
-        )
-
-
+# ============================================================
+#                         LAUNCHER
+# ============================================================
 
 class Launcher():
-    def __init__(self, LEO_payload: float, UpperStage: Stage, LEO_payload_altitude=200_000):
+
+    def __init__(
+        self,
+        LEO_payload,
+        UpperStage,
+        LEO_payload_altitude=200_000
+    ):
+
         self.LEO_payload = LEO_payload
         self.UpperStage = UpperStage
         self.LEO_payload_altitude = LEO_payload_altitude
-        # Orbital radius
+
         r = R_earth + LEO_payload_altitude
 
-        # Circular orbital velocity
         self.ref_LEO_velocity = np.sqrt(mu_earth / r)
 
-        # Local escape velocity
-        self.ref_escape_velocity = np.sqrt(2 * mu_earth / r)
-        self.UpperStage.ref_LEO_velocity = self.ref_LEO_velocity
-        self.UpperStage.ref_escape_velocity = self.ref_escape_velocity
+        self.ref_escape_velocity = np.sqrt(
+            2 * mu_earth / r
+        )
+
     def get_vinf_performance(self, payload_mass):
-        remaining_prop_mass = self.LEO_payload - payload_mass
-        excess_dv = self.UpperStage.get_excess_dv(remaining_prop_mass, payload_mass)
-        return excess_dv
+
+        remaining_prop_mass = min(
+            self.LEO_payload - payload_mass,
+            self.UpperStage.max_prop_mass
+        )
+
+        if remaining_prop_mass <= 0:
+            return 0.0
+
+        dv = self.UpperStage.get_remaining_dv(
+            remaining_prop_mass,
+            payload_mass
+        )
+
+        return dv_to_vinf(
+            dv,
+            self.ref_LEO_velocity,
+            self.ref_escape_velocity
+        )
+
     def get_C3_performance(self, payload_mass):
-        excess_dv = self.get_vinf_performance(payload_mass)
-        return excess_dv**2
 
-    def plot_vinf(self, ax, n=2000, label=None, vinf_threshold=0, kickstage: Stage = None):
-        payloads = np.linspace(100, self.LEO_payload * 0.99, n)
+        vinf = self.get_vinf_performance(payload_mass)
 
-        # base payload mass (do NOT modify payloads in-place)
+        return vinf**2
+
+    def plot_vinf(
+        self,
+        ax,
+        n=2000,
+        label=None,
+        vinf_threshold=0,
+        kickstage=None
+    ):
+
+        payloads = np.linspace(
+            100,
+            self.LEO_payload * 0.99,
+            n
+        )
+
         base_payloads = payloads.copy()
 
         vinf_vals = np.array([
@@ -225,27 +316,51 @@ class Launcher():
         ])
 
         if kickstage is not None:
-            # treat kickstage as additional delta-v capability
-            kick_dv = np.array([
-                kickstage.get_excess_dv(kickstage.max_prop_mass, m)
+            vinf_vals = np.array([
+                self.get_vinf_performance(m+kickstage.total_mass)
                 for m in base_payloads
             ])
-            vinf_vals = vinf_vals + kick_dv
+
+            kick_dv = np.array([
+                kickstage.get_total_dv(m)
+                for m in base_payloads
+            ])
+
+            vinf_vals = np.array([
+                combine_vinf_and_dv(
+                    vinf,
+                    dv,
+                    self.ref_escape_velocity
+                )
+                for vinf, dv in zip(vinf_vals, kick_dv)
+            ])
 
         mask = vinf_vals > vinf_threshold
 
         ax.plot(
             vinf_vals[mask],
             base_payloads[mask],
-            label=label if label else f"{self.UpperStage.__class__.__name__}"
+            label=label if label else "Launcher"
         )
 
         ax.set_ylabel("Payload Mass [kg]")
-        ax.set_xlabel("V∞ (Excess Velocity) [m/s]")
+        ax.set_xlabel("V∞ [m/s]")
         ax.grid(True)
 
-    def plot_C3(self, ax, n=2000, label=None, vinf_threshold=0, kickstage: Stage = None):
-        payloads = np.linspace(100, self.LEO_payload * 0.99, n)
+    def plot_C3(
+        self,
+        ax,
+        n=2000,
+        label=None,
+        vinf_threshold=0,
+        kickstage=None
+    ):
+
+        payloads = np.linspace(
+            100,
+            self.LEO_payload * 0.99,
+            n
+        )
 
         base_payloads = payloads.copy()
 
@@ -255,19 +370,33 @@ class Launcher():
         ])
 
         if kickstage is not None:
-            kick_dv = np.array([
-                kickstage.get_excess_dv(kickstage.max_prop_mass, m)
+            vinf_vals = np.array([
+                self.get_vinf_performance(m+kickstage.total_mass)
                 for m in base_payloads
             ])
-            vinf_vals = vinf_vals + kick_dv
 
-        c3_vals = vinf_vals ** 2
+            kick_dv = np.array([
+                kickstage.get_total_dv(m)
+                for m in base_payloads
+            ])
+
+            vinf_vals = np.array([
+                combine_vinf_and_dv(
+                    vinf,
+                    dv,
+                    self.ref_escape_velocity
+                )
+                for vinf, dv in zip(vinf_vals, kick_dv)
+            ])
+
+        c3_vals = vinf_vals**2
+
         mask = vinf_vals > vinf_threshold
 
         ax.plot(
             c3_vals[mask],
             base_payloads[mask],
-            label=label if label else f"{self.UpperStage.__class__.__name__}"
+            label=label if label else "Launcher"
         )
 
         ax.set_ylabel("Payload Mass [kg]")
@@ -275,307 +404,111 @@ class Launcher():
         ax.grid(True)
 
 
-
-
 # ============================================================
 # REFERENCE STAGES
 # ============================================================
 
-# ------------------------------------------------------------
-# Helios Kick Stage (Impulse Space)
-# ------------------------------------------------------------
-# Public numbers are limited, so these are approximate estimates
-# based on published delta-v capability and methalox performance.
-#
-# https://www.impulsespace.com/helios
-#
-# Assumptions:
-# - Vacuum methalox stage
-# - ~375 s Isp (vacuum methalox)
-# - ~8:1 mass ratio estimate
-#
-# Public website states:
-# "Delta-V 3 to 9 km/s depending on payload mass"
-
 Helios = Stage(
     Isp=375,
-    max_prop_mass=14000,   # kg (estimated)
-    dry_mass=2000          # kg (estimated)
+    max_prop_mass=14_000,
+    dry_mass=2_000
 )
-
-
-# ------------------------------------------------------------
-# SpaceX Starship Upper Stage
-# ------------------------------------------------------------
-#
-# Dry mass:
-# https://space.skyrocket.de/doc_lau/super-heavy-starship.htm
-#
-# Propellant:
-# https://space.skyrocket.de/doc_lau/super-heavy-starship.htm
-#
-# Isp:
-#
-#
-# Sources indicate:
-# - 1200 t propellant
-# - 85 t dry mass
-# - 380 s Raptor Vacuum Isp
 
 StarshipUpper = Stage(
-    Isp=380,               # s
-    max_prop_mass=1_200_000,  # kg
-    dry_mass=85_000        # kg
+    Isp=380,
+    max_prop_mass=1_200_000,
+    dry_mass=85_000
 )
-
-
-# ------------------------------------------------------------
-# Centaur V
-# ------------------------------------------------------------
-#
-# https://en.wikipedia.org/wiki/Centaur_(rocket_stage)
-#
-# ULA published values:
-# - ~54 t propellant
-# - ~5.4 t dry
-# - RL10C Isp ~451 s
 
 CentaurV = Stage(
-    Isp=451,               # s
-    max_prop_mass=54_000,  # kg
-    dry_mass=5_400         # kg
+    Isp=451,
+    max_prop_mass=54_000,
+    dry_mass=5_400
 )
-
-
-# ------------------------------------------------------------
-# Ariane 64 Upper Stage (ESC-A / Vinci based)
-# ------------------------------------------------------------
-#
-# https://en.wikipedia.org/wiki/Ariane_6
-#
-# Public values:
-# - ~31 t propellant
-# - ~4.5 t dry mass estimate
-# - Vinci vacuum Isp ~457 s
 
 Ariane64Upper = Stage(
-    Isp=457,               # s
-    max_prop_mass=31_000,  # kg
-    dry_mass=4_500         # kg
+    Isp=457,
+    max_prop_mass=31_000,
+    dry_mass=4_500
 )
-
-
-# ------------------------------------------------------------
-# Falcon Heavy / Falcon 9 Upper Stage
-# ------------------------------------------------------------
-#
-# https://www.thespacereview.com/article/3980/1
-#
-# Values:
-# - 109 t propellant
-# - 10 t dry mass
-# - Merlin Vacuum Isp 348 s
-#
-# Falcon Heavy uses the standard Falcon 9 upper stage.
 
 FalconHeavyUpper = Stage(
-    Isp=348,               # s
-    max_prop_mass=109_000, # kg
-    dry_mass=10_000        # kg
+    Isp=348,
+    max_prop_mass=109_000,
+    dry_mass=10_000
 )
-
-
-# ------------------------------------------------------------
-# SLS ICPS (Interim Cryogenic Propulsion Stage)
-# ------------------------------------------------------------
-#
-# https://en.wikipedia.org/wiki/Interim_Cryogenic_Propulsion_Stage
-#
-# Based on Delta IV upper stage:
-# - ~27.2 t propellant
-# - ~3.5 t dry mass
-# - RL10B-2 Isp 465 s
 
 SLS_ICPS = Stage(
-    Isp=465,               # s
-    max_prop_mass=27_200,  # kg
-    dry_mass=3_500         # kg
+    Isp=465,
+    max_prop_mass=27_200,
+    dry_mass=3_500
 )
-
-
-# ------------------------------------------------------------
-# New Glenn Upper Stage
-# ------------------------------------------------------------
-#
-# Public values are incomplete.
-#
-# Approximate estimates based on:
-# - BE-3U vacuum engine
-# - Hydrolox upper stage
-# - Payload performance disclosures
-#
-# https://en.wikipedia.org/wiki/New_Glenn
-#
-# Estimated:
-# - ~160 t propellant
-# - ~12 t dry mass
-# - BE-3U Isp 450 s
 
 NewGlennUpper = Stage(
-    Isp=450,               # s
-    max_prop_mass=160_000, # kg (estimated)
-    dry_mass=12_000        # kg (estimated)
+    Isp=450,
+    max_prop_mass=160_000,
+    dry_mass=12_000
 )
 
 # ============================================================
-# LAUNCHER OBJECTS
+# LAUNCHERS
 # ============================================================
 
-# ------------------------------------------------------------
-# Ariane 64
-# ------------------------------------------------------------
 Ariane64_Launcher = Launcher(
-    LEO_payload=21_000,          # kg to LEO (A64 ~20–21 t class)
+    LEO_payload=21_000,
     UpperStage=Ariane64Upper
 )
 
-# ------------------------------------------------------------
-# Ariane 62
-# ------------------------------------------------------------
-# Reduced boosters → lower performance (~10–12 t LEO)
 Ariane62_Launcher = Launcher(
-    LEO_payload=10_500,          # kg (approx)
+    LEO_payload=10_500,
     UpperStage=Ariane64Upper
 )
 
-# ------------------------------------------------------------
-# Falcon Heavy (Expendable)
-# ------------------------------------------------------------
-# Full 3-core expendable performance ~63–64 t
 FalconHeavy_Expendable = Launcher(
-    LEO_payload=63_800,          # kg
+    LEO_payload=63_800,
     UpperStage=FalconHeavyUpper
 )
 
-# ------------------------------------------------------------
-# Falcon Heavy (Partially Reusable)
-# ------------------------------------------------------------
-# Realistic NASA/SpaceX mission class (~50 t)
 FalconHeavy_Reusable = Launcher(
-    LEO_payload=50_000,          # kg
+    LEO_payload=50_000,
     UpperStage=FalconHeavyUpper
 )
 
-# ------------------------------------------------------------
-# SLS Block 1 (ICPS)
-# ------------------------------------------------------------
 SLS_Block1_ICPS = Launcher(
-    LEO_payload=95_000,          # kg (SLS Block 1 to LEO class)
+    LEO_payload=95_000,
     UpperStage=SLS_ICPS
 )
 
-# ------------------------------------------------------------
-# Starship + Super Heavy
-# ------------------------------------------------------------
 Starship_SuperHeavy = Launcher(
-    LEO_payload=150_000,         # kg (fully expendable upper bound)
+    LEO_payload=150_000,
     UpperStage=StarshipUpper
 )
 
-# ------------------------------------------------------------
-# Vulcan Centaur (VC4S / heavy config approximation)
-# ------------------------------------------------------------
-# Conservative LEO estimate (upper stage optimized for GTO)
 Vulcan = Launcher(
-    LEO_payload=27_200,          # kg (upper-bound optimistic LEO class)
+    LEO_payload=27_200,
     UpperStage=CentaurV
 )
 
-# ------------------------------------------------------------
-# SLS with Centaur V (hypothetical architecture)
-# ------------------------------------------------------------
-# Heavy lift core + high-energy upper stage
 SLS_CentaurV = Launcher(
-    LEO_payload=105_000,         # kg (slightly higher due to better upper stage)
+    LEO_payload=105_000,
     UpperStage=CentaurV
 )
 
-# ------------------------------------------------------------
-# Falcon 9
-# ------------------------------------------------------------
 Falcon9 = Launcher(
-    LEO_payload=22_800,          # kg expendable upper bound
-    UpperStage=FalconHeavyUpper   # same physical stage model
+    LEO_payload=22_800,
+    UpperStage=FalconHeavyUpper
 )
 
+NewGlennLauncher = Launcher(
+    LEO_payload=45_000,
+    UpperStage=NewGlennUpper
+)
 
-def show_v_inf():
-    # ============================================================
-    # VINFINITY COMPARISON PLOT
-    # ============================================================
+# ============================================================
+# SPACECRAFT SIZING
+# ============================================================
 
-    fig, ax = plt.subplots(figsize=(12, 7))
-
-    launchers = [
-        (Ariane64_Launcher, "Ariane 64"),
-        (Ariane62_Launcher, "Ariane 62"),
-        (FalconHeavy_Expendable, "Falcon Heavy (Expendable)"),
-        (FalconHeavy_Reusable, "Falcon Heavy (Reusable)"),
-        (SLS_Block1_ICPS, "SLS Block 1 (ICPS)"),
-        (Starship_SuperHeavy, "Starship + Super Heavy"),
-        (Vulcan, "Vulcan Centaur"),
-        (SLS_CentaurV, "SLS + Centaur V"),
-        (Falcon9, "Falcon 9"),
-    ]
-
-    for launcher, label in launchers:
-        launcher.plot_vinf(ax, label=label)
-
-    ax.set_title("Launcher v∞ Performance vs Payload Mass")
-    ax.set_ylabel("Payload Mass [kg]")
-    ax.set_xlabel("v∞ [m/s]")
-
-    ax.grid(True)
-    ax.legend(fontsize=8)
-
-    plt.tight_layout()
-    plt.show()
-
-def show_v_inf_with_helios():
-    fig, ax = plt.subplots(figsize=(12, 7))
-
-    launchers = [
-        (Ariane64_Launcher, "Ariane 64"),
-        (Ariane62_Launcher, "Ariane 62"),
-        (FalconHeavy_Expendable, "Falcon Heavy (Expendable)"),
-        (FalconHeavy_Reusable, "Falcon Heavy (Reusable)"),
-        (SLS_Block1_ICPS, "SLS Block 1 (ICPS)"),
-        (Starship_SuperHeavy, "Starship + Super Heavy"),
-        (Vulcan, "Vulcan Centaur"),
-        (SLS_CentaurV, "SLS + Centaur V"),
-        (Falcon9, "Falcon 9"),
-    ]
-
-    for launcher, label in launchers:
-        launcher.plot_vinf(
-            ax,
-            label=label + " + Helios",
-            kickstage=Helios   # <<< key change
-        )
-
-    ax.set_title("Launcher v∞ Performance with Helios Kick Stage")
-    ax.set_ylabel("Payload Mass [kg]")
-    ax.set_xlabel("v∞ [m/s]")
-
-    ax.grid(True)
-    ax.legend(fontsize=8)
-
-    plt.tight_layout()
-    plt.show()
-
-
-
-def size_hypergolic(
+def size_spacecraft(
     bus_mass,
     launchers,
     kickstages,
@@ -584,21 +517,29 @@ def size_hypergolic(
     tolerance=0.001,
     verbose=False
 ):
-    assumed_spacecraft_isp = 320  # s
-    needed_excess_dv = float(total_dv-rdvz_dv)
+    assumed_spacecraft_isp = 320  # MMH N2H4
+    assumed_spacecraft_isp = 3000 # electric
+
+    needed_excess_dv = float(total_dv - rdvz_dv)
+
     structural_fraction = 0.12
 
-    # ============================================================
-    # Spacecraft sizing (prop + tank iteration)
-    # ============================================================
     required_prop = get_prop_mass_with_end_mass(
-        rdvz_dv, bus_mass, assumed_spacecraft_isp
+        rdvz_dv,
+        bus_mass,
+        assumed_spacecraft_isp
     )
 
     tank_mass = structural_fraction * required_prop
+
     previous_prop_mass = 0
 
-    while abs(required_prop - previous_prop_mass) / required_prop > tolerance:
+    while (
+        abs(required_prop - previous_prop_mass)
+        / required_prop
+        > tolerance
+    ):
+
         previous_prop_mass = required_prop
 
         required_prop = get_prop_mass_with_end_mass(
@@ -616,71 +557,79 @@ def size_hypergolic(
     )
 
     wet_mass = Space_Craft.total_mass
+
     dry_mass = bus_mass + tank_mass
+
     prop_mass = required_prop
+
     prop_mass_fraction = prop_mass / wet_mass
 
-    # ============================================================
-    # Launcher + kickstage feasibility sweep
-    # ============================================================
     viable = []
 
     for launcher, launcher_name in launchers:
+
         for kick, kick_name in kickstages:
 
+            m = wet_mass
 
-            best_margin = -1e9
-
-            m=wet_mass
             if kick is not None:
-                v_inf_launcher = launcher.get_vinf_performance(m+kick.total_mass)
-                kick_dv = kick.get_total_dv(
-                    m
+
+                v_inf_launcher = launcher.get_vinf_performance(
+                    m + kick.total_mass
                 )
+
+                kick_dv = kick.get_total_dv(m)
+
+                total_vinf = combine_vinf_and_dv(
+                    v_inf_launcher,
+                    kick_dv,
+                    launcher.ref_escape_velocity
+                )
+
             else:
-                v_inf_launcher = launcher.get_vinf_performance(m)
-                kick_dv = 0
 
+                total_vinf = launcher.get_vinf_performance(m)
 
-
-
-            total_vinf = v_inf_launcher + kick_dv
             margin = total_vinf - needed_excess_dv
 
-            if margin > best_margin:
-                best_margin = margin
+            if margin > 0:
 
-            if best_margin > 0:
                 viable.append({
                     "launcher_name": launcher_name,
                     "kick_name": kick_name,
                     "launcher": launcher,
                     "kickstage": kick,
-                    "margin_m_s": best_margin
+                    "margin_m_s": margin
                 })
 
-    viable.sort(key=lambda x: x["margin_m_s"], reverse=True)
+    viable.sort(
+        key=lambda x: x["margin_m_s"],
+        reverse=True
+    )
 
-    # ============================================================
-    # Output
-    # ============================================================
     if verbose:
-        print("\n========== SPACECRAFT SIZING ==========")
-        print(f"Bus mass:             {bus_mass:.1f} kg")
-        print(f"Tank mass:            {tank_mass:.1f} kg")
-        print(f"Prop mass:            {prop_mass:.1f} kg")
-        print(f"Wet mass:             {wet_mass:.1f} kg")
-        print(f"Prop fraction:        {prop_mass_fraction:.4f}")
 
-        print("\n========== VIABLE LAUNCH STACKS ==========")
+        print("\n========== SPACECRAFT SIZING ==========")
+
+        print(f"Bus mass:      {bus_mass:.1f} kg")
+        print(f"Tank mass:     {tank_mass:.1f} kg")
+        print(f"Prop mass:     {prop_mass:.1f} kg")
+        print(f"Wet mass:      {wet_mass:.1f} kg")
+        print(f"Prop fraction: {prop_mass_fraction:.4f}")
+
+        print("\n========== VIABLE COMBINATIONS ==========")
 
         if not viable:
-            print("No viable launcher–kickstage combinations found.")
+
+            print("No viable combinations found.")
+
         else:
+
             for v in viable:
+
                 print(
                     f"{v['launcher_name']:25s} + "
-                    f"{v['kick_name']:15s} | "
+                    f"{v['kick_name']:20s} | "
                     f"margin: {v['margin_m_s']:.1f} m/s"
                 )
 
@@ -693,18 +642,24 @@ def size_hypergolic(
         "spacecraft": Space_Craft
     }
 
+
+# ============================================================
+# PLOTTING
+# ============================================================
+
 def plot_available_launchers_vs_bus_mass(
+    bus_mass_range,
     launchers,
     kickstages,
     total_dv,
-    rdvz_dv,
-    bus_mass_range=np.linspace(10, 1000, 80)
+    rdvz_dv
 ):
+
     counts = []
 
     for bus_mass in bus_mass_range:
 
-        result = size_hypergolic(
+        result = size_spacecraft(
             bus_mass,
             launchers,
             kickstages,
@@ -713,7 +668,9 @@ def plot_available_launchers_vs_bus_mass(
             verbose=False
         )
 
-        counts.append(len(result["viable_combinations"]))
+        counts.append(
+            len(result["viable_combinations"])
+        )
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -721,11 +678,19 @@ def plot_available_launchers_vs_bus_mass(
 
     ax.set_xlabel("Bus Mass [kg]")
     ax.set_ylabel("Number of Viable Launchers")
-    ax.set_title("Launcher Availability vs Spacecraft Bus Mass")
+
+    ax.set_title(
+        "Launcher Availability vs Spacecraft Bus Mass"
+    )
+
     ax.grid(True)
 
     plt.tight_layout()
     plt.show()
+
+
+
+
 def plot_launcher_busmass_feasibility(
     bus_mass_range,
     launchers,
@@ -733,23 +698,17 @@ def plot_launcher_busmass_feasibility(
     total_dv,
     rdvz_dv
 ):
-    import numpy as np
-    import matplotlib.pyplot as plt
 
     launcher_names = [name for _, name in launchers]
 
-    # color grid:
-    # 0 = not viable (red)
-    # 1 = kickstage only (blue)
-    # 2 = direct viable (green)
+    # 0 = not viable
+    # 1 = viable with kickstage
+    # 2 = viable without kickstage
     colors = np.zeros((len(launchers), len(bus_mass_range)))
 
     for j, bus_mass in enumerate(bus_mass_range):
 
-        # -----------------------------
-        # compute feasibility ONCE
-        # -----------------------------
-        result = size_hypergolic(
+        result = size_spacecraft(
             bus_mass,
             launchers,
             kickstages,
@@ -760,36 +719,48 @@ def plot_launcher_busmass_feasibility(
 
         viable = result["viable_combinations"]
 
-        viable_with_kick = set()
-        viable_without_kick = set()
+        # Build best-state map
+        launcher_state = {
+            lname: 0
+            for lname in launcher_names
+        }
 
         for v in viable:
+
             lname = v["launcher_name"]
+
+            # direct injection
             if v["kickstage"] is None:
-                viable_without_kick.add(lname)
+
+                launcher_state[lname] = max(
+                    launcher_state[lname],
+                    2
+                )
+
+            # kickstage-assisted
             else:
-                viable_with_kick.add(lname)
 
-        # -----------------------------
-        # classify each launcher
-        # -----------------------------
-        for i, (_, lname) in enumerate(launchers):
+                launcher_state[lname] = max(
+                    launcher_state[lname],
+                    1
+                )
 
-            if lname in viable_without_kick:
-                colors[i, j] = 2  # green (best case)
+        # Fill color matrix
+        for i, lname in enumerate(launcher_names):
 
-            elif lname in viable_with_kick:
-                colors[i, j] = 1  # blue (needs kickstage)
+            colors[i, j] = launcher_state[lname]
 
-            else:
-                colors[i, j] = 0  # red
-
-    # -----------------------------
+    # =========================================================
     # PLOT
-    # -----------------------------
-    fig, ax = plt.subplots(figsize=(12, 6))
+    # =========================================================
 
-    cmap = plt.cm.colors.ListedColormap(["black", "blue", "green"])
+    fig, ax = plt.subplots(figsize=(13, 7))
+
+    cmap = mpl.colors.ListedColormap([
+        "black",   # 0
+        "blue",    # 1
+        "green"    # 2
+    ])
 
     im = ax.imshow(
         colors,
@@ -802,59 +773,105 @@ def plot_launcher_busmass_feasibility(
             len(launchers) - 0.5
         ],
         cmap=cmap,
-        interpolation="nearest"
+        interpolation="nearest",
+        vmin=0,
+        vmax=2
     )
 
     ax.set_yticks(range(len(launchers)))
     ax.set_yticklabels(launcher_names)
 
     ax.set_xlabel("Bus Mass [kg]")
-    ax.set_title("Launcher Feasibility vs Bus Mass")
 
-    # legend
+    ax.set_title(
+        "Launcher Feasibility vs Bus Mass"
+    )
+
     from matplotlib.patches import Patch
+
     legend = [
         Patch(color="black", label="Not viable"),
-        Patch(color="blue", label="Viable (kickstage required)"),
-        Patch(color="green", label="Viable (no kickstage)")
+        Patch(color="blue", label="Viable with kickstage"),
+        Patch(color="green", label="Directly viable")
     ]
-    ax.legend(handles=legend, loc="upper right")
+
+    ax.legend(
+        handles=legend,
+        loc="upper right"
+    )
 
     plt.tight_layout()
     plt.show()
 
-
-
+# ============================================================
+# MAIN
+# ============================================================
 
 if __name__ == "__main__":
-    # show_v_inf()
-    # show_v_inf_with_helios()
 
     launchers = [
+
         (Ariane64_Launcher, "Ariane 64"),
         (Ariane62_Launcher, "Ariane 62"),
-        (FalconHeavy_Expendable, "Falcon Heavy (Expendable)"),
-        (FalconHeavy_Reusable, "Falcon Heavy (Reusable)"),
-        (SLS_Block1_ICPS, "SLS Block 1 (ICPS)"),
-        (Starship_SuperHeavy, "Starship + Super Heavy"),
-        (Vulcan, "Vulcan Centaur"),
-        (SLS_CentaurV, "SLS + Centaur V"),
-        (Falcon9, "Falcon 9"),
+
+        (FalconHeavy_Expendable,
+         "Falcon Heavy (Expendable)"),
+
+        (FalconHeavy_Reusable,
+         "Falcon Heavy (Reusable)"),
+
+        (SLS_Block1_ICPS,
+         "SLS Block 1 (ICPS)"),
+
+        (Starship_SuperHeavy,
+         "Starship + Super Heavy"),
+
+        (Vulcan,
+         "Vulcan Centaur"),
+
+        (SLS_CentaurV,
+         "SLS + Centaur V"),
+
+        (Falcon9,
+         "Falcon 9"),
+
+        (NewGlennLauncher,
+         "New Glenn")
     ]
 
-    kickstages = [(Helios, "Helios"), (None, (""))]
+    kickstages = [
 
-    total_dv = float(19300)  # m/s
-    rdvz_dv = float(3000) # m/s
+        (Helios, "Helios"),
 
-    size_hypergolic(100, launchers, kickstages, total_dv, rdvz_dv,  verbose=True)
-    # plot_available_launchers_vs_bus_mass(launchers, kickstages, total_dv, rdvz_dv)
-    bus_mass_range = np.linspace(100, 1000, 100)
+        # (CentaurV, "Centaur V"),
 
-    # plot_launcher_busmass_feasibility(
-    #     bus_mass_range,
-    #     launchers,
-    #     kickstages,
-    #     total_dv,
-    #     rdvz_dv
-    # )
+        # (Ariane64Upper, "Ariane 64 Upper"),
+
+        # (NewGlennUpper, "New Glenn S2"),
+
+        (None, "")
+    ]
+
+    total_dv = 19300
+
+    rdvz_dv = 4000
+
+    print("Rendezvous Delta V", rdvz_dv)
+
+    bus_mass_range = np.linspace(0, 10000, 100)
+    plot_available_launchers_vs_bus_mass(
+        bus_mass_range,
+        launchers,
+        kickstages,
+        total_dv,
+        rdvz_dv
+    )
+
+
+    plot_launcher_busmass_feasibility(
+        bus_mass_range,
+        launchers,
+        kickstages,
+        total_dv,
+        rdvz_dv
+    )

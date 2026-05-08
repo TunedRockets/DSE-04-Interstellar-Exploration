@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
-PLOT= True
+PLOT= False
 
 if PLOT:
     import matplotlib as mpl
@@ -431,7 +431,48 @@ def study_ISO(ISO: Orbit, detect_t: float, gen_type: str, origin: Orbit=origin_1
         # insert_dv, rdvz_dv, st, et, er = trajectory_optimizer(Earth, ISO, detect_t, detect_t + MAX_MISSION_TIME * YEAR,
         #                                                       **rdvz_weights)
         insert_dv, rdvz_dv, transfer_o, st, et, er = oberth_effect_optimzer(ISO, origin.theta_to_rv(0)[0], np.linalg.norm(origin.theta_to_rv(0)[1]), t_p, 0, 40*YEAR, period=origin.period, optimize_rendezvous=True, detect_time=detect_t)
+        # ===============================
+        # Compute required periapsis direction
+        # ===============================
+        r_req, v_req = transfer_o.theta_to_rv(0)
+        v_req_hat = v_req / np.linalg.norm(v_req)
 
+        # current orbit periapsis direction
+        r0, v0 = origin.theta_to_rv(0)
+        v0_hat = v0 / np.linalg.norm(v0)
+        #
+        # # ===============================
+        # # Angle between directions
+        # # ===============================
+        cos_dtheta = np.clip(np.dot(v0_hat, v_req_hat), -1, 1)
+        delta = m.acos(cos_dtheta)
+
+        # rotation axis from current to required direction
+        axis = np.cross(v0_hat, v_req_hat)
+        norm = np.linalg.norm(axis)
+
+        if norm < 1e-10:
+            axis = np.array([0, 0, 1])  # fallback
+        else:
+            axis /= norm
+
+        def rotate(vec):
+            return (
+                    vec * m.cos(delta) +
+                    np.cross(axis, vec) * m.sin(delta) +
+                    axis * np.dot(axis, vec) * (1 - m.cos(delta))
+            )
+
+        # get apoapsis state
+        theta_ap = m.pi
+        t_ap = origin.theta_to_time(theta_ap)
+        r_ap, v_ap_vec = origin.theta_to_rv(theta_ap)
+
+        # rotate state
+        r_rot = rotate(r_ap)
+        v_rot = rotate(v_ap_vec)
+        inc_dv = np.linalg.norm((v_rot - v_ap_vec))
+        insert_dv += inc_dv
         out.update({
             "rdvz_idv": insert_dv,
             "rdvz_rdv": rdvz_dv,
@@ -621,7 +662,7 @@ def probability_map_df(df: pd.DataFrame, rdvz: bool, guesses: bool = True, show:
     HSP_N = Hoover_seligman_payne_per_annum * years
     MS_N = Marceta_seligman_per_annum * years
 
-    N_range = np.arange(10, MS_N + 30, 5)
+    N_range = np.arange(10, MS_N*2, 5)
     V_range = np.arange(4, 50)
     NN, VV = np.meshgrid(N_range, V_range)
     F = lambda v, n: mission_success_probability_df(v, n, rdvz, df)
@@ -797,12 +838,12 @@ def plot_from_row(ax, row: pd.Series, max_r: float = m.inf, origin=origin_124):
         print("Delta V: ", total_dv)
 
     try:
-        plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(100 * AU))
+        plot_orbit(ax, transfer_orbit, time=et, ThreeDee=True, label="Transfer", max_alt=(150 * AU))
     except:
         pass  # lambert sometimes fails
 
     # plot ISO, earth and jupiter orbit for context
-    plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(100 * AU))
+    plot_orbit(ax, ISO, time=et, ThreeDee=True, label="ISO", max_alt=(150 * AU))
     plot_orbit(ax, Earth, time=t_detect, ThreeDee=True, label="Earth")
     plot_orbit(ax, Jupiter, time=t_detect, ThreeDee=True, label="Jupiter")
 
@@ -851,14 +892,14 @@ def find_optimum_lon_per():
 
     max_time = 40*YEAR
 
-    lon_vals = np.linspace(0, 360, 30)
+    lon_vals = np.linspace(0, 360, 10)
     # lon_vals = np.array(([30]))
     all_hists = []
 
     for lon_per in lon_vals:
-        aphelion = 1*5.4507 * AU # Jupiter aphelion
+        aphelion = (1/5.4507)*5.4507 * AU # Jupiter aphelion
         solar_radius = 696_340
-        perihelion = 10*solar_radius
+        perihelion = 5*solar_radius
         semi_major_axis = (aphelion + perihelion) / 2
         eccentricity = (aphelion - perihelion) / (aphelion + perihelion)
         # print("Semi major axis: {:.6f} AU".format(semi_major_axis/AU))
@@ -1017,7 +1058,7 @@ def what():
 if __name__ == "__main__":
     # what()
 
-    # find_optimum_lon_per()
+    find_optimum_lon_per()
     # example of using the functions:
 
     df = get_data()
@@ -1032,8 +1073,10 @@ if __name__ == "__main__":
     dv_histogram(True, True, df=dfb)
     plt.title("borisov-like dv distribution")
     plt.show()
+    probability_map_df(dfb, True)
+    plt.show()
 
-    df = df.sort_values('rdvz_idv', ignore_index=True)
+    df = df.sort_values('rdvz_total', ignore_index=True)
     print(df)
     if PLOT:
         ax = get_solar_system_ax()

@@ -511,13 +511,22 @@ class Orbit():
 
         dtheta = np.radians(max_angle_deg) / 2
 
-        theta1 = theta_center - dtheta
+        theta1 = theta_center
         theta2 = theta_center + dtheta
+        theta3 = theta_center - dtheta
 
         t1 = self.theta_to_time_after_periapsis(theta1)
         t2 = self.theta_to_time_after_periapsis(theta2)
+        t3 = self.theta_to_time_after_periapsis(theta3)
+        dt2 =2*abs(t2 - t1)
+        if dt2 > self.period:
+            dt2 -= self.period
+        dt3 =2*abs(t3 - t1)
+        if dt3 > self.period:
+            dt3 -= self.period
 
-        return abs(t2 - t1)
+
+        return min(dt2, dt3)
 
 
 # ==========================================================

@@ -30,11 +30,19 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-
+import src.examples as ex
+t = 2051265600
+jupiter = ex.Jupiter
+earth = ex.Earth
+mars = ex.Mars
+jupiterang = jupiter.time_to_theta(t)
+earthang = earth.time_to_theta(t)
+marsang = mars.time_to_theta(t)
+print(jupiter.time_to_theta(t), earth.theta_to_time(t), mars.time_to_theta(t))
 # -----------------------------
 # Constants, SI units
 # -----------------------------
-
+x = 1
 AU = 1.495978707e11                      # m
 R_SUN = 6.957e8                           # m
 MU_SUN = 1.32712440018e20                 # m^3/s^2
@@ -55,8 +63,8 @@ YEAR = 365.25 * DAY
 
 @dataclass
 class Spacecraft:
-    mass_kg: float = 500.0
-    area_m2: float = 10.0
+    mass_kg: float = 3000.0
+    area_m2: float = 100.0
     cr: float = 1.5                         # SRP reflectivity coefficient, about 1 to 2
     cd: float = 2.2                         # drag coefficient
     absorptivity: float = 0.7
@@ -82,7 +90,7 @@ class PerturbationFlags:
 @dataclass
 class OrbitElements:
     """Classical heliocentric Keplerian elements."""
-    semi_major_axis_m: float = 0.112 * AU
+    semi_major_axis_m: float = 0.17 * AU
     eccentricity: float = 0.983
     inclination_rad: float = math.radians(5.0)
     raan_rad: float = math.radians(0.0)
@@ -106,8 +114,8 @@ class SimulationConfig:
     spacecraft: Spacecraft = field(default_factory=Spacecraft)
     perturbations: PerturbationFlags = field(default_factory=PerturbationFlags)
     planets: Tuple[Planet, ...] = field(default_factory=tuple)
-    t_span_s: Tuple[float, float] = (0.0, 3652.5 * DAY)
-    max_step_s: float = 2.5 * DAY
+    t_span_s: Tuple[float, float] = (0.0, 1700 * DAY)
+    max_step_s: float = x * DAY
     rtol: float = 1e-10
     atol: float = 1e-3
 
@@ -174,6 +182,7 @@ def state_to_orbital_summary(y: np.ndarray, mu: float = MU_SUN) -> Dict[str, flo
     h = np.cross(r, v)
     e_vec = np.cross(v, h) / mu - r / rmag
     e = norm(e_vec)
+    t = 2 * math.pi * math.sqrt( (a ** 3) / mu )
     return {
         "a_m": a,
         "e": e,
@@ -181,6 +190,7 @@ def state_to_orbital_summary(y: np.ndarray, mu: float = MU_SUN) -> Dict[str, flo
         "Q_m": a * (1.0 + e),
         "r_m": rmag,
         "v_m_s": vmag,
+        "t": t,
     }
 
 
@@ -193,9 +203,9 @@ def default_planets() -> Tuple[Planet, ...]:
     return (
         Planet("Mercury", 2.2032e13, 0.387098 * AU, 0.2056, 87.969 * DAY, phase0=0.0, inclination=math.radians(7.0)),
         Planet("Venus",   3.24859e14, 0.723332 * AU, 0.0068, 224.701 * DAY, phase0=1.0, inclination=math.radians(3.4)),
-        Planet("Earth",   3.986004418e14, 1.000000 * AU, 0.0167, 365.256 * DAY, phase0=2.0, inclination=0.0),
-        Planet("Mars",    4.282837e13, 1.523679 * AU, 0.0934, 686.980 * DAY, phase0=2.7, inclination=math.radians(1.85)),
-        Planet("Jupiter", 1.26686534e17, 5.2044 * AU, 0.0489, 4332.59 * DAY, phase0=1.5, inclination=math.radians(1.3)),
+        Planet("Earth",   3.986004418e14, 1.000000 * AU, 0.0167, 365.256 * DAY, phase0=earthang, inclination=0.0),
+        Planet("Mars",    4.282837e13, 1.523679 * AU, 0.0934, 686.980 * DAY, phase0=marsang, inclination=math.radians(1.85)),
+        Planet("Jupiter", 1.26686534e17, 5.2044 * AU, 0.0489, 4332.59 * DAY, phase0=jupiterang, inclination=math.radians(1.3)),
         Planet("Saturn",  3.7931187e16, 9.5826 * AU, 0.0565, 10759.22 * DAY, phase0=4.0, inclination=math.radians(2.5)),
     )
 
@@ -747,7 +757,7 @@ if __name__ == "__main__":
         inclination_rad=math.radians(3.0),
         raan_rad=math.radians(15.0),
         arg_periapsis_rad=math.radians(45.0),
-        true_anomaly_rad=math.radians(0.0),  # start at perihelion
+        true_anomaly_rad=math.radians(270.0),  # start at perihelion
     )
 
     spacecraft = Spacecraft(
@@ -762,20 +772,20 @@ if __name__ == "__main__":
 
     flags = PerturbationFlags(
         sun_gravity=True,
-        solar_radiation_pressure=True,
-        planetary_gravity=True,
+        solar_radiation_pressure=False,
+        planetary_gravity=False,
         general_relativity=True,
-        solar_j2=True,
-        solar_wind_drag=True,
-        thermal_recoil=True,
+        solar_j2=False,
+        solar_wind_drag=False,
+        thermal_recoil=False,
     )
 
     cfg = SimulationConfig(
         spacecraft=spacecraft,
         perturbations=flags,
         planets=default_planets(),
-        t_span_s=(0.0, 3652.5 * DAY),
-        max_step_s= 1 * DAY,  # tighten near-Sun trajectories
+        t_span_s=(0.0, 1700 * DAY),
+        max_step_s= 0.1 * DAY,  # tighten near-Sun trajectories
         rtol=1e-10,
         atol=1e-2,
         corona_density_ref_kg_m3=1e-16,
@@ -791,7 +801,7 @@ if __name__ == "__main__":
 
     print("\n--- Deviation summary ---")
     print(f"Max deviation: {np.max(deviation_km):.6e} km")
-    print(f"Min deviation: {np.min(deviation_km):.6e} km")
+    print(f"Min deviation: {q/1000} km")
     print(f"Final deviation: {deviation_km[-1]:.6e} km")
 
     print_summary(sol, "configured perturbed run")

@@ -23,7 +23,7 @@ gamma = 1/3
 delta = 4/3 # for theta >=65deg or theta <=45deg 
 epsilon = 8/3 # for theta >=65deg or theta <=45deg
 
-theta = 0 # angle of impact, 0 degrees for normal incidence...?
+theta = np.radians(0) # angle of impact, 0 degrees for normal incidence...?
 
 # densities [g/cm^3]
 rho_p = 2.7
@@ -33,7 +33,7 @@ rho_ob = 2.7
 
 t_eq_MLI = rho_AD_MLI/rho_ob
 
-v = np.arange(0, 18.1, 0.1) # km/s
+v = np.arange(0, 30.1, 0.1) # km/s
 # print(v)
 
 
@@ -45,7 +45,7 @@ def calculate_d_c_larger_than_vt2(v, S1, S2, vt1, vt2):
 
 # velocities [km/s] vs type of material 
 
-# TYPE I: Al H/C SP / Al bumper / MLI+Al H/C SP / MLI+Al bumper
+# TYPE I: basically Al bumper: Al H/C SP / Al bumper / MLI+Al H/C SP / MLI+Al bumper
 vt11 = 3
 vt21 = 7
 # TYPE II: standalone MLI as structure wall

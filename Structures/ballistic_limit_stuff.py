@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-S1 = 3.5 # stand-off between 1st and 2nd bumper [cm]
+# S1 = 3.5 # stand-off between 1st and 2nd bumper [cm]
+S1 = 4
 S2 = 0 # stand-off between 2nd bumper and rear wall [cm]
 d = 1 # diameter of projectile [cm]
 t_w = 0.472 # equipment cover plate thickness
@@ -69,35 +70,45 @@ funcs = [
 
 # 3. Calculate using the 'args' parameter to pass S1 and the constant
 
+# S1 = 3.5 cm
 # theta = 0
 
 # type 1
-y_S2_0_theta0  = np.piecewise(v, conditions1, funcs, S1, 0, vt11, vt21, theta=np.radians(0))
-y_S2_10_theta0 = np.piecewise(v, conditions1, funcs, S1, 10, vt11, vt21, theta=np.radians(0))
-y_S2_20_theta0 = np.piecewise(v, conditions1, funcs, S1, 20, vt11, vt21, theta=np.radians(0))
-y_S2_30_theta0 = np.piecewise(v, conditions1, funcs, S1, 30, vt11, vt21, theta=np.radians(0))
-y_S2_40_theta0 = np.piecewise(v, conditions1, funcs, S1, 40, vt11, vt21, theta=np.radians(0))
+y_S2_0_theta0  = np.piecewise(v, conditions1, funcs, 3.5, 0, vt11, vt21, theta=np.radians(0))
+y_S2_10_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 10, vt11, vt21, theta=np.radians(0))
+y_S2_20_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 20, vt11, vt21, theta=np.radians(0))
+y_S2_30_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 30, vt11, vt21, theta=np.radians(0))
+y_S2_40_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 40, vt11, vt21, theta=np.radians(0))
 
 # type 2
-y_S2_0_1_theta0  = np.piecewise(v, conditions2, funcs, S1, 0, vt12, vt22, theta=np.radians(0))
-y_S2_10_1_theta0 = np.piecewise(v, conditions2, funcs, S1, 10, vt12, vt22, theta=np.radians(0))
-y_S2_20_1_theta0 = np.piecewise(v, conditions2, funcs, S1, 20, vt12, vt22, theta=np.radians(0))
-y_S2_30_1_theta0 = np.piecewise(v, conditions2, funcs, S1, 30, vt12, vt22, theta=np.radians(0))
+y_S2_0_1_theta0  = np.piecewise(v, conditions2, funcs, 3.5, 0, vt12, vt22, theta=np.radians(0))
+y_S2_10_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 10, vt12, vt22, theta=np.radians(0))
+y_S2_20_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 20, vt12, vt22, theta=np.radians(0))
+y_S2_30_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 30, vt12, vt22, theta=np.radians(0))
 
 
 # theta = 45
 
 # type 1
-y_S2_0_2_theta45  = np.piecewise(v, conditions1, funcs, S1, 0, vt11, vt21, theta=np.radians(45))
-y_S2_10_2_theta45 = np.piecewise(v, conditions1, funcs, S1, 10, vt11, vt21, theta=np.radians(45))
-y_S2_20_2_theta45 = np.piecewise(v, conditions1, funcs, S1, 20, vt11, vt21, theta=np.radians(45))
-y_S2_30_2_theta45 = np.piecewise(v, conditions1, funcs, S1, 30, vt11, vt21, theta=np.radians(45))
+y_S2_0_2_theta45  = np.piecewise(v, conditions1, funcs, 3.5, 0, vt11, vt21, theta=np.radians(45))
+y_S2_10_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 10, vt11, vt21, theta=np.radians(45))
+y_S2_20_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 20, vt11, vt21, theta=np.radians(45))
+y_S2_30_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 30, vt11, vt21, theta=np.radians(45))
 
 # type 2
-y_S2_0_3_theta45  = np.piecewise(v, conditions2, funcs, S1, 0, vt12, vt22, theta=np.radians(45))
-y_S2_10_3_theta45 = np.piecewise(v, conditions2, funcs, S1, 10, vt12, vt22, theta=np.radians(45))
-y_S2_20_3_theta45 = np.piecewise(v, conditions2, funcs, S1, 20, vt12, vt22, theta=np.radians(45))
-y_S2_30_3_theta45 = np.piecewise(v, conditions2, funcs, S1, 30, vt12, vt22, theta=np.radians(45))
+y_S2_0_3_theta45  = np.piecewise(v, conditions2, funcs, 3.5, 0, vt12, vt22, theta=np.radians(45))
+y_S2_10_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 10, vt12, vt22, theta=np.radians(45))
+y_S2_20_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 20, vt12, vt22, theta=np.radians(45))
+y_S2_30_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 30, vt12, vt22, theta=np.radians(45))
+
+# S1 = 4 cm
+# theta = 0
+# type 1
+y_S2_0_theta0_S1_4  = np.piecewise(v, conditions1, funcs, 4, 0, vt11, vt21, theta=np.radians(0))
+y_S2_10_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 10, vt11, vt21, theta=np.radians(0))
+y_S2_20_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 20, vt11, vt21, theta=np.radians(0))
+y_S2_30_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 30, vt11, vt21, theta=np.radians(0))
+y_S2_40_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 40, vt11, vt21, theta=np.radians(0))
 
 def plot_ballistic_limit(v, y1, y2, y3, y4, y5 = None, labels=None):
     # S2 = 0
@@ -110,9 +121,9 @@ def plot_ballistic_limit(v, y1, y2, y3, y4, y5 = None, labels=None):
     plt.xlabel('Velocity (km/s)')
     plt.ylabel('Critical Diameter (cm)')
     plt.title('Ballistic Limit vs Velocity for a certain S2')
-    plt.legend(labels if labels else ['type 1, theta = 0deg', 'type 2, theta = 0deg', 'type 1, theta = 45deg', 'type 2, theta = 45deg', 'type 1, theta = 0deg', 'type 2, theta = 0deg', 'type 1, theta = 45deg', 'type 2, theta = 45deg'])
+    # plt.legend(labels if labels else ['type 1, theta = 0deg', 'type 2, theta = 0deg', 'type 1, theta = 45deg', 'type 2, theta = 45deg', 'type 1, theta = 0deg', 'type 2, theta = 0deg', 'type 1, theta = 45deg', 'type 2, theta = 45deg'])
     plt.grid()
-    plt.show()
+    # plt.show()
 
 plt.plot(v, y_S2_0_theta0)
 plt.plot(v, y_S2_10_theta0)
@@ -153,7 +164,12 @@ plt.show()
 # plot_ballistic_limit(v, y_S2_30_theta0, y_S2_30_1_theta0, y_S2_30_2_theta45, y_S2_30_3_theta45, labels=['S2 = 30 cm, type 1, theta = 0deg', 'S2 = 30 cm, type 2, theta = 0deg', 'S2 = 30 cm, type 1, theta = 45deg', 'S2 = 30 cm, type 2, theta = 45deg'])
 
 
-# S2 = {0, 10, 20, 30}, type 1, theta = 0deg
-plot_ballistic_limit(v, y_S2_0_theta0, y_S2_10_theta0, y_S2_20_theta0, y_S2_30_theta0, y_S2_40_theta0, labels=['S2 = 0 cm', 'S2 = 10 cm', 'S2 = 20 cm', 'S2 = 30 cm', 'S2 = 40 cm'])
+# S2 = {0, 10, 20, 30}, type 1, theta = 0deg, S1 = 3.5 cm
+plot_ballistic_limit(v, y_S2_0_theta0, y_S2_10_theta0, y_S2_20_theta0, y_S2_30_theta0, y_S2_40_theta0, labels=['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+
+# S2 = {0, 10, 20, 30}, type 1, theta = 0deg, S1 = 4 cm
+plot_ballistic_limit(v, y_S2_0_theta0_S1_4, y_S2_10_theta0_S1_4, y_S2_20_theta0_S1_4, y_S2_30_theta0_S1_4, y_S2_40_theta0_S1_4, labels=['S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+plt.legend(['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+plt.show()
 
 # NEED TO QUANTIFY!!! the mass increase for +10cm of S2

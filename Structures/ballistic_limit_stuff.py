@@ -2,13 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # S1 = 3.5 # stand-off between 1st and 2nd bumper [cm]
-S1 = 4
-S2 = 0 # stand-off between 2nd bumper and rear wall [cm]
-d = 1 # diameter of projectile [cm]
-t_w = 0.472 # equipment cover plate thickness
+S1 = 4 # distance between 1st (outer) and 2nd (inner) bumper [cm]
+S2 = 0 # stand-off between 2nd (inner) bumper and rear wall [cm]
+t_w = 0.15 # equipment cover plate (rear wall) thickness [cm]
 sigma_y_ksi = 37.7 # yield strength of equipment cover plate [ksi], here for R_p0.2 = 260 MPa
-t_ob = 0.041
-t_b = 0.041
+t_ob = 0.03 # outer bumper thickness [cm]
+t_b = 0.15 # inner bumper thickness [cm]
 
 # fit factors
 K_3D = 0.4 # general
@@ -110,7 +109,22 @@ y_S2_20_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 20, vt11, vt21, the
 y_S2_30_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 30, vt11, vt21, theta=np.radians(0))
 y_S2_40_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 40, vt11, vt21, theta=np.radians(0))
 
-def plot_ballistic_limit(v, y1, y2, y3, y4, y5 = None, labels=None):
+# def plot_ballistic_limit_1x(v, y1, y2, y3, y4, y5 = None, labels=None):
+#     # S2 = 0
+#     plt.plot(v, y1)
+#     plt.plot(v, y2)
+#     plt.plot(v, y3)
+#     plt.plot(v, y4)
+#     plt.plot(v, y5) if y5 is not None else None
+#     # plt.ylim(0, 1)
+#     plt.xlabel('Velocity (km/s)')
+#     plt.ylabel('Critical Diameter (cm)')
+#     plt.title('Ballistic Limit vs Velocity for a certain S2')
+#     # plt.legend(labels if labels else ['type 1, theta = 0deg', 'type 2, theta = 0deg', 'type 1, theta = 45deg', 'type 2, theta = 45deg', 'type 1, theta = 0deg', 'type 2, theta = 0deg', 'type 1, theta = 45deg', 'type 2, theta = 45deg'])
+#     plt.grid()
+#     # plt.show()
+
+def plot_ballistic_limit_5x(v, y1, y2, y3, y4, y5 = None, labels=None):
     # S2 = 0
     plt.plot(v, y1)
     plt.plot(v, y2)
@@ -152,24 +166,35 @@ plt.show()
 
 
 # # S2 = 0
-# plot_ballistic_limit(v, y_S2_0_theta0, y_S2_0_1_theta0, y_S2_0_2_theta45, y_S2_0_3_theta45, labels=['S2 = 0 cm, type 1, theta = 0deg', 'S2 = 0 cm, type 2, theta = 0deg', 'S2 = 0 cm, type 1, theta = 45deg', 'S2 = 0 cm, type 2, theta = 45deg'])
+# plot_ballistic_limit_5x(v, y_S2_0_theta0, y_S2_0_1_theta0, y_S2_0_2_theta45, y_S2_0_3_theta45, labels=['S2 = 0 cm, type 1, theta = 0deg', 'S2 = 0 cm, type 2, theta = 0deg', 'S2 = 0 cm, type 1, theta = 45deg', 'S2 = 0 cm, type 2, theta = 45deg'])
 
 # # S2 = 10
-# plot_ballistic_limit(v, y_S2_10_theta0, y_S2_10_1_theta0, y_S2_10_2_theta45, y_S2_10_3_theta45, labels=['S2 = 10 cm, type 1, theta = 0deg', 'S2 = 10 cm, type 2, theta = 0deg', 'S2 = 10 cm, type 1, theta = 45deg', 'S2 = 10 cm, type 2, theta = 45deg'])
+# plot_ballistic_limit_5x(v, y_S2_10_theta0, y_S2_10_1_theta0, y_S2_10_2_theta45, y_S2_10_3_theta45, labels=['S2 = 10 cm, type 1, theta = 0deg', 'S2 = 10 cm, type 2, theta = 0deg', 'S2 = 10 cm, type 1, theta = 45deg', 'S2 = 10 cm, type 2, theta = 45deg'])
 
 # # S2 = 20
-# plot_ballistic_limit(v, y_S2_20_theta0, y_S2_20_1_theta0, y_S2_20_2_theta45, y_S2_20_3_theta45, labels=['S2 = 20 cm, type 1, theta = 0deg', 'S2 = 20 cm, type 2, theta = 0deg', 'S2 = 20 cm, type 1, theta = 45deg', 'S2 = 20 cm, type 2, theta = 45deg'])
+# plot_ballistic_limit_5x(v, y_S2_20_theta0, y_S2_20_1_theta0, y_S2_20_2_theta45, y_S2_20_3_theta45, labels=['S2 = 20 cm, type 1, theta = 0deg', 'S2 = 20 cm, type 2, theta = 0deg', 'S2 = 20 cm, type 1, theta = 45deg', 'S2 = 20 cm, type 2, theta = 45deg'])
 
 # # S2 = 30
 # plot_ballistic_limit(v, y_S2_30_theta0, y_S2_30_1_theta0, y_S2_30_2_theta45, y_S2_30_3_theta45, labels=['S2 = 30 cm, type 1, theta = 0deg', 'S2 = 30 cm, type 2, theta = 0deg', 'S2 = 30 cm, type 1, theta = 45deg', 'S2 = 30 cm, type 2, theta = 45deg'])
 
 
 # S2 = {0, 10, 20, 30}, type 1, theta = 0deg, S1 = 3.5 cm
-plot_ballistic_limit(v, y_S2_0_theta0, y_S2_10_theta0, y_S2_20_theta0, y_S2_30_theta0, y_S2_40_theta0, labels=['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+plot_ballistic_limit_5x(v, y_S2_0_theta0, y_S2_10_theta0, y_S2_20_theta0, y_S2_30_theta0, y_S2_40_theta0, labels=['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
 
 # S2 = {0, 10, 20, 30}, type 1, theta = 0deg, S1 = 4 cm
-plot_ballistic_limit(v, y_S2_0_theta0_S1_4, y_S2_10_theta0_S1_4, y_S2_20_theta0_S1_4, y_S2_30_theta0_S1_4, y_S2_40_theta0_S1_4, labels=['S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+plot_ballistic_limit_5x(v, y_S2_0_theta0_S1_4, y_S2_10_theta0_S1_4, y_S2_20_theta0_S1_4, y_S2_30_theta0_S1_4, y_S2_40_theta0_S1_4, labels=['S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
 plt.legend(['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+plt.show()
+
+
+# Custom stuff:
+# Comet Interceptor: S1 = 5cm, S2 = 2.5cm, t_ob = 0.03 cm, t_b = 0.15 cm, t_w = 0.15 cm, theta = 0deg
+y_Comet_Interceptor = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, theta=np.radians(0))
+plt.plot(v, y_Comet_Interceptor)
+plt.xlabel('Velocity (km/s)')
+plt.ylabel('Critical Diameter (cm)')
+plt.title('Ballistic Limit vs Velocity for Comet Interceptor')
+plt.grid()
 plt.show()
 
 # NEED TO QUANTIFY!!! the mass increase for +10cm of S2

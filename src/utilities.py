@@ -491,43 +491,49 @@ def mean_2_true(M:float, e:float)->float:
     uses an underlying newton iterator for the M->E step. precision governes
     how precise the conversion is, and iterations is how long it goes on for at maximum'''
 
-    if e == 1:
-        z = np.cbrt(3*M + np.sqrt(1+(3*M)**2))
-        theta = 2*np.arctan(z-1/z) # parabolic true anomaly
+    if e == 0:
+        return M
+    elif e == 1:
+        z = m.cbrt(3*M + m.sqrt(1+(3*M)**2))
+        theta = 2*m.atan(z-1/z) # parabolic true anomaly
     elif e < 1:
         # newton iterate to find M -> E
-        def Efn(E): return E-e*np.sin(E)-M
-        def Edf(E): return 1-e*np.cos(E)
+        def Efn(E): return E-e*m.sin(E)-M
+        def Edf(E): return 1-e*m.cos(E)
 
         E = root_finder_newton(Efn, Edf, M)
-        theta = 2*np.arctan(np.sqrt((1+e)/(1-e))*np.tan(E/2)) # eccentric true anomaly
+        theta = 2*m.atan(m.sqrt((1+e)/(1-e))*m.tan(E/2)) % (2*m.pi) # eccentric true anomaly
     else:
         # newton iterate to find M -> F
-        def Ffn(F): return e*np.sinh(F)-F-M
-        def Fdf(F): return e*np.cosh(F)-1
+        def Ffn(F): return e*m.sinh(F)-F-M
+        def Fdf(F): return e*m.cosh(F)-1
 
         F = root_finder_newton(Ffn,Fdf,M)
-        theta = 2*np.arctan(np.sqrt((1+e)/(e-1))*np.tanh(F/2)) # hyperbolic true anomaly
-    return theta
+        theta = 2*m.atan(m.sqrt((1+e)/(e-1))*m.tanh(F/2)) # hyperbolic true anomaly
+    return theta 
     
 def true_2_mean(theta:float, e:float)->float:
     '''true anomaly to mean anomaly\n
     automatically gives eccentric, hyperbolic, or parabolic depending on e'''
 
-    if e < 1:
-        E = 2*np.arctan(np.sqrt((1-e)/(1+e))*np.tan(theta/2))
-        M = E - e*np.sin(E) # elliptical mean anomaly
+    if e == 0:
+        return theta
+
+    elif e < 1:
+        E = 2*m.atan(m.sqrt((1-e)/(1+e))*m.tan(theta/2))
+        M = E - e*m.sin(E) # elliptical mean anomaly
     elif e == 1:
-        M = 0.5*np.tan(theta/2)+(1/6)*np.tan(theta/2)**3 # parabolic mean anomaly
+        M = 0.5*m.tan(theta/2)+(1/6)*m.tan(theta/2)**3 # parabolic mean anomaly
     else:
-        F = 2*np.arctanh(np.sqrt((e-1)/(e+1))*np.tan(theta/2)) # tan(theta) isn't a typo
-        M = e*np.sinh(F) - F # hyperbolic mean anomaly
+        F = 2*m.atanh(m.sqrt((e-1)/(e+1))*m.tan(theta/2)) # tan(theta) isn't a typo
+        M = e*m.sinh(F) - F # hyperbolic mean anomaly
     return M
 
-def time_2_true(t:float,e:float,h:float,sgp:float)->float:
+def time_2_true(t:float,e:float,h:float,sgp:float, precision:float=1e-6)->float:
     '''time to true anomaly via the universal variable method'''
     
-    if t == 0: return 0 # by definition
+    if t == 0: return 0.0 # by definition
+    if e == 0: return t * sgp**2 / h**3 # circular orbit edge case
 
     # time -> chi -> true
     rp = h*h/(sgp*(1+e))
@@ -546,28 +552,44 @@ def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     # and r_max is apoapsis (or for e>=1 infinity s.t. chi = 0)
     chi_max = m.sqrt(sgp)*t/rp
     chi_min = m.sqrt(sgp)*t/(h*h/(sgp*(1-e))) if e < 1 else 0.0
+    if chi_max < chi_min: chi_min,chi_max = chi_max,chi_min # swap if wrong signs
     try:
         chi0 = 0.5*(chi_min+chi_max)
-        chi = root_finder_newton(F,dF,chi0)
+        chi = root_finder_newton(F,dF,chi0,precision=precision)
         if not (chi_min < chi < chi_max): raise ArithmeticError("Converged wrong")
     except ArithmeticError:
+        if chi_min == 0.0: chi_min -= 1
+        for _ in range(100): # ensure bisection works with the min and max
+            if F(chi_max)*F(chi_min) >= 0:
+                chi_max *= 1.1
+                chi_min *= 1.1
+            else: break
+        else: raise ArithmeticError("Invalid Bisection bounds")
         # fall back on bisection
-        chi = root_finder_bisection(F,chi_min,chi_max)
+        chi = root_finder_bisection(F,chi_min,chi_max,tolerance=precision)
+
+
 
     if e == 1: # parabolic:
-        return 2 * m.atan(m.sqrt(sgp)*chi/h)
+        theta = 2 * m.atan(m.sqrt(sgp)*chi/h)
     elif e < 1: # elliptic
         E = chi * m.sqrt(alpha)
-        return 2*m.atan(m.sqrt((1+e)/(1-e)) * m.tan(E/2))
+        theta = (2*m.atan(m.sqrt((1+e)/(1-e)) * m.tan(E/2))) % (2*m.pi)
     else: # hyperbolic
         Eh = chi * m.sqrt(-alpha)
-        return 2*m.atan(
+        theta = 2*m.atan(
             m.sqrt((e+1)/(e-1)) * m.tanh(Eh/2)
         )
+    return theta 
 
 
 def true_2_time(theta:float, e:float, h:float, sgp:float)->float:
     '''true anomaly to time using universal variable method'''
+
+    if theta == 0: return 0.0 # by definition
+    if e == 0: return theta * h**3 / sgp**2 # circular orbit edge case
+
+
     alpha = (sgp*(1-e*e))/(h*h)
     rp = h*h/(sgp*(1+e))
     S = stumpff_s
@@ -575,13 +597,13 @@ def true_2_time(theta:float, e:float, h:float, sgp:float)->float:
     if e == 1:
         chi = h/(m.sqrt(sgp))*m.tan(theta/2)
     elif e < 1:
-        E = 2 * m.tan(m.sqrt((1-e)/(1+e)) * m.tan(theta/2))
+        E = 2 * m.atan(m.sqrt((1-e)/(1+e)) * m.tan(theta/2))
         chi = E/(m.sqrt(alpha))
     else:
-        Eh = 2 * m.atanh(m.sqrt((e-1)/(e+1)) * m.tan(theta/2))
+        Eh = 2 * m.atanh(m.sqrt((e-1)/(e+1)) * m.tan(theta/2)) # [sic]
         chi = Eh/(m.sqrt(-alpha))
     
-    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/(m.sqrt(sgp))
+    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/m.sqrt(sgp)
     return time
     
 

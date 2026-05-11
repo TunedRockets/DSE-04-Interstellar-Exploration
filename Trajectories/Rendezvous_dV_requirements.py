@@ -445,9 +445,9 @@ if __name__ == "__main__":
 
     # dfb = df[df['magnitude_generation_method']=='atlas-borisov']
     # dfo = df[df['magnitude_generation_method']=='omuamua']
-    df = df[df['rdvz_total'] < 19.3]
-    plt.hist(df['rdvz_rdv'])
-    print(np.average(df['rdvz_rdv']))
+    df = df[df['icpt_idv'] < 4.5]
+    plt.hist(df['icpt_rdv'])
+    print(np.average(df['icpt_rdv']))
     plt.show()
 
     # plots_for_iso_detection()

@@ -3,11 +3,96 @@ Pytest tests for the orbit module,
 based on Curtis' exercises
 '''
 from .orbit import Orbit, orbit_from_rv, orbit_from_lambert
-from .utilities import SGP_EARTH
+from .utilities import SGP_EARTH, EQ_RAD_EARTH, time_2_true,true_2_time,mean_2_true,true_2_mean
 import numpy as np
+import math as m
 
 def within_1_percent(a,b)->bool:
+    # fpe check:
+    if np.linalg.norm(a)<1e-8: return (np.linalg.norm(b) < 1e-8) # type:ignore
     return np.linalg.norm(a-b)/np.linalg.norm(a) < 0.01 #type:ignore
+
+# ==== time and anomaly ===========
+
+def test_kepler_universal_time_elliptical():
+    h = EQ_RAD_EARTH*8  
+    mu = SGP_EARTH
+    for e in [0.0,0.3,0.5,0.7,0.9]:
+        period = 2*m.pi*m.sqrt((h*h/(mu*(1-e*e)))**3/mu)
+        tt = np.linspace(0,period,endpoint=False)
+        for t in tt:
+            M  = mu**2/(h**3) * (abs(e**2-1))**(3/2) * t
+            kep = mean_2_true(M,e)
+            uni = time_2_true(t,e,h,mu)
+            assert within_1_percent(uni,kep)
+
+def test_kepler_universal_time_hyper():
+    h = EQ_RAD_EARTH*8  
+    mu = SGP_EARTH
+    period = 90*60
+    for e in [1.0,1.5,2.0,3.0,4.0]:
+        tt = np.linspace(-period,period,endpoint=False)
+        for t in tt:
+            M  = mu**2/(h**3) * (abs(e**2-1))**(3/2) * t if e != 1 else (mu**2/(h**3))*t 
+            try:
+                kep = mean_2_true(M,e)
+            except: continue # can't compare is kepler doesn't work
+            uni = time_2_true(t,e,h,mu)
+            assert within_1_percent(uni,kep)
+
+def test_kepler_universal_theta_elliptical():
+    h = EQ_RAD_EARTH*8
+    mu = SGP_EARTH
+    for e in [0.0,0.3,0.5,0.7,0.9]:
+        tt = np.linspace(0.01,2*m.pi,endpoint=False)
+        for t in tt:
+            uni = true_2_time(t,e,h,mu)
+            try:
+                M = true_2_mean(t,e)
+            except: continue # can't compare is kepler doesn't work
+            kep = M /( mu**2/(h**3) * (abs(e**2-1))**(3/2))
+            assert within_1_percent(uni,kep)
+
+def test_kepler_universal_theta_hyper():
+    h = EQ_RAD_EARTH*8
+    mu = SGP_EARTH
+    for e in [1.0,1.5,2.0,3.0,4.0]:
+        asymp_ang = m.acos(-1/e)
+        tt = np.linspace(-asymp_ang + 0.05,asymp_ang - 0.05,endpoint=False)
+        for t in tt:
+            uni = true_2_time(t,e,h,mu)
+            M = true_2_mean(t,e)
+            kep = M /( mu**2/(h**3) * (abs(e**2-1))**(3/2)) if e != 1 else (
+                M / (mu**2/(h**3)))
+            assert within_1_percent(uni,kep)
+
+
+def test_uni_round_trip_elliptical():
+    h = EQ_RAD_EARTH*8
+    mu = SGP_EARTH
+    for e in [0.0,0.3,0.5,0.7,0.9]:
+        tt = np.linspace(0,2*m.pi, 49,endpoint=False)
+        for t in tt:
+            time = true_2_time(t,e,h,mu)
+            t2 = time_2_true(time,e,h,mu)
+            time2 = true_2_time(t2,e,h,mu)
+            assert within_1_percent(time,time2)
+            assert within_1_percent(t,t2)
+
+def test_uni_round_trip_hyper():
+    h = EQ_RAD_EARTH*8
+    mu = SGP_EARTH
+    for e in [1.0,1.5,2.0,3.0,4.0]:
+        asymp_ang = m.acos(-1/e)
+        tt = np.linspace(-asymp_ang + 0.05,asymp_ang - 0.05,endpoint=False)
+        for t in tt:
+            time = true_2_time(t,e,h,mu)
+            t2 = time_2_true(time,e,h,mu)
+            time2 = true_2_time(t2,e,h,mu)
+            assert within_1_percent(time,time2)
+            assert within_1_percent(t,t2)
+
+# ========= curtis tests ==================
 
 def test_curtis_2_7():
     ob = Orbit(1,0,0,0,0,0,SGP_EARTH)
@@ -35,7 +120,7 @@ def test_curtis_3_2():
     ob = Orbit(1,0,0,0,0,0,SGP_EARTH)
     ob.change_apses(9600,21000)
     assert within_1_percent(ob.e, 0.37255)
-    theta = ob.time_to_theta(3*60*60) % 2*np.pi
+    theta = ob.time_to_theta(3*60*60)
     assert within_1_percent(theta, np.radians(193.2)) # curtis answer wrong? (should be 195.8?)
 
 def test_curtis_3_5():
@@ -79,7 +164,7 @@ def test_curtis_5_2():
     assert within_1_percent(ob.i, np.radians(30.19))
     assert within_1_percent(ob.polar_equation(0), 4952+6378)
     assert within_1_percent(ob.t_p, 256.1)
-    assert within_1_percent(ob.time_to_theta(0) % 2*np.pi, np.radians(350.8)) # time to theta is wrong
+    assert within_1_percent(ob.time_to_theta(0), np.radians(350.8)) # time to theta is wrong
 
     
 def test_curtis_5_3():

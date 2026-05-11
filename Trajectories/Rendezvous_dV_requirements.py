@@ -228,10 +228,10 @@ def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kw
         dv = df['icpt_idv']
     else:
         dv = df['rdvz_idv'] + df['rdvz_rdv']
-    plt.hist(dv,bins=100, range=(0,100), density=True, **kwargs)
-    plt.xlabel("dV requirement")
-    plt.ylabel("probability density")
-    plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if rdvz else "intercept"}\n(Normalization includes unreachable ISOs)")
+    plt.hist(dv,bins=50, range=(0,100), density=True, edgecolor='k', alpha=0.65, histtype="stepfilled", **kwargs)
+    plt.xlabel(r"$\Delta V$ requirement")
+    plt.ylabel("Probability Density")
+    # plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if rdvz else "intercept"}\n(Normalization includes unreachable ISOs)")
     if printing:
         func = lambda x: (dv_below_budget(x,rdvz,df))*100
         print("Portion below:")
@@ -252,7 +252,7 @@ def distance_histogram(df:pd.DataFrame, **kwargs):
     plt.xlabel("Heliocentric altitude (AU)")
     plt.ylabel("probability density")
 
-def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True):
+def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
     '''Generate a probability make of dv_budget against number of detected ISOs
 
     :param df: dataframe with the ISO data to consider, defaults to None
@@ -274,24 +274,28 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True):
     
 
     N_range = np.arange(10,MS_N + 30,5)
-    V_range =np.arange(4,50)
+    V_range =np.arange(1,25, 0.5)
     NN, VV = np.meshgrid(N_range,V_range)
     F = lambda v,n: mission_success_probability(v,n,rdvz,df)
     PP = np.vectorize(F)(VV,NN)
     plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
-    plt.colorbar(location="right", label="Probability of mission success")
-    CS = plt.contour(PP,levels=[0.9],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
+    if num != 1:
+        plt.colorbar(location="right", label=r"$P_s$")
+    CS = plt.contour(PP,levels=[0.5,0.9,0.99],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]), colors='k')
     plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
-    plt.ylabel('Delta V budget (km/s)')
-    plt.xlabel('number of ISOs during mission time')
-    plt.title(f"Probability map for {"rendezvous" if rdvz else "intercept"}\nAnd estimated ISO detections during {years} year mission")
+    if num < 2:
+        plt.ylabel(r'$\Delta V$ budget [km/s]')
+    plt.xlabel(r'$N$')
+    # plt.title(f"Probability map for {"rendezvous" if rdvz else "intercept"}\nAnd estimated ISO detections during {years} year mission")
     if guesses:
-        plt.plot([EL_N,EL_N],[5,48], ls='--', color="gray")
-        plt.text(EL_N+1, 40, "Ezell, Loeb mean", color="gray")
-        plt.plot([HSP_N,HSP_N],[5,48], ls='--', color="gray")
-        plt.text(HSP_N+1, 30, "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
-        plt.plot([MS_N,MS_N],[5,48], ls='--', color="gray")
-        plt.text(MS_N-1, 20, "Marčeta, Seligman mean", ha="right", color="gray")
+        plt.axvline(EL_N,ls='--', color="gray")
+        plt.text(EL_N+1, np.average(V_range)+3, "Ezell, Loeb mean", color="gray")
+        plt.axvline(HSP_N,ls='--', color="gray")
+        plt.text(HSP_N+1, np.average(V_range), "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
+        plt.axvline(MS_N,ls='--', color="gray")
+        plt.text(MS_N-1, np.average(V_range)-3, "Marčeta, Seligman mean", ha="right", color="gray")
+
+    plt.gca().set_aspect(N_range[-1]/V_range[-1])
 
 def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
@@ -359,6 +363,70 @@ def recreate_ISO(row:pd.Series)->tuple[Orbit,float,str]:
     return ISO, t_detect, row['magnitude_generation_method']
 
 
+def plots_for_iso_detection():
+    '''function to generate the plots and numbers for the iso detection chapter in the LaTeX'''
+
+    # want:
+    # detection distance, detection time, distribution of them, for both omuamua-like and borisov like
+    # ratio detected
+    df = get_data()
+    dfb = df[df['magnitude_generation_method']=='atlas-borisov']
+    dfo = df[df['magnitude_generation_method']=='omuamua']
+    print('DATA:\n')
+    print(f'fraction omuamua: {len(dfo)/len(df)*100:.3f}%, number omuamua: {len(dfo)}')
+    print(f'fraction borisov: {len(dfb)/len(df)*100:.3f}%, number borisov: {len(dfb)}')
+    print()
+
+
+
+    # distance:
+    plt.subplot(1,2,1)
+    plt.title('Cometary')
+    br = dfb['detection_r']
+    plt.hist(br, bins=20, density=True, color='b', edgecolor='k', alpha=0.65, histtype="stepfilled")
+    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
+    plt.xlabel("Heliocentric distance at time of detection [AU]")
+    plt.ylabel("Probability density")
+    
+    print(f'borisov average: {np.average(br)}')
+    # plt.show()
+    plt.subplot(1,2,2)
+    plt.title('Asteroidal')
+
+    # distance:
+    br = dfo['detection_r']
+    plt.hist(br, bins=20, density=True, color='y', edgecolor='k', alpha=0.65, histtype="stepfilled")
+    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
+    plt.xlabel("Heliocentric distance at time of detection [AU]")
+    plt.ylabel("Probability density")
+    
+    print(f'omuamua average: {np.average(br)}')
+    plt.show()
+
+    # time:
+    plt.subplot(1,2,1)
+    plt.title('Cometary')
+    br = dfb['time_until_periapsis']
+    plt.hist(br, bins=20, density=True, color='b', edgecolor='k', alpha=0.65, histtype="stepfilled")
+    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
+    plt.xlabel("Time until perihelion after detection [days]")
+    plt.ylabel("Probability density")
+    
+    print(f'borisov average: {np.average(br)}')
+    plt.subplot(1,2,2)
+    plt.title('Asteroidal')
+
+    # time:
+    br = dfo['time_until_periapsis']
+    plt.hist(br, bins=20, density=True, color='y', edgecolor='k', alpha=0.65, histtype="stepfilled")
+    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
+    plt.xlabel("Time until perihelion after detection [days]")
+    plt.ylabel("Probability density")
+    
+    print(f'omuamua average: {np.average(br)}')
+    plt.show()
+
+
 def run_in_background():
     '''run forever generating new datapoints'''
     while True: 
@@ -371,25 +439,18 @@ def run_in_background():
 
 if __name__ == "__main__":
 
+    
     df = get_data()
-    dfb = df[df['magnitude_generation_method']=='atlas-borisov']
-    dfo = df[df['magnitude_generation_method']=='omuamua']
-    print(f'fraction omuamua: {len(dfo)/len(df):.2f}, number omuamua: {len(dfo)}')
-    print(f'fraction borisov: {len(dfb)/len(df):.2f}, number borisov: {len(dfb)}')
+    print(len(df))
 
-
-
-    plt.hist(dfb['rdvz_t_launch'], bins=50, density=True)
-    plt.title("time to launch probability distribution (rendezvous)")
-    plt.xlabel("time to launch (Days)")
-    plt.ylabel("probability density")
-    plt.show()
-    plt.hist(dfb['icpt_t_launch'], bins=50, density=True)
-    plt.title("time to launch probability distribution (intercept)")
-    plt.xlabel("time to launch (Days)")
-    plt.ylabel("probability density")
+    # dfb = df[df['magnitude_generation_method']=='atlas-borisov']
+    # dfo = df[df['magnitude_generation_method']=='omuamua']
+    df = df[df['rdvz_total'] < 19.3]
+    plt.hist(df['rdvz_rdv'])
+    print(np.average(df['rdvz_rdv']))
     plt.show()
 
+    # plots_for_iso_detection()
 
     run_in_background()
 

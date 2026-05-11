@@ -24,7 +24,7 @@ for idx, row in df.iterrows():
     )
 
 
-    p = vector_elazr(ISO.hyperbolic_origin(True))
+    p = vector_elazr(ISO.hyperbolic_origin())
     points.append([p[1],p[0]]) # swap azimuth and elevation
 points = np.array(points)
 

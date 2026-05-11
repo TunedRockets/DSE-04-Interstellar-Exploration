@@ -159,7 +159,7 @@ def study_batch(gen_type:str='')->pd.DataFrame:
     :rtype: pd.DataFrame
     '''
 
-    np.seterr(divide='ignore', invalid='ignore') # since we don't care about the errors
+    np.seterr(all='ignore') # since we don't care about the errors
     ISOs = get_ISO(gen_type=gen_type)
     # shuffle timings so that does not influence study:
     res_list= []
@@ -274,7 +274,7 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
     
 
     N_range = np.arange(10,MS_N + 30,5)
-    V_range =np.arange(1,25, 0.5)
+    V_range =np.arange(1,25, 0.2)
     NN, VV = np.meshgrid(N_range,V_range)
     F = lambda v,n: mission_success_probability(v,n,rdvz,df)
     PP = np.vectorize(F)(VV,NN)
@@ -296,6 +296,7 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
         plt.text(MS_N-1, np.average(V_range)-3, "Marčeta, Seligman mean", ha="right", color="gray")
 
     plt.gca().set_aspect(N_range[-1]/V_range[-1])
+    return PP, N_range, V_range
 
 def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
@@ -426,6 +427,49 @@ def plots_for_iso_detection():
     print(f'omuamua average: {np.average(br)}')
     plt.show()
 
+def plots_for_dv_histogram():
+
+
+    df = get_data()
+    dvi = df['icpt_idv']
+    dvr = df['rdvz_total']
+    plt.hist(dvi, bins=40, range=(0,100), density=True, color=('r'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="Flyby")
+    plt.hist(dvr, bins=40, range=(0,100), density=True, color=('orange'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="Rendezvous")
+    plt.xlabel(r"$\Delta V$ requirement")
+    plt.ylabel("Probability Density")
+    plt.legend()
+    plt.show()
+   
+def plots_for_probability_map():
+    df = get_data()
+    plt.subplot(1,2,1)
+    plt.title("Flyby")
+    PPi, N_range, V_range = probability_map(df,False,False,1)
+    plt.subplot(1,2,2)
+    plt.title("Rendezvous")
+    PPr, _, _ = probability_map(df,True,False,2)
+
+    # Chosen N:
+    N = 150
+    idx_n = 0
+    while N_range[idx_n] < N: idx_n +=1
+
+    #flyby:
+    P_range = PPi[:,idx_n]
+    idx_v = 0
+    while P_range[idx_v] < 0.9: idx_v += 1
+    Vi = V_range[idx_v]
+
+    #rendezvous:
+    P_range = PPr[:,idx_n]
+    idx_v = 0
+    while P_range[idx_v] < 0.9: idx_v += 1
+    Vr = V_range[idx_v]
+    print(f"for 90%, intercept needs: {Vi:.4f} km/s dV and rendezvous needs: {Vr:.4f} km/s dV")
+    
+
+
+    plt.show()
 
 def run_in_background():
     '''run forever generating new datapoints'''
@@ -439,18 +483,12 @@ def run_in_background():
 
 if __name__ == "__main__":
 
+
+
+    plots_for_iso_detection()
+    plots_for_dv_histogram()
+    plots_for_probability_map()
     
-    df = get_data()
-    print(len(df))
-
-    # dfb = df[df['magnitude_generation_method']=='atlas-borisov']
-    # dfo = df[df['magnitude_generation_method']=='omuamua']
-    df = df[df['icpt_idv'] < 4.5]
-    plt.hist(df['icpt_rdv'])
-    print(np.average(df['icpt_rdv']))
-    plt.show()
-
-    # plots_for_iso_detection()
 
     run_in_background()
 
@@ -458,17 +496,17 @@ if __name__ == "__main__":
     # example of using the functions:
     
 
-    plt.hist(dfb[dfb['rdvz_total'] <= 20]['rdvz_r'],density=True, bins=20)
-    print(f"{len(dfb[dfb['rdvz_total'] <= 20])/len(dfb):.3f}")
-    plt.show()
-    dv_histogram(True,True,dfb)
-    plt.show()
-    probability_map(dfb,True)
-    plt.show()
+    # plt.hist(dfb[dfb['rdvz_total'] <= 20]['rdvz_r'],density=True, bins=20)
+    # print(f"{len(dfb[dfb['rdvz_total'] <= 20])/len(dfb):.3f}")
+    # plt.show()
+    # dv_histogram(True,True,dfb)
+    # plt.show()
+    # probability_map(dfb,True)
+    # plt.show()
 
     
-    dfb = dfb.sort_values('rdvz_total')
-    print(dfb[["rdvz_total", "detection_r","periapsis","time_until_periapsis","rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival"]])
+    # dfb = dfb.sort_values('rdvz_total')
+    # print(dfb[["rdvz_total", "detection_r","periapsis","time_until_periapsis","rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival"]])
 
 
 

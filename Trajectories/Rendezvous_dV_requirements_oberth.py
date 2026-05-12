@@ -1074,20 +1074,43 @@ if __name__ == "__main__":
     # plt.title("borisov-like dv distribution")
     # plt.show()
 
-    DV_THRESHOLD = 26
+    DV_THRESHOLD = 20
+    MAX_RDVZ_DISTANCE = 200  # AU
 
-    total_dv = df['rdvz_idv'] + df['rdvz_rdv']
+    total_dv = df['rdvz_total']
 
     df_reach = df[
         total_dv.notna() &
-        (total_dv < DV_THRESHOLD)
+        (total_dv < DV_THRESHOLD) &
+        (df['rdvz_r'] < MAX_RDVZ_DISTANCE)
         ]
+
+    total = len(df_reach)
+
+    pct_200 = 100 * np.sum(df_reach['rdvz_r'] < 200) / total
+    pct_150 = 100 * np.sum(df_reach['rdvz_r'] < 150) / total
+    pct_100 = 100 * np.sum(df_reach['rdvz_r'] < 100) / total
+
+    print(f"Under 200 AU: {pct_200:.2f}%")
+    print(f"Under 150 AU: {pct_150:.2f}%")
+    print(f"Under 100 AU: {pct_100:.2f}%")
     dv_histogram(False, True, df_reach)
     plt.show()
     probability_map_df(dfb, True)
     plt.show()
 
     plt.figure()
+
+    plt.hist(
+        df_reach['rdvz_r'].dropna(),
+        bins=40,
+        density=True
+    )
+
+    plt.xlabel("Rendezvous distance (AU)")
+    plt.ylabel("Probability density")
+    plt.title("Reachable ISO rendezvous distance")
+    plt.show()
 
     plt.hist(
         df_reach['rdvz_rdv'].dropna(),
@@ -1098,6 +1121,7 @@ if __name__ == "__main__":
     plt.xlabel("Rendezvous velocity (km/s)")
     plt.ylabel("Probability density")
     plt.title("Reachable ISO rendezvous velocities")
+    plt.show()
 
     plt.figure()
 
@@ -1110,6 +1134,7 @@ if __name__ == "__main__":
     plt.xlabel("Insertion + plane-change ΔV (km/s)")
     plt.ylabel("Probability density")
     plt.title("Reachable ISO insertion ΔV")
+    plt.show()
 
     df = df.sort_values('rdvz_total', ignore_index=True)
     print(df)

@@ -33,7 +33,7 @@ R_sun = 6.96e5
 # Mission
 # ------------------------------------------------------------
 
-total_dv = 26_000
+total_dv = 24_000
 plane_change_delta_v = 3_000
 oberth_delta_v = 4_000
 

@@ -119,8 +119,8 @@ def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
     out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
            'time_until_periapsis':(ISO.t_p - detect_t)/DAY,
-             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, }
-    
+             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, 
+             "ISO_excess_velocity":ISO.excess_velocity}
     # check detection distance/time
     
     # intercept:
@@ -204,17 +204,13 @@ def _fix_data():
     data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # ==== change here ====
-    # np.seterr(all="ignore")
-    # for i,row in tqdm(data.iterrows(), desc="fixing marginal savings",total=len(data)):
-    #     if not (row['rdvz_total'] <= 20): continue
-    #     ISO, detect_t,_ = recreate_ISO(row)
-    #     try:
-    #         insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_t + (row['rdvz_t_launch']-1)*DAY,detect_t+2*MAX_MISSION_TIME*YEAR, **rdvz_weights)
-    #         rdvz_total = insert_dv + rdvz_dv
-    #         rdvz_gain = row['rdvz_total'] - rdvz_total
-    #         data.loc[i, 'rdvz_marginal_gain'] =  rdvz_gain 
+    np.seterr(all="ignore")
+    for i,row in tqdm(data.iterrows(), desc="fixing Excess Velocity",total=len(data)):
+        # if not (row['rdvz_total'] <= 20): continue
+        ISO, _,_ = recreate_ISO(row)
 
-    #     except (ArithmeticError, ValueError): continue
+        data.loc[i, 'ISO_excess_velocity'] =  ISO.excess_velocity 
+
 
     # =====================
 
@@ -479,6 +475,8 @@ def plots_for_probability_map():
 
     plt.show()
 
+
+
 def run_in_background():
     '''run forever generating new datapoints'''
     while True: 
@@ -492,16 +490,13 @@ def run_in_background():
 if __name__ == "__main__":
 
 
-    
     df = get_data()
 
-    data = df['rdvz_marginal_gain']
-    print(f'average: {np.average(data)}\t std: {np.std(data)}')
 
 
     df = df[df["rdvz_total"] < 19.3]
 
-    data = df['rdvz_marginal_gain']
+    data = df['ISO_excess_velocity']
     plt.hist(data, density=True, bins=40)
     print(f'average: {np.average(data)}\t std: {np.std(data)}')
     plt.show()

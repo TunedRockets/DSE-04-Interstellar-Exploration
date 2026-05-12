@@ -1213,19 +1213,25 @@ if __name__ == "__main__":
             print_results=False
         )
 
-        if dry_mass == 1000 or dry_mass == 5000 or dry_mass == 10000:
-            print("\n\n" + "=" * 80)
-            print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, THERMAL OPTION")
-            print("=" * 80)
+        if dry_mass == 100 or dry_mass ==1000 or dry_mass == 5000 or dry_mass == 10000:
+            # print("\n\n" + "=" * 80)
+            # print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, THERMAL OPTION")
+            # print("=" * 80)
             
-            run_configuration(
-                dry_mass,
-                thermal=True,
-                print_results=True
-            )
+            # run_configuration(
+            #     dry_mass,
+            #     thermal=True,
+            #     print_results=True
+            # )
 
             print("\n\n" + "=" * 80)
             print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, NON-THERMAL OPTION")
+            print("launch mass hypergolic =", launch_mass_hypergolic, "kg")
+            print("kickstage propellant mass =", kick_prop_hypergolic, "kg, launch mass fraction = ", kick_prop_hypergolic / launch_mass_hypergolic)
+            print("spacecraft propellant mass =", spacecraft_prop_hypergolic, "kg, launch mass fraction = ", spacecraft_prop_hypergolic / launch_mass_hypergolic)
+            print("kickstage dry mass =", kick_dry_hypergolic, "kg, launch mass fraction = ", kick_dry_hypergolic / launch_mass_hypergolic)
+            print("radiator mass =", radiator_hypergolic, "kg, launch mass fraction = ", radiator_hypergolic / launch_mass_hypergolic)
+            print("reactor mass =", reactor_hypergolic, "kg, launch mass fraction = ", reactor_hypergolic / launch_mass_hypergolic)
             print("=" * 80)
 
             run_configuration(

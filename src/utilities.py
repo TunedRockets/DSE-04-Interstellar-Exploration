@@ -641,6 +641,10 @@ def time_2_true(t:float,e:float,h:float,sgp:float, precision:float=1e-6)->float:
         chi = root_finder_bisection(F,chi_min,chi_max,tolerance=precision)
 
     if e == 1: # parabolic:
+        # chi = h/sqrt(mu) * tan(t/2)
+        # chi*sqrt(mu)/h = tan(t/2)
+        # atan(chi*sqrt(mu)/h) = t/2
+        # t = 2atan(chi*sqrt(mu)/h)
         theta = 2 * m.atan(m.sqrt(sgp)*chi/h)
     elif e < 1: # elliptic
         E = chi * m.sqrt(alpha)

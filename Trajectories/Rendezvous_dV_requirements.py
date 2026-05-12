@@ -204,9 +204,17 @@ def _fix_data():
     data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # ==== change here ====
-    # data["icpt_t_launch"] = data["icpt_t_launch"]/DAY
-    # data["rdvz_t_launch"] = data["rdvz_t_launch"]/DAY
-    # data["rdvz_t_arrival"] = data["rdvz_t_arrival"]/DAY
+    # np.seterr(all="ignore")
+    # for i,row in tqdm(data.iterrows(), desc="fixing marginal savings",total=len(data)):
+    #     if not (row['rdvz_total'] <= 20): continue
+    #     ISO, detect_t,_ = recreate_ISO(row)
+    #     try:
+    #         insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_t + (row['rdvz_t_launch']-1)*DAY,detect_t+2*MAX_MISSION_TIME*YEAR, **rdvz_weights)
+    #         rdvz_total = insert_dv + rdvz_dv
+    #         rdvz_gain = row['rdvz_total'] - rdvz_total
+    #         data.loc[i, 'rdvz_marginal_gain'] =  rdvz_gain 
+
+    #     except (ArithmeticError, ValueError): continue
 
     # =====================
 
@@ -482,6 +490,22 @@ def run_in_background():
 # ======= plotting and analysis ========
 
 if __name__ == "__main__":
+
+
+    
+    df = get_data()
+
+    data = df['rdvz_marginal_gain']
+    print(f'average: {np.average(data)}\t std: {np.std(data)}')
+
+
+    df = df[df["rdvz_total"] < 19.3]
+
+    data = df['rdvz_marginal_gain']
+    plt.hist(data, density=True, bins=40)
+    print(f'average: {np.average(data)}\t std: {np.std(data)}')
+    plt.show()
+
 
 
 

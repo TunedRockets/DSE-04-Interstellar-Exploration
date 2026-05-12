@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
-PLOT= False
+PLOT= True
 
 if PLOT:
     import matplotlib as mpl
@@ -1058,23 +1058,58 @@ def what():
 if __name__ == "__main__":
     # what()
 
-    find_optimum_lon_per()
+    # find_optimum_lon_per()
     # example of using the functions:
 
     df = get_data()
     dfb = df[df['magnitude_generation_method'] == 'atlas-borisov']
     dfo = df[df['magnitude_generation_method'] == 'omuamua']
 
-    print(f'fraction omuamua: {len(dfo) / len(df):.2f}, number omuamua: {len(dfo)}')
-    print(f'fraction borisov: {len(dfb) / len(df):.2f}, number borisov: {len(dfb)}')
-    dv_histogram(True, True, df=dfo)
-    plt.title("Omuamua-like dv distribution")
-    plt.show()
-    dv_histogram(True, True, df=dfb)
-    plt.title("borisov-like dv distribution")
+    # print(f'fraction omuamua: {len(dfo) / len(df):.2f}, number omuamua: {len(dfo)}')
+    # print(f'fraction borisov: {len(dfb) / len(df):.2f}, number borisov: {len(dfb)}')
+    # dv_histogram(True, True, df=dfo)
+    # plt.title("Omuamua-like dv distribution")
+    # plt.show()
+    # dv_histogram(True, True, df=dfb)
+    # plt.title("borisov-like dv distribution")
+    # plt.show()
+
+    DV_THRESHOLD = 26
+
+    total_dv = df['rdvz_idv'] + df['rdvz_rdv']
+
+    df_reach = df[
+        total_dv.notna() &
+        (total_dv < DV_THRESHOLD)
+        ]
+    dv_histogram(False, True, df_reach)
     plt.show()
     probability_map_df(dfb, True)
     plt.show()
+
+    plt.figure()
+
+    plt.hist(
+        df_reach['rdvz_rdv'].dropna(),
+        bins=40,
+        density=True
+    )
+
+    plt.xlabel("Rendezvous velocity (km/s)")
+    plt.ylabel("Probability density")
+    plt.title("Reachable ISO rendezvous velocities")
+
+    plt.figure()
+
+    plt.hist(
+        df_reach['rdvz_idv'].dropna(),
+        bins=40,
+        density=True
+    )
+
+    plt.xlabel("Insertion + plane-change ΔV (km/s)")
+    plt.ylabel("Probability density")
+    plt.title("Reachable ISO insertion ΔV")
 
     df = df.sort_values('rdvz_total', ignore_index=True)
     print(df)

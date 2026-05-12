@@ -50,9 +50,9 @@ rendezvous_delta_v = (
 # Electric propulsion system
 # ------------------------------------------------------------
 
-ion_isp = 4150                      # s
-ion_thruster_thrust = 0.237         # N
-ion_efficiency = 0.70
+ion_isp = 4150                      # s - based on NEXT thruster performance, average
+ion_thruster_thrust = 0.237         # N - based on NEXT thruster performance, higher value (lower 0.236)
+ion_efficiency = 0.70               # - based on NEXT thruster performance
 
 
 # ------------------------------------------------------------
@@ -1212,6 +1212,28 @@ if __name__ == "__main__":
             thermal=False,
             print_results=False
         )
+
+        if dry_mass == 1000 or dry_mass == 5000 or dry_mass == 10000:
+            print("\n\n" + "=" * 80)
+            print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, THERMAL OPTION")
+            print("=" * 80)
+            
+            run_configuration(
+                dry_mass,
+                thermal=True,
+                print_results=True
+            )
+
+            print("\n\n" + "=" * 80)
+            print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, NON-THERMAL OPTION")
+            print("=" * 80)
+
+            run_configuration(
+                dry_mass,
+                thermal=False,
+                print_results=True
+            )
+
 
         # --------------------------------------------------------
         # Thermal

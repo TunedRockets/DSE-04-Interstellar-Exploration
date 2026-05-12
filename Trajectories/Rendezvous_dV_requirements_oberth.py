@@ -1074,7 +1074,7 @@ if __name__ == "__main__":
     # plt.title("borisov-like dv distribution")
     # plt.show()
 
-    DV_THRESHOLD = 20
+    DV_THRESHOLD = 24
     MAX_RDVZ_DISTANCE = 200  # AU
 
     total_dv = df['rdvz_total']
@@ -1110,6 +1110,19 @@ if __name__ == "__main__":
     plt.xlabel("Rendezvous distance (AU)")
     plt.ylabel("Probability density")
     plt.title("Reachable ISO rendezvous distance")
+    plt.show()
+
+    plt.figure()
+
+    plt.hist(
+        df_reach['rdvz_t_arrival'].dropna()/365,
+        bins=40,
+        density=True
+    )
+
+    plt.xlabel("Rendezvous intercept time (Years)")
+    plt.ylabel("Probability density")
+    plt.title("Reachable ISO rendezvous time")
     plt.show()
 
     plt.hist(

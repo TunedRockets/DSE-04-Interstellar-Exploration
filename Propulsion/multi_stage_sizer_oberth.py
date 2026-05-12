@@ -1104,7 +1104,7 @@ if __name__ == "__main__":
 
     # total_dv = 32500
     insert_dv = 7500
-    rdvz_dv =26.3
+    rdvz_dv =24_000
     # rdvz_dv = total_dv - insert_dv
     total_dv=insert_dv+rdvz_dv
 

@@ -10,7 +10,7 @@ from src2.orbit import *
 import numpy as np
 from tqdm import tqdm
 import matplotlib as mpl
-mpl.use('TkAgg')
+# mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 
 # ============================================================
@@ -33,9 +33,9 @@ R_sun = 6.96e5
 # Mission
 # ------------------------------------------------------------
 
-total_dv = 20_000
+total_dv = 24_000
 plane_change_delta_v = 3_000
-oberth_delta_v = 3_000
+oberth_delta_v = 4_000
 
 rendezvous_delta_v = (
     total_dv
@@ -43,16 +43,16 @@ rendezvous_delta_v = (
     - oberth_delta_v
 )
 
-payload_dry_mass = 1000  # kg
+# payload_dry_mass = 1000  # kg
 
 
 # ------------------------------------------------------------
 # Electric propulsion system
 # ------------------------------------------------------------
 
-ion_isp = 4150                      # s
-ion_thruster_thrust = 0.237         # N
-ion_efficiency = 0.70
+ion_isp = 4150                      # s - based on NEXT thruster performance, average
+ion_thruster_thrust = 0.237         # N - based on NEXT thruster performance, higher value (lower 0.236)
+ion_efficiency = 0.70               # - based on NEXT thruster performance
 
 
 # ------------------------------------------------------------
@@ -931,7 +931,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
             print("=" * 80)
 
             print("Payload dry mass:",
-                  payload_dry_mass,
+                  remaining_mass_margin_thermal,
                   "kg")
 
             print()
@@ -972,9 +972,9 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
             print("Combined initial launch mass (Kickstage Option):",
                   kickstage_initial_mass_hypergolic,
                   "kg")
-            print("Payload dry mass:",
-                  payload_dry_mass,
-                  "kg")
+            # print("Payload dry mass:",
+            #       payload_dry_mass,
+            #       "kg")
 
             print()
 
@@ -1008,7 +1008,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # Reactor mass model
     # ------------------------------------------------------------
 
-    reactor_specific_mass = 290/30  # kg/kW thermal (SNAP)
+    reactor_specific_mass = 130/100  # kg/kW thermal (SNAP)
 
     reactor_mass_thermal = (
         reactor_thermal_power_thermal / 1e3
@@ -1033,7 +1033,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # Solar-thermal kickstage dry mass
     # ------------------------------------------------------------
 
-    tank_structural_fraction = 0.12
+    tank_structural_fraction = 0.1
     pump_specific_power_mass = 2  # kg/kW pump system
 
     kickstage_dry_mass_thermal = (
@@ -1052,7 +1052,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # Hypergolic kickstage dry mass
     # ------------------------------------------------------------
 
-    hypergolic_structural_fraction = 0.12
+    hypergolic_structural_fraction = 0.1
 
     kickstage_dry_mass_hypergolic = (
         hypergolic_structural_fraction * hypergolic_propellant
@@ -1064,7 +1064,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # ============================================================
 
     system_dry_mass_thermal = (
-        payload_dry_mass
+        0
         + ion_system_mass_thermal
         + reactor_mass_thermal
         + radiator_mass_thermal
@@ -1072,7 +1072,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     )
 
     system_dry_mass_hypergolic = (
-        payload_dry_mass
+        0
         + ion_system_mass_hypergolic
         + reactor_mass_hypergolic
         + radiator_mass_hypergolic
@@ -1084,11 +1084,11 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     #               PAYLOAD MARGIN ANALYSIS
     # ============================================================
 
-    margin_loss_thermal = system_dry_mass_thermal - payload_dry_mass
-    margin_loss_hypergolic = system_dry_mass_hypergolic - payload_dry_mass
+    payload_remaining_thermal = dry_mass_assumption - system_dry_mass_thermal
+    payload_remaining_hypergolic = dry_mass_assumption - system_dry_mass_hypergolic
 
-    payload_remaining_thermal =  margin_loss_thermal - payload_dry_mass
-    payload_remaining_hypergolic = margin_loss_hypergolic - payload_dry_mass
+    # payload_remaining_thermal =  margin_loss_thermal - dry_mass_assumption
+    # payload_remaining_hypergolic = margin_loss_hypergolic - dry_mass_assumption
 
     if print_results:
         # ============================================================
@@ -1125,11 +1125,11 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
         print("Hypergolic architecture:", kickstage_initial_mass_hypergolic, "kg")
 
         print("\n--- PAYLOAD IMPACT ---")
-        print("Thermal margin loss:", margin_loss_thermal, "kg")
-        print("Hypergolic margin loss:", margin_loss_hypergolic, "kg")
+        # print("Thermal margin loss:", margin_loss_thermal, "kg")
+        # print("Hypergolic margin loss:", margin_loss_hypergolic, "kg")
 
-        print("Thermal remaining payload:", payload_remaining_thermal, "kg")
-        print("Hypergolic remaining payload:", payload_remaining_hypergolic, "kg")
+        # print("Thermal remaining payload:", payload_remaining_thermal, "kg")
+        # print("Hypergolic remaining payload:", payload_remaining_hypergolic, "kg")
     # ============================================================
     # UPDATED RETURN STATEMENT
     # ============================================================
@@ -1213,6 +1213,28 @@ if __name__ == "__main__":
             print_results=False
         )
 
+        if dry_mass == 1000 or dry_mass == 5000 or dry_mass == 10000:
+            print("\n\n" + "=" * 80)
+            print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, THERMAL OPTION")
+            print("=" * 80)
+            
+            run_configuration(
+                dry_mass,
+                thermal=True,
+                print_results=True
+            )
+
+            print("\n\n" + "=" * 80)
+            print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, NON-THERMAL OPTION")
+            print("=" * 80)
+
+            run_configuration(
+                dry_mass,
+                thermal=False,
+                print_results=True
+            )
+
+
         # --------------------------------------------------------
         # Thermal
         # --------------------------------------------------------
@@ -1291,50 +1313,50 @@ if __name__ == "__main__":
     # THERMAL
     # ------------------------------------------------------------
 
-    x_t = remaining_masses_thermal[thermal_mask]
-
-    ax.plot(
-        x_t,
-        launch_masses_thermal[thermal_mask],
-        linestyle=":",
-        linewidth=3,
-        label="Thermal Total Launch Mass"
-    )
-
-    ax.plot(
-        x_t,
-        kick_stage_propellants_thermal[thermal_mask],
-        linestyle=":",
-        label="Thermal Kickstage Propellant"
-    )
-
-    ax.plot(
-        x_t,
-        spacecraft_propellants_thermal[thermal_mask],
-        linestyle=":",
-        label="Thermal Spacecraft Propellant"
-    )
-
-    ax.plot(
-        x_t,
-        kick_stage_dry_masses_thermal[thermal_mask],
-        linestyle=":",
-        label="Thermal Kickstage Dry Mass"
-    )
-
-    ax.plot(
-        x_t,
-        radiator_masses_thermal[thermal_mask],
-        linestyle=":",
-        label="Thermal Radiator Mass"
-    )
-
-    ax.plot(
-        x_t,
-        reactor_masses_thermal[thermal_mask],
-        linestyle=":",
-        label="Thermal Reactor Mass"
-    )
+    # x_t = remaining_masses_thermal[thermal_mask]
+    #
+    # ax.plot(
+    #     x_t,
+    #     launch_masses_thermal[thermal_mask],
+    #     linestyle=":",
+    #     linewidth=3,
+    #     label="Thermal Total Launch Mass"
+    # )
+    #
+    # ax.plot(
+    #     x_t,
+    #     kick_stage_propellants_thermal[thermal_mask],
+    #     linestyle=":",
+    #     label="Thermal Kickstage Propellant"
+    # )
+    #
+    # ax.plot(
+    #     x_t,
+    #     spacecraft_propellants_thermal[thermal_mask],
+    #     linestyle=":",
+    #     label="Thermal Spacecraft Propellant"
+    # )
+    #
+    # ax.plot(
+    #     x_t,
+    #     kick_stage_dry_masses_thermal[thermal_mask],
+    #     linestyle=":",
+    #     label="Thermal Kickstage Dry Mass"
+    # )
+    #
+    # ax.plot(
+    #     x_t,
+    #     radiator_masses_thermal[thermal_mask],
+    #     linestyle=":",
+    #     label="Thermal Radiator Mass"
+    # )
+    #
+    # ax.plot(
+    #     x_t,
+    #     reactor_masses_thermal[thermal_mask],
+    #     linestyle=":",
+    #     label="Thermal Reactor Mass"
+    # )
 
     # ------------------------------------------------------------
     # HYPERGOLIC

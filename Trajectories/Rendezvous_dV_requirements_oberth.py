@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
-PLOT= False
+PLOT= True
 
 if PLOT:
     import matplotlib as mpl
@@ -1058,22 +1058,82 @@ def what():
 if __name__ == "__main__":
     # what()
 
-    find_optimum_lon_per()
+    # find_optimum_lon_per()
     # example of using the functions:
 
     df = get_data()
     dfb = df[df['magnitude_generation_method'] == 'atlas-borisov']
     dfo = df[df['magnitude_generation_method'] == 'omuamua']
 
-    print(f'fraction omuamua: {len(dfo) / len(df):.2f}, number omuamua: {len(dfo)}')
-    print(f'fraction borisov: {len(dfb) / len(df):.2f}, number borisov: {len(dfb)}')
-    dv_histogram(True, True, df=dfo)
-    plt.title("Omuamua-like dv distribution")
-    plt.show()
-    dv_histogram(True, True, df=dfb)
-    plt.title("borisov-like dv distribution")
+    # print(f'fraction omuamua: {len(dfo) / len(df):.2f}, number omuamua: {len(dfo)}')
+    # print(f'fraction borisov: {len(dfb) / len(df):.2f}, number borisov: {len(dfb)}')
+    # dv_histogram(True, True, df=dfo)
+    # plt.title("Omuamua-like dv distribution")
+    # plt.show()
+    # dv_histogram(True, True, df=dfb)
+    # plt.title("borisov-like dv distribution")
+    # plt.show()
+
+    DV_THRESHOLD = 20
+    MAX_RDVZ_DISTANCE = 200  # AU
+
+    total_dv = df['rdvz_total']
+
+    df_reach = df[
+        total_dv.notna() &
+        (total_dv < DV_THRESHOLD) &
+        (df['rdvz_r'] < MAX_RDVZ_DISTANCE)
+        ]
+
+    total = len(df_reach)
+
+    pct_200 = 100 * np.sum(df_reach['rdvz_r'] < 200) / total
+    pct_150 = 100 * np.sum(df_reach['rdvz_r'] < 150) / total
+    pct_100 = 100 * np.sum(df_reach['rdvz_r'] < 100) / total
+
+    print(f"Under 200 AU: {pct_200:.2f}%")
+    print(f"Under 150 AU: {pct_150:.2f}%")
+    print(f"Under 100 AU: {pct_100:.2f}%")
+    dv_histogram(False, True, df_reach)
     plt.show()
     probability_map_df(dfb, True)
+    plt.show()
+
+    plt.figure()
+
+    plt.hist(
+        df_reach['rdvz_r'].dropna(),
+        bins=40,
+        density=True
+    )
+
+    plt.xlabel("Rendezvous distance (AU)")
+    plt.ylabel("Probability density")
+    plt.title("Reachable ISO rendezvous distance")
+    plt.show()
+
+    plt.hist(
+        df_reach['rdvz_rdv'].dropna(),
+        bins=40,
+        density=True
+    )
+
+    plt.xlabel("Rendezvous velocity (km/s)")
+    plt.ylabel("Probability density")
+    plt.title("Reachable ISO rendezvous velocities")
+    plt.show()
+
+    plt.figure()
+
+    plt.hist(
+        df_reach['rdvz_idv'].dropna(),
+        bins=40,
+        density=True
+    )
+
+    plt.xlabel("Insertion + plane-change ΔV (km/s)")
+    plt.ylabel("Probability density")
+    plt.title("Reachable ISO insertion ΔV")
     plt.show()
 
     df = df.sort_values('rdvz_total', ignore_index=True)

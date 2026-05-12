@@ -450,6 +450,31 @@ NewGlennUpper = Stage(
     dry_mass=12_000
 )
 
+Star48BV = Stage(
+    Isp=292,
+    max_prop_mass=2010,
+    dry_mass=120
+)
+
+Star63 = Stage(
+    Isp=298,
+    max_prop_mass=11000,
+    dry_mass=900
+)
+
+Orion38 = Stage(
+    Isp=289,
+    max_prop_mass=770,
+    dry_mass=70
+)
+
+ESCB = Stage(
+    Isp=457,
+    max_prop_mass=28_000,
+    dry_mass=4_000
+)
+
+
 # ============================================================
 # LAUNCHERS
 # ============================================================
@@ -517,7 +542,7 @@ def size_spacecraft(
     tolerance=0.001,
     verbose=False
 ):
-    assumed_spacecraft_isp = 320  # MMH N2H4
+    # assumed_spacecraft_isp = 320  # MMH N2H4
     assumed_spacecraft_isp = 3000 # electric
 
     needed_excess_dv = float(total_dv - rdvz_dv)
@@ -573,6 +598,8 @@ def size_spacecraft(
             m = wet_mass
 
             if kick is not None:
+                if m+kick.total_mass > launcher.LEO_payload:
+                    continue
 
                 v_inf_launcher = launcher.get_vinf_performance(
                     m + kick.total_mass
@@ -688,7 +715,9 @@ def plot_available_launchers_vs_bus_mass(
     plt.tight_layout()
     plt.show()
 
-
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 def plot_launcher_busmass_feasibility(
@@ -699,13 +728,39 @@ def plot_launcher_busmass_feasibility(
     rdvz_dv
 ):
 
+    # =========================================================
+    # Launcher names
+    # =========================================================
     launcher_names = [name for _, name in launchers]
 
-    # 0 = not viable
-    # 1 = viable with kickstage
-    # 2 = viable without kickstage
-    colors = np.zeros((len(launchers), len(bus_mass_range)))
+    # =========================================================
+    # Kickstage names (stable ordering)
+    # =========================================================
+    kickstage_names = [name for _, name in kickstages]
 
+    kickstage_name_map = {
+        stage_obj: name
+        for stage_obj, name in kickstages
+    }
+
+    mode_names = ["Direct"] + kickstage_names
+    n_modes = len(mode_names)
+
+    # =========================================================
+    # Availability storage
+    # =========================================================
+    availability = {}
+
+    for lname in launcher_names:
+        for mode in mode_names:
+            availability[(lname, mode)] = np.zeros(
+                len(bus_mass_range),
+                dtype=bool
+            )
+
+    # =========================================================
+    # Evaluate feasibility
+    # =========================================================
     for j, bus_mass in enumerate(bus_mass_range):
 
         result = size_spacecraft(
@@ -719,86 +774,163 @@ def plot_launcher_busmass_feasibility(
 
         viable = result["viable_combinations"]
 
-        # Build best-state map
-        launcher_state = {
-            lname: 0
-            for lname in launcher_names
-        }
-
         for v in viable:
 
             lname = v["launcher_name"]
 
-            # direct injection
+            # -----------------------------
+            # Direct injection
+            # -----------------------------
             if v["kickstage"] is None:
+                availability[(lname, "Direct")][j] = True
 
-                launcher_state[lname] = max(
-                    launcher_state[lname],
-                    2
-                )
-
-            # kickstage-assisted
+            # -----------------------------
+            # Kickstage case
+            # -----------------------------
             else:
+                ks_name = kickstage_name_map[v["kickstage"]]
+                availability[(lname, ks_name)][j] = True
 
-                launcher_state[lname] = max(
-                    launcher_state[lname],
-                    1
+    # =========================================================
+    # Fixed color map
+    # =========================================================
+    cmap = plt.get_cmap("tab20")
+
+    mode_colors = {
+        "Direct": "#006400"
+    }
+
+    for i, ks_name in enumerate(kickstage_names):
+        mode_colors[ks_name] = cmap(i)
+
+    # =========================================================
+    # Plot
+    # =========================================================
+    fig, ax = plt.subplots(figsize=(15, 8))
+
+    launcher_height = 0.8
+    subbar_height = launcher_height / max(n_modes - 1, 1)
+
+    for i, lname in enumerate(launcher_names):
+
+        base_y = i - launcher_height / 2
+
+        # =====================================================
+        # Direct mask (IMPORTANT FIX)
+        # =====================================================
+        direct = availability[(lname, "Direct")]
+
+        # =====================================================
+        # 1. Plot kickstage ONLY where Direct is NOT available
+        # =====================================================
+        for m, mode in enumerate(kickstage_names):
+
+            y = base_y + m * subbar_height
+
+            feasible = np.logical_and(
+                availability[(lname, mode)],
+                ~direct
+            )
+
+            start_idx = None
+
+            for j, val in enumerate(feasible):
+
+                if val and start_idx is None:
+                    start_idx = j
+
+                end_condition = (
+                    (not val or j == len(feasible) - 1)
+                    and start_idx is not None
                 )
 
-        # Fill color matrix
-        for i, lname in enumerate(launcher_names):
+                if end_condition:
 
-            colors[i, j] = launcher_state[lname]
+                    end_idx = j if val and j == len(feasible) - 1 else j - 1
+
+                    x0 = bus_mass_range[start_idx]
+                    x1 = bus_mass_range[end_idx]
+
+                    width = x1 - x0
+
+                    if width <= 0 and len(bus_mass_range) > 1:
+                        width = bus_mass_range[1] - bus_mass_range[0]
+
+                    ax.broken_barh(
+                        [(x0, width)],
+                        (y, subbar_height * 0.9),
+                        facecolors=mode_colors[mode],
+                        alpha=0.7,
+                        zorder=1
+                    )
+
+                    start_idx = None
+
+        # =====================================================
+        # 2. Plot DIRECT as full-height bar (override)
+        # =====================================================
+        start_idx = None
+
+        for j, val in enumerate(direct):
+
+            if val and start_idx is None:
+                start_idx = j
+
+            end_condition = (
+                (not val or j == len(direct) - 1)
+                and start_idx is not None
+            )
+
+            if end_condition:
+
+                end_idx = j if val and j == len(direct) - 1 else j - 1
+
+                x0 = bus_mass_range[start_idx]
+                x1 = bus_mass_range[end_idx]
+
+                width = x1 - x0
+
+                if width <= 0 and len(bus_mass_range) > 1:
+                    width = bus_mass_range[1] - bus_mass_range[0]
+
+                ax.broken_barh(
+                    [(x0, width)],
+                    (i - launcher_height / 2, launcher_height),
+                    facecolors="#006400",
+                    alpha=0.85,
+                    zorder=3
+                )
+
+                start_idx = None
 
     # =========================================================
-    # PLOT
+    # Labels
     # =========================================================
-
-    fig, ax = plt.subplots(figsize=(13, 7))
-
-    cmap = mpl.colors.ListedColormap([
-        "black",   # 0
-        "blue",    # 1
-        "green"    # 2
-    ])
-
-    im = ax.imshow(
-        colors,
-        aspect="auto",
-        origin="lower",
-        extent=[
-            bus_mass_range[0],
-            bus_mass_range[-1],
-            -0.5,
-            len(launchers) - 0.5
-        ],
-        cmap=cmap,
-        interpolation="nearest",
-        vmin=0,
-        vmax=2
-    )
-
-    ax.set_yticks(range(len(launchers)))
+    ax.set_yticks(range(len(launcher_names)))
     ax.set_yticklabels(launcher_names)
 
     ax.set_xlabel("Bus Mass [kg]")
+    ax.set_ylabel("Launcher")
+    ax.set_title("Launcher / Kickstage Feasibility vs Bus Mass")
 
-    ax.set_title(
-        "Launcher Feasibility vs Bus Mass"
-    )
+    ax.grid(True, axis="x", linestyle="--", alpha=0.4)
 
-    from matplotlib.patches import Patch
-
-    legend = [
-        Patch(color="black", label="Not viable"),
-        Patch(color="blue", label="Viable with kickstage"),
-        Patch(color="green", label="Directly viable")
+    # =========================================================
+    # Legend
+    # =========================================================
+    legend_handles = [
+        Patch(color="#006400", label="Direct Injection")
     ]
 
-    ax.legend(
-        handles=legend,
-        loc="upper right"
-    )
+    for ks_name in kickstage_names:
+        legend_handles.append(
+            Patch(color=mode_colors[ks_name], label=ks_name)
+        )
+
+    ax.legend(handles=legend_handles, loc="upper right")
+
+    ax.set_xlim(bus_mass_range[0], bus_mass_range[-1])
+    ax.set_ylim(-0.5, len(launcher_names) - 0.5)
 
     plt.tight_layout()
     plt.show()
@@ -843,6 +975,14 @@ if __name__ == "__main__":
 
         (Helios, "Helios"),
 
+        (Star63, "Star63"),
+
+        (Star48BV, "Star48BV"),
+
+        (ESCB, "ESCB"),
+
+        (Orion38, "Orion38"),
+
         # (CentaurV, "Centaur V"),
 
         # (Ariane64Upper, "Ariane 64 Upper"),
@@ -858,7 +998,7 @@ if __name__ == "__main__":
 
     print("Rendezvous Delta V", rdvz_dv)
 
-    bus_mass_range = np.linspace(0, 10000, 100)
+    bus_mass_range = np.linspace(0, 3000, 10000)
     plot_available_launchers_vs_bus_mass(
         bus_mass_range,
         launchers,

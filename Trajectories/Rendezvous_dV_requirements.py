@@ -119,8 +119,8 @@ def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
     out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
            'time_until_periapsis':(ISO.t_p - detect_t)/DAY,
-             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, }
-    
+             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, 
+             "ISO_excess_velocity":ISO.excess_velocity}
     # check detection distance/time
     
     # intercept:
@@ -204,9 +204,13 @@ def _fix_data():
     data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # ==== change here ====
-    # data["icpt_t_launch"] = data["icpt_t_launch"]/DAY
-    # data["rdvz_t_launch"] = data["rdvz_t_launch"]/DAY
-    # data["rdvz_t_arrival"] = data["rdvz_t_arrival"]/DAY
+    np.seterr(all="ignore")
+    for i,row in tqdm(data.iterrows(), desc="fixing Excess Velocity",total=len(data)):
+        # if not (row['rdvz_total'] <= 20): continue
+        ISO, _,_ = recreate_ISO(row)
+
+        data.loc[i, 'ISO_excess_velocity'] =  ISO.excess_velocity 
+
 
     # =====================
 
@@ -471,6 +475,8 @@ def plots_for_probability_map():
 
     plt.show()
 
+
+
 def run_in_background():
     '''run forever generating new datapoints'''
     while True: 
@@ -482,6 +488,19 @@ def run_in_background():
 # ======= plotting and analysis ========
 
 if __name__ == "__main__":
+
+
+    df = get_data()
+
+
+
+    df = df[df["rdvz_total"] < 19.3]
+
+    data = df['ISO_excess_velocity']
+    plt.hist(data, density=True, bins=40)
+    print(f'average: {np.average(data)}\t std: {np.std(data)}')
+    plt.show()
+
 
 
 

@@ -157,6 +157,14 @@ class Orbit():
     def excess_velocity(self)->float:
         return m.sqrt(self.sgp/(-self.a))
 
+    @property
+    def C3(self)->float:
+        return self.excess_velocity**2
+    
+    @property
+    def aiming_radius(self)->float:
+        if self.e <= 1: raise ValueError("non-hyperbolic orbits do not have an aiming radius")
+        return -self.a*m.sqrt(self.e**2 - 1)
 
     def change_apses(self, new_ap:float|None = None, 
                      new_pe:float|None = None)->float:
@@ -193,10 +201,30 @@ class Orbit():
 
         return e 
 
-    def polar_equation(self,theta)->float:
+    def polar_equation(self,theta:float|np.ndarray)->float|np.ndarray:
         '''simple polar equation that returns r for a given theta.
         (numpy vector compatible)'''
         return self.p/(1+self.e*np.cos(theta))
+    
+    def tangential_v(self,theta:float|np.ndarray)->float|np.ndarray:
+        '''tangential velocity for a given theta
+        (numpy vector compatible)'''
+        return self.h/self.polar_equation(theta)
+    
+    def radial_v(self,theta:float|np.ndarray)->float|np.ndarray:
+        '''radial velocity for given theta
+        (numpy vector compatible)'''
+        return self.sgp/self.h * self.e*np.sin(theta)
+
+    def flight_path_angle(self,theta:float|np.ndarray)->float|np.ndarray:
+        '''flight path angle from horizon
+        (numpy vector compatible)'''
+        return np.atan(self.e*np.sin(theta)/(1+self.e*np.cos(theta)))
+
+    def velocity(self,theta:float|np.ndarray)->float|np.ndarray:
+        '''scalar velocity for given theta
+        (numpy vector compatible)'''
+        return m.sqrt(self.radial_v(theta)**2 + self.tangential_v(theta)**2)
 
     def asymptote_angle(self)->float:
         '''returns the (external) angle to the asymptotes 
@@ -618,6 +646,7 @@ def orbit_from_keplerian(a:float, e:float, i:float, RAAN:float, arg_p:float, the
     :param sgp: Parent body standard gravitational parameter
     :type sgp: float
     '''
+    if (e < 1 and a < 0) or (e > 1 and a > 0) or (e == 1 and a != m.inf): raise ValueError("Eccentricity and Semi-major axis sign mismatch") 
     p = a*(1-e*e)
     ob = Orbit(p,e,i,RAAN,arg_p,0,sgp)
     ob.link_time_and_theta(theta,0) # fix true anomaly

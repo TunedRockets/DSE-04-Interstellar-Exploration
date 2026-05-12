@@ -153,6 +153,11 @@ class Orbit():
         '''
         return m.sqrt(self.sgp/(self.a**3))
 
+    @property
+    def excess_velocity(self)->float:
+        return m.sqrt(self.sgp/(-self.a))
+
+
     def change_apses(self, new_ap:float|None = None, 
                      new_pe:float|None = None)->float:
         ''' change apses of the orbit, keeping the apse line the same.

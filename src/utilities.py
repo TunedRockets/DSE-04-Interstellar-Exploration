@@ -5,14 +5,13 @@ By: Johannes Nilsson
 import numpy as np
 import math as m
 from typing import Callable
-import matplotlib.pyplot as plt
 
 # === constants =============================
 
 # EPOCH_SIDERIAL = 1.749_333_40 # [rad] LST at Greenwich at unix 0 (00:00 jan 1st 1970)
-SIDERIAL_DAY = 1.002_737_811_911_354_48*2*m.pi # [rad] rotation of greenwich meridian in one UT day
+SIDERIAL_DAY = 1.002_737_811_911_354_48*(2*m.pi) # [rad] rotation of greenwich meridian in one UT day
 # specifically the rotation speed at the year 2000,
-SIDERIAL_2000_ADJUSTMENT = 2*m.pi*(0.779_057_273_2640) # adjustment for calculating local siderial time
+SIDERIAL_2000_ADJUSTMENT = (2*m.pi)*(0.779_057_273_2640) # adjustment for calculating local siderial time
 EARTH_ANGULAR_SPEED = SIDERIAL_DAY / 86_400 # [rad/s] rotation speed of earth
 FT_TO_M = 0.3048 # [ft/m] standard conversion from BMW example values
 EQ_RAD_EARTH = 6378.145 # [km] mean equatorial radius
@@ -34,10 +33,15 @@ CANON_SU = CANON_DU/CANON_TU # [km/s] canonical speed unit (earth)
 # === mathematical functions ========
 
 def stumpff_s(z:float)->float:
-    ''' Stumpff sine function, also known as c_3,
+    '''Stumpff sine function, also known as c_3,
     equivalent to the infinite series:
-    (-z)^n / (2n + 3)! for n->infinity'''
+    ∑(-z)^n / (2n + 3)! for n->infinity
 
+    :param z: input value
+    :type z: float
+    :return: S(z)
+    :rtype: float
+    '''
     if z==0:
         return 1/6
     elif z > 0:
@@ -48,9 +52,15 @@ def stumpff_s(z:float)->float:
         return (-z_sqrt + m.sinh(z_sqrt))/(z_sqrt**3)
 
 def stumpff_c(z:float)->float:
-    ''' Stumpff cosine functionalso known as c_2,
+    '''Stumpff sine function, also known as c_2,
     equivalent to the infinite series:
-    (-z)^n / (2n + 2)! for n->infinity'''
+    ∑(-z)^n / (2n + 2)! for n->infinity
+
+    :param z: input value
+    :type z: float
+    :return: C(z)
+    :rtype: float
+    '''
 
     if z==0:
         return 1/2
@@ -58,161 +68,6 @@ def stumpff_c(z:float)->float:
         return (1-m.cos(m.sqrt(z)))/z
     else:
         return (-1 + m.cosh(m.sqrt(-z)))/(-z)
-
-def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8)->float:
-    '''takes a univariate function and finds the root of that function
-    through recursive bisection.
-    converges on a root between bounds, provided bounds are of different sign'''
-
-    if not ( f(lower) * f(upper) < 0): # check the initial interval contains a root
-        raise ValueError("bounds have same sign")   
-    middle = (lower + upper)/2
-    while 0.5*np.abs(upper-lower) > tolerance:  # check that we're not converged
-        middle = (lower + upper)/2                  # midpoint of current interval
-        if f(lower) * f(middle) < 0:           # select which 1/2 interval to continue with
-            upper = middle
-        else:
-            lower = middle
-    return middle
-
-def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, max_iter:int = 100, precision=1e-6)->float:
-    '''runs newton's method of root finding, will throw an arithmetic error on divergence'''
-
-    for i in range(max_iter):
-        fx = f(x0)
-        if abs(fx) < precision: return x0
-        dx = fx/df(x0)
-        x0 = x0 - dx
-    else: raise ArithmeticError("Newton's method failed to converge")
-
-def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500, allow_nonconvergence:bool=False)->tuple[float,float]:
-    '''Implementation of the Nelder Mead optimization algorithm,
-    uses default values for the coefficients,
-    (minimizes the value)
-
-    :param f: function to minimize
-    :type f: Callable[[float,float],float]
-    :param x0: initial point
-    :type x0: np.ndarray
-    :param x0_size: initial step size
-    :type x0_size: float
-    :param precision: standard deviation required to terminate, defaults to 1e-6
-    :type precision: float, optional
-    :param max_iter: maximum allowed iterations, each iteration samples the function a maximum of 3 times, defaults to 500
-    :type max_iter: int, optional
-    :param allow_nonconvergence: if this is true, the function will return current value on reaching maximum iterations, even
-    if it hasn't converged, defaults to False
-    :type allow_nonconvergence: bool, optional
-    :return: coordinates of minimum value of f
-    :rtype: tuple[float,float]
-    '''
-    a = 1
-    b = 0.5
-    c = 2
-    d = 0.5
-
-
-    p1 = [0,x0]
-    p2 = [0,x0 + np.array([x0_size,0])]
-    p3 = [0, x0 + np.array([0,x0_size])]
-
-    p1[0] = f(*p1[1])
-    p2[0] = f(*p2[1])
-    p3[0] = f(*p3[1])
-    # arrr = np.column_stack((p1[1],p2[1],p3[1],p1[1]))
-    # plt.plot(arrr[0], arrr[1])
-    avg_point = lambda p1,p2,p3: ((p1[1][0] + p2[1][0] + p3[1][0])/3, (p1[1][1] + p2[1][1] + p3[1][1])/3)
-
-    for _ in range(max_iter):
-            
-        # ordering (lowest first):
-        if p1[0] > p2[0]: p1,p2 = p2,p1
-        if p2[0] > p3[0]: p2,p3 = p3,p2
-        if p1[0] > p2[0]: p1,p2 = p2,p1
-
-        # termination (based on ssd of function values):
-        m = (p1[0] + p2[0] + p3[0])/3
-        var = (((p1[0]-m)**2 + (p2[0]-m)**2 + (p3[0]-m)**2)/2)
-        if var < precision**2:
-            return avg_point(p1,p2,p3)
-
-        # centroid:
-        cent = 0.5*(p1[1] + p2[1])
-
-        # transform:
-        reflect_p = cent + a*(cent - p3[1])
-        reflect = [f(*reflect_p), reflect_p]
-        if p1[0] <= reflect[0] < p2[0]:
-            p3 = reflect
-            continue
-
-        elif reflect[0] < p1[0]:
-            expand_p = cent + c*(reflect_p - cent)
-            expand = [f(*expand_p), expand_p]
-            if expand[0] < reflect[0]:
-                p3 = expand
-                continue
-            else:
-                p3 = reflect
-                continue
-        elif reflect[0] < p2[0]:
-            if reflect[0] < p3[0]:
-                contract_p = cent + b*(reflect_p - cent)
-            else:
-                contract_p = cent + b*(p3[1] - cent)
-            contract = [f(*contract_p), contract_p]
-            if contract[0] < p3[0]:
-                p3 = contract
-                continue
-        else:
-            # shrink:
-            p3_p = p1[1] + d*(p3[1]-p1[1])
-            p3 = [f(*p3_p), p3_p]
-            p2_p = p1[1] + d*(p2[1]-p1[1])
-            p2 = [f(*p2_p), p2_p]
-            continue
-    else:
-        if allow_nonconvergence: return avg_point(p1,p2,p3)
-        else: raise ArithmeticError("Nelder-mead failed to converge")
-
-def simple_hill_descent_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, steps:int=20)->tuple[float,float]:
-    '''_summary_
-
-    :param f: _description_
-    :type f: Callable[[float,float],float]
-    :param x0: _description_
-    :type x0: np.ndarray
-    :param x0_size: _description_
-    :type x0_size: float
-    :param steps: _description_, defaults to 20
-    :type steps: int, optional
-    :return: _description_
-    :rtype: tuple[float,float]
-    '''
-    F = lambda x0: f(x0[0], x0[1])
-    center = x0
-    centerF = F(x0)
-    for _ in range(steps):
-        left = center + np.array([-x0_size,0])
-        right = center + np.array([x0_size,0])
-        up = center + np.array([0,x0_size])
-        down = center + np.array([0,-x0_size])
-        leftF = F(left)
-        rightF = F(right)
-        upF = F(up)
-        downF = F(down)
-
-        i = np.argmin([leftF,rightF,upF,downF])
-        minn = [left,right,up,down][i]
-        minnF = [leftF,rightF,upF,downF][i]
-        if minnF < centerF:
-            center = minn
-            centerF = minnF
-        x0_size *= 0.7
-    return center # type:ignore
-
-
-
 
 def bounds(lower, value, upper):
     '''alias of min(upper, max(lower, value))\n
@@ -234,7 +89,6 @@ def inside_modulo_bounds(lower, value, upper, modulo):
         if lower < value < upper: l.append(value)
         value += modulo
     return l
-
 
 def lerp(a,b,r, clamped=False):
     '''lerps between value a and value b,
@@ -294,6 +148,178 @@ def slerp_linspace(v1,v2,num:int,endpoint:bool=True)->np.ndarray:
     vv = np.outer(a,v1) + np.outer(b,v2) # array of vectors evenly slerped
     return vv
 
+# ==== Optimizer =====
+
+def root_finder_bisection(f:Callable, lower:float, upper:float, tolerance:float = 1e-8)->float:
+    '''takes a univariate function and finds the root of that function
+    through recursive bisection.
+    converges on a root between bounds, provided bounds are of different sign
+
+    :param f: Function to find root of
+    :type f: Callable
+    :param lower: lower bound on x
+    :type lower: float
+    :param upper: upper bound on x
+    :type upper: float
+    :param tolerance: maximum allowed difference between actual root and returned x, defaults to 1e-8
+    :type tolerance: float, optional
+    :return: x_r such that x_r approx x_bar where f(x_bar)=0
+    :rtype: float
+    '''
+
+    if not ( f(lower) * f(upper) < 0): # check the initial interval contains a root
+        raise ValueError("bounds have same sign")   
+    middle = (lower + upper)/2
+    while 0.5*np.abs(upper-lower) > tolerance:  # check that we're not converged
+        middle = (lower + upper)/2                  # midpoint of current interval
+        if f(lower) * f(middle) < 0:           # select which 1/2 interval to continue with
+            upper = middle
+        else:
+            lower = middle
+    return middle
+
+def root_finder_newton(f:Callable[[float],float], df:Callable[[float],float],x0:float, max_iter:int = 100, precision:float=1e-6)->float:
+    '''Newton-Raphson root finding algorithm in 1D
+
+    :param f: function to find root of
+    :type f: Callable[[float],float]
+    :param df: derivative of said function
+    :type df: Callable[[float],float]
+    :param x0: initial guess 
+    :type x0: float
+    :param max_iter: maximum allowed iterations, defaults to 100
+    :type max_iter: int, optional
+    :param precision: value of f(x) below which method exists, defaults to 1e-6
+    :type precision: float, optional
+
+    :return: x s.t. f(x) approx 0
+    :rtype: float
+    '''
+
+    for i in range(max_iter):
+        fx = f(x0)
+        if abs(fx) < precision: return x0
+        dx = fx/df(x0)
+        x0 = x0 - dx
+    else: raise ArithmeticError("Newton's method failed to converge")
+
+def nelder_mead_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, precision:float = 1e-6, max_iter:int=500, allow_nonconvergence:bool=False)->tuple[float,float]:
+    '''Implementation of the Nelder Mead optimization algorithm,
+    uses default values for the coefficients,
+    (minimizes the value)
+
+    :param f: function to minimize
+    :type f: Callable[[float,float],float]
+    :param x0: initial point
+    :type x0: np.ndarray
+    :param x0_size: initial step size
+    :type x0_size: float
+    :param precision: standard deviation required to terminate, defaults to 1e-6
+    :type precision: float, optional
+    :param max_iter: maximum allowed iterations, each iteration samples the function a maximum of 3 times, defaults to 500
+    :type max_iter: int, optional
+    :param allow_nonconvergence: if this is true, the function will return current value on reaching maximum iterations, even
+    if it hasn't converged, defaults to False
+    :type allow_nonconvergence: bool, optional
+    :return: coordinates of minimum value of f
+    :rtype: tuple[float,float]
+    '''
+    a = 1 # default values of coefficients
+    b = 0.5
+    c = 2
+    d = 0.5
+
+    p1 = [0,x0] # initial points
+    p2 = [0,x0 + np.array([x0_size,0])]
+    p3 = [0, x0 + np.array([0,x0_size])]
+    p1[0] = f(*p1[1])
+    p2[0] = f(*p2[1])
+    p3[0] = f(*p3[1])
+    avg_point = lambda p1,p2,p3: ((p1[1][0] + p2[1][0] + p3[1][0])/3, (p1[1][1] + p2[1][1] + p3[1][1])/3)
+
+    for _ in range(max_iter):
+            
+        if p1[0] > p2[0]: p1,p2 = p2,p1 # ordering (lowest first)
+        if p2[0] > p3[0]: p2,p3 = p3,p2
+        if p1[0] > p2[0]: p1,p2 = p2,p1
+
+        
+        m = (p1[0] + p2[0] + p3[0])/3
+        var = (((p1[0]-m)**2 + (p2[0]-m)**2 + (p3[0]-m)**2)/2)
+        if var < precision**2: # termination (based on ssd of function values)
+            return avg_point(p1,p2,p3)
+
+        cent = 0.5*(p1[1] + p2[1]) # centroid
+
+        reflect_p = cent + a*(cent - p3[1]) # transform
+        reflect = [f(*reflect_p), reflect_p]
+        if p1[0] <= reflect[0] < p2[0]:
+            p3 = reflect
+            continue
+
+        elif reflect[0] < p1[0]: # expand
+            expand_p = cent + c*(reflect_p - cent)
+            expand = [f(*expand_p), expand_p]
+            if expand[0] < reflect[0]:
+                p3 = expand
+                continue
+            else:
+                p3 = reflect
+                continue
+        elif reflect[0] < p2[0]: # contract
+            if reflect[0] < p3[0]: 
+                contract_p = cent + b*(reflect_p - cent)
+            else:
+                contract_p = cent + b*(p3[1] - cent)
+            contract = [f(*contract_p), contract_p]
+            if contract[0] < p3[0]:
+                p3 = contract
+                continue
+        else: # shrink
+            p3_p = p1[1] + d*(p3[1]-p1[1])
+            p3 = [f(*p3_p), p3_p]
+            p2_p = p1[1] + d*(p2[1]-p1[1])
+            p2 = [f(*p2_p), p2_p]
+            continue
+    else:
+        if allow_nonconvergence: return avg_point(p1,p2,p3)
+        else: raise ArithmeticError("Nelder-mead failed to converge")
+
+def simple_hill_descent_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_size:float, steps:int=20)->tuple[float,float]:
+    '''a simple hill descent algorithm, samples points around guess and moves to smalles, then lowers range of samples
+
+    :param f: function to minimize
+    :type f: Callable[[float,float],float]
+    :param x0: initial guess
+    :type x0: np.ndarray
+    :param x0_size: initial step size
+    :type x0_size: float
+    :param steps: number of steps to take, defaults to 20
+    :type steps: int, optional
+    :return: coordinates of the hill descent final point. always equal or better than staring value
+    :rtype: tuple[float,float]
+    '''
+    F = lambda x0: f(x0[0], x0[1])
+    center = x0
+    centerF = F(x0)
+    for _ in range(steps):
+        left = center + np.array([-x0_size,0])
+        right = center + np.array([x0_size,0])
+        up = center + np.array([0,x0_size])
+        down = center + np.array([0,-x0_size])
+        leftF = F(left)
+        rightF = F(right)
+        upF = F(up)
+        downF = F(down)
+
+        i = np.argmin([leftF,rightF,upF,downF])
+        minn = [left,right,up,down][i]
+        minnF = [leftF,rightF,upF,downF][i]
+        if minnF < centerF:
+            center = minn
+            centerF = minnF
+        x0_size *= 0.7
+    return center # type:ignore
 
 # === Linear algebra =======
 
@@ -308,7 +334,17 @@ def unit_array(xx:np.ndarray)->np.ndarray:
 def elaz_vector(elevation, azimuth, range = 1.0)->np.ndarray:
     '''creates unit vector from elevation and azimuth angles,
     azimuth is CCW from x axis, elevation is from -pi/2 to +pi/2\n
-    optional range value for full el-az-r coordinate transform'''
+    optional range value for full el-az-r coordinate transform
+
+    :param elevation: angle from XY plane
+    :type elevation: _type_
+    :param azimuth: Angle from X axis around Z axis
+    :type azimuth: _type_
+    :param range: magnitude of vector, defaults to 1.0
+    :type range: float, optional
+    :return: 3d vector or array of vectors
+    :rtype: np.ndarray
+    '''
 
     return np.array([np.cos(elevation) * np.cos(azimuth),
         np.cos(elevation) * np.sin(azimuth),
@@ -485,49 +521,91 @@ def descale_hom_vector(v:np.ndarray)->np.ndarray:
 
 # === keplers equation utils and solvers =====
 
-def mean_2_true(M:float, e:float)->float:
+def mean_2_true(M:float, e:float, max_iter:int=100, precision:float=1e-6)->float:
     '''mean anomaly to true anomaly\n
     automatically gives eccentric, hyperbolic, or parabolic depending on e\n
-    uses an underlying newton iterator for the M->E step. precision governes
-    how precise the conversion is, and iterations is how long it goes on for at maximum'''
+    uses an underlying newton iterator for the M->E step
 
-    if e == 1:
-        z = np.cbrt(3*M + np.sqrt(1+(3*M)**2))
-        theta = 2*np.arctan(z-1/z) # parabolic true anomaly
+    :param M: Mean anomaly
+    :type M: float
+    :param e: Eccentricity
+    :type e: float
+    :param max_iter: maximum allowed iterations for underlying newton method, defaults to 100
+    :type max_iter: int, optional
+    :param precision: precision for underlying newton method, defaults to 1e-6
+    :type precision: float, optional
+    :return: true anomaly
+    :rtype: float
+    '''
+
+    if e == 0:
+        return M
+    elif e == 1:
+        z = m.cbrt(3*M + m.sqrt(1+(3*M)**2))
+        theta = 2*m.atan(z-1/z) # parabolic true anomaly
     elif e < 1:
         # newton iterate to find M -> E
-        def Efn(E): return E-e*np.sin(E)-M
-        def Edf(E): return 1-e*np.cos(E)
+        Efn = lambda E: E-e*m.sin(E)-M
+        Edf = lambda E: 1-e*m.cos(E)
 
-        E = root_finder_newton(Efn, Edf, M)
-        theta = 2*np.arctan(np.sqrt((1+e)/(1-e))*np.tan(E/2)) # eccentric true anomaly
+        E = root_finder_newton(Efn, Edf, M, max_iter, precision)
+        theta = 2*m.atan(m.sqrt((1+e)/(1-e))*m.tan(E/2)) % (2*m.pi) # eccentric true anomaly
     else:
         # newton iterate to find M -> F
-        def Ffn(F): return e*np.sinh(F)-F-M
-        def Fdf(F): return e*np.cosh(F)-1
+        Ffn = lambda F: e*m.sinh(F)-F-M
+        Fdf = lambda F: e*m.cosh(F)-1
 
-        F = root_finder_newton(Ffn,Fdf,M)
-        theta = 2*np.arctan(np.sqrt((1+e)/(e-1))*np.tanh(F/2)) # hyperbolic true anomaly
-    return theta
+        F = root_finder_newton(Ffn,Fdf,M, max_iter, precision)
+        theta = 2*m.atan(m.sqrt((1+e)/(e-1))*m.tanh(F/2)) # hyperbolic true anomaly
+    return theta 
     
 def true_2_mean(theta:float, e:float)->float:
     '''true anomaly to mean anomaly\n
-    automatically gives eccentric, hyperbolic, or parabolic depending on e'''
+    automatically gives eccentric, hyperbolic, or parabolic depending on e
 
-    if e < 1:
-        E = 2*np.arctan(np.sqrt((1-e)/(1+e))*np.tan(theta/2))
-        M = E - e*np.sin(E) # elliptical mean anomaly
+    :param theta: true anomaly
+    :type theta: float
+    :param e: eccentricity
+    :type e: float
+    :return: mean anomaly
+    :rtype: float
+    '''
+
+    if e == 0:
+        return theta
+
+    elif e < 1:
+        E = 2*m.atan(m.sqrt((1-e)/(1+e))*m.tan(theta/2))
+        M = E - e*m.sin(E) # elliptical mean anomaly
     elif e == 1:
-        M = 0.5*np.tan(theta/2)+(1/6)*np.tan(theta/2)**3 # parabolic mean anomaly
+        M = 0.5*m.tan(theta/2)+(1/6)*m.tan(theta/2)**3 # parabolic mean anomaly
     else:
-        F = 2*np.arctanh(np.sqrt((e-1)/(e+1))*np.tan(theta/2)) # tan(theta) isn't a typo
-        M = e*np.sinh(F) - F # hyperbolic mean anomaly
+        F = 2*m.atanh(m.sqrt((e-1)/(e+1))*m.tan(theta/2)) # tan(theta) isn't a typo
+        M = e*m.sinh(F) - F # hyperbolic mean anomaly
     return M
 
-def time_2_true(t:float,e:float,h:float,sgp:float)->float:
-    '''time to true anomaly via the universal variable method'''
+def time_2_true(t:float,e:float,h:float,sgp:float, precision:float=1e-6)->float:
+    '''time to true anomaly via the universal variable method
+
+    :param t: time after periapsis
+    :type t: float
+    :param e: eccentricity
+    :type e: float
+    :param h: specific angular momentum
+    :type h: float
+    :param sgp: standard gravitational parameter of parent
+    :type sgp: float
+    :param precision: precision/tolerance of model,
+    due to underlying structure, this is either max allowed F(theta), or max allowed theta-theta_bar, where
+    theta_bar is the exact answer
+    ,defaults to 1e-6
+    :type precision: float, optional
+    :return: true anomaly
+    :rtype: float
+    '''
     
-    if t == 0: return 0 # by definition
+    if t == 0: return 0.0 # by definition
+    if e == 0: return t * sgp**2 / h**3 # circular orbit edge case
 
     # time -> chi -> true
     rp = h*h/(sgp*(1+e))
@@ -546,28 +624,54 @@ def time_2_true(t:float,e:float,h:float,sgp:float)->float:
     # and r_max is apoapsis (or for e>=1 infinity s.t. chi = 0)
     chi_max = m.sqrt(sgp)*t/rp
     chi_min = m.sqrt(sgp)*t/(h*h/(sgp*(1-e))) if e < 1 else 0.0
+    if chi_max < chi_min: chi_min,chi_max = chi_max,chi_min # swap if wrong signs
     try:
         chi0 = 0.5*(chi_min+chi_max)
-        chi = root_finder_newton(F,dF,chi0)
+        chi = root_finder_newton(F,dF,chi0,precision=precision)
         if not (chi_min < chi < chi_max): raise ArithmeticError("Converged wrong")
     except ArithmeticError:
+        if chi_min == 0.0: chi_min -= 1
+        for _ in range(100): # ensure bisection works with the min and max
+            if F(chi_max)*F(chi_min) >= 0:
+                chi_max *= 1.1
+                chi_min *= 1.1
+            else: break
+        else: raise ArithmeticError("Invalid Bisection bounds")
         # fall back on bisection
-        chi = root_finder_bisection(F,chi_min,chi_max)
+        chi = root_finder_bisection(F,chi_min,chi_max,tolerance=precision)
 
     if e == 1: # parabolic:
-        return 2 * m.atan(m.sqrt(sgp)*chi/h)
+        theta = 2 * m.atan(m.sqrt(sgp)*chi/h)
     elif e < 1: # elliptic
         E = chi * m.sqrt(alpha)
-        return 2*m.atan(m.sqrt((1+e)/(1-e)) * m.tan(E/2))
+        theta = (2*m.atan(m.sqrt((1+e)/(1-e)) * m.tan(E/2))) % (2*m.pi)
     else: # hyperbolic
         Eh = chi * m.sqrt(-alpha)
-        return 2*m.atan(
+        theta = 2*m.atan(
             m.sqrt((e+1)/(e-1)) * m.tanh(Eh/2)
         )
+    return theta 
 
 
 def true_2_time(theta:float, e:float, h:float, sgp:float)->float:
-    '''true anomaly to time using universal variable method'''
+    '''true anomaly to time using universal variable method
+
+    :param theta: true anomaly
+    :type theta: float
+    :param e: eccentricity
+    :type e: float
+    :param h: specific angular momentum
+    :type h: float
+    :param sgp: standard gravitational parameter
+    :type sgp: float
+    :return: time after periapsis for given true anomaly
+    :rtype: float
+    '''
+
+    if theta == 0: return 0.0 # by definition
+    if e == 0: return theta * h**3 / sgp**2 # circular orbit edge case
+
+
     alpha = (sgp*(1-e*e))/(h*h)
     rp = h*h/(sgp*(1+e))
     S = stumpff_s
@@ -575,19 +679,11 @@ def true_2_time(theta:float, e:float, h:float, sgp:float)->float:
     if e == 1:
         chi = h/(m.sqrt(sgp))*m.tan(theta/2)
     elif e < 1:
-        E = 2 * m.tan(m.sqrt((1-e)/(1+e)) * m.tan(theta/2))
+        E = 2 * m.atan(m.sqrt((1-e)/(1+e)) * m.tan(theta/2))
         chi = E/(m.sqrt(alpha))
     else:
-        Eh = 2 * m.atanh(m.sqrt((e-1)/(e+1)) * m.tan(theta/2))
+        Eh = 2 * m.atanh(m.sqrt((e-1)/(e+1)) * m.tan(theta/2)) # [sic]
         chi = Eh/(m.sqrt(-alpha))
     
-    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/(m.sqrt(sgp))
+    time = ((1-rp*alpha)*chi**3 * S(chi**2*alpha) + rp*chi)/m.sqrt(sgp)
     return time
-    
-
-def main():
-    print(unit(np.array([5,7,-2])))
-
-
-if __name__ == "__main__":
-    main()

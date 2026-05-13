@@ -1041,7 +1041,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
         + pump_specific_power_mass * pump_power_required / 1e3
     )
 
-    heatshield_areal_density = 8  # kg/m^2 (high-temp heat shield)
+    heatshield_areal_density = 50  # kg/m^2 (high-temp heat shield + radiation shielding)
 
     heatshield_mass = heatshield_areal_density * required_heatshield_area
 
@@ -1142,7 +1142,8 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
             plane_change_propellant + rendezvous_propellant,
             kickstage_dry_mass_thermal,
             radiator_mass_thermal,
-            reactor_mass_thermal
+            reactor_mass_thermal, 
+            heatshield_mass
         )
     else:
         return (
@@ -1152,7 +1153,8 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
             plane_change_propellant + rendezvous_propellant,
             kickstage_dry_mass_hypergolic,
             radiator_mass_hypergolic,
-            reactor_mass_hypergolic
+            reactor_mass_hypergolic, 
+            heatshield_mass
         )
 if __name__ == "__main__":
 
@@ -1192,7 +1194,8 @@ if __name__ == "__main__":
             spacecraft_prop_thermal,
             kick_dry_thermal,
             radiator_thermal,
-            reactor_thermal
+            reactor_thermal, 
+            heatshield_calculated_mass
         ) = run_configuration(
             dry_mass,
             thermal=True,
@@ -1206,7 +1209,8 @@ if __name__ == "__main__":
             spacecraft_prop_hypergolic,
             kick_dry_hypergolic,
             radiator_hypergolic,
-            reactor_hypergolic
+            reactor_hypergolic, 
+            heatshield_calculated_mass
         ) = run_configuration(
             dry_mass,
             thermal=False,
@@ -1230,12 +1234,14 @@ if __name__ == "__main__":
             print("spacecraft propellant mass =", spacecraft_prop_hypergolic, "kg, s/c total mass fraction = ", spacecraft_prop_hypergolic / m_wet_actual_spacecraft)
             print("radiator mass =", radiator_hypergolic, "kg, s/c total mass fraction = ", radiator_hypergolic / m_wet_actual_spacecraft)
             print("reactor mass =", reactor_hypergolic, "kg, s/c total mass fraction = ", reactor_hypergolic / m_wet_actual_spacecraft)
+            print("heatshield mass =", heatshield_calculated_mass, "kg, s/c total mass fraction = ", heatshield_calculated_mass / m_wet_actual_spacecraft)
             print('\n')
             print("KICK STAGE", '\n')
             print("launch mass hypergolic =", launch_mass_hypergolic, "kg")
             print("kickstage propellant mass =", kick_prop_hypergolic, "kg, launch mass fraction = ", kick_prop_hypergolic / launch_mass_hypergolic)
             print("kickstage dry mass =", kick_dry_hypergolic, "kg, launch mass fraction = ", kick_dry_hypergolic / launch_mass_hypergolic)
-        
+            x_h = remaining_mass_margin_hypergolic
+            print("remaining mass margin =", remaining_mass_margin_hypergolic, "kg, launch mass fraction = ", remaining_mass_margin_hypergolic / launch_mass_hypergolic)    
             print("=" * 80)
 
             run_configuration(

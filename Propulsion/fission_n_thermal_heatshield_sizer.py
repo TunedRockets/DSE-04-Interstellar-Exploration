@@ -1043,7 +1043,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
     heatshield_areal_density = 17.57  # kg/m^2 (high-temp heat shield - Parker Solar Probe heritage)
 
-    l = 3.2 # m, 
+    l = 2 # m, 
 
     actual_heatshield_area = 6*l**2/2
 
@@ -1089,7 +1089,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # ============================================================
 
     payload_remaining_thermal = dry_mass_assumption - system_dry_mass_thermal
-    payload_remaining_hypergolic = dry_mass_assumption - system_dry_mass_hypergolic
+    payload_remaining_hypergolic = dry_mass_assumption - system_dry_mass_hypergolic-heatshield_mass
 
     # payload_remaining_thermal =  margin_loss_thermal - dry_mass_assumption
     # payload_remaining_hypergolic = margin_loss_hypergolic - dry_mass_assumption
@@ -1221,7 +1221,12 @@ if __name__ == "__main__":
             print_results=False
         )
 
-        if dry_mass == 100 or dry_mass == 1000 or dry_mass == 2700 or dry_mass == 3000 or dry_mass == 3300 or dry_mass == 5000 or dry_mass == 10000:
+        m_wet_actual_spacecraft = launch_mass_hypergolic - kick_dry_hypergolic - kick_prop_hypergolic
+        m_dry_actual_spacecraft = m_wet_actual_spacecraft - spacecraft_prop_hypergolic
+        m_payload = 126.30 # kg (full set for rendezvous)
+        m_structure_without_tanks_and_ADCS = remaining_mass_margin_hypergolic - m_payload
+
+        if dry_mass == 100 or dry_mass == 1000 or dry_mass == 2700 or dry_mass == 3000 or dry_mass == 3300 or dry_mass == 5000 or dry_mass == 10000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3300:
             # print("\n\n" + "=" * 80)
             # print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, THERMAL OPTION")
             # print("=" * 80)
@@ -1231,21 +1236,23 @@ if __name__ == "__main__":
             #     thermal=True,
             #     print_results=True
             # )
-            m_wet_actual_spacecraft = launch_mass_hypergolic - kick_dry_hypergolic - kick_prop_hypergolic
             print("\n\n" + "=" * 80)
             print("DETAILED SUMMARY FOR DRY MASS (spacecraft + kick stage) =", dry_mass, "kg, NON-THERMAL OPTION")
             print("spacecraft total (wet) mass without kick stage = ", m_wet_actual_spacecraft)
+            print("spacecraft dry mass = ", m_dry_actual_spacecraft)
             print("spacecraft propellant mass =", spacecraft_prop_hypergolic, "kg, s/c total mass fraction = ", spacecraft_prop_hypergolic / m_wet_actual_spacecraft)
             print("radiator mass =", radiator_hypergolic, "kg, s/c total mass fraction = ", radiator_hypergolic / m_wet_actual_spacecraft)
             print("reactor mass =", reactor_hypergolic, "kg, s/c total mass fraction = ", reactor_hypergolic / m_wet_actual_spacecraft)
             print("heatshield mass =", heatshield_calculated_mass, "kg, s/c total mass fraction = ", heatshield_calculated_mass / m_wet_actual_spacecraft)
+            print("remaining mass margin =", remaining_mass_margin_hypergolic, "kg, launch mass fraction = ", remaining_mass_margin_hypergolic / m_wet_actual_spacecraft)    
+            print("structural mass without tanks and ADCS =", m_structure_without_tanks_and_ADCS, "kg, s/c total mass fraction = ", m_structure_without_tanks_and_ADCS / m_wet_actual_spacecraft)
+            
             print('\n')
             print("KICK STAGE", '\n')
             print("launch mass hypergolic =", launch_mass_hypergolic, "kg")
             print("kickstage propellant mass =", kick_prop_hypergolic, "kg, launch mass fraction = ", kick_prop_hypergolic / launch_mass_hypergolic)
             print("kickstage dry mass =", kick_dry_hypergolic, "kg, launch mass fraction = ", kick_dry_hypergolic / launch_mass_hypergolic)
             x_h = remaining_mass_margin_hypergolic
-            print("remaining mass margin =", remaining_mass_margin_hypergolic, "kg, launch mass fraction = ", remaining_mass_margin_hypergolic / launch_mass_hypergolic)    
             print("=" * 80)
 
             run_configuration(

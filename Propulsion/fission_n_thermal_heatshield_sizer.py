@@ -1041,9 +1041,13 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
         + pump_specific_power_mass * pump_power_required / 1e3
     )
 
-    heatshield_areal_density = 50  # kg/m^2 (high-temp heat shield + radiation shielding)
+    heatshield_areal_density = 17.57  # kg/m^2 (high-temp heat shield - Parker Solar Probe heritage)
 
-    heatshield_mass = heatshield_areal_density * required_heatshield_area
+    l = 3.2 # m, 
+
+    actual_heatshield_area = 6*l**2/2
+
+    heatshield_mass = heatshield_areal_density * actual_heatshield_area
 
     kickstage_dry_mass_thermal += heatshield_mass
 

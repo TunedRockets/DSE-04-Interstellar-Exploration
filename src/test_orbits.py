@@ -4,6 +4,7 @@ based on Curtis' exercises
 '''
 from .orbit import *
 from .utilities import *
+from .examples import *
 import pytest
 import numpy as np
 import math as m
@@ -13,87 +14,87 @@ def within_1_percent(a,b)->bool:
     if np.linalg.norm(a)<1e-8: return (np.linalg.norm(b) < 1e-8) # type:ignore
     return np.linalg.norm(a-b)/np.linalg.norm(a) < 0.01 #type:ignore
 
-# ==== time and anomaly ===========
+class Test_time_and_anomaly_conversion:
 
-def test_kepler_universal_time_elliptical():
-    h = EQ_RAD_EARTH*8  
-    mu = SGP_EARTH
-    for e in [0.0,0.3,0.5,0.7,0.9]:
-        period = 2*m.pi*m.sqrt((h*h/(mu*(1-e*e)))**3/mu)
-        tt = np.linspace(0,period,endpoint=False)
-        for t in tt:
-            M  = mu**2/(h**3) * (abs(e**2-1))**(3/2) * t
-            kep = mean_2_true(M,e)
-            uni = time_2_true(t,e,h,mu)
-            assert within_1_percent(uni,kep)
-
-def test_kepler_universal_time_hyper():
-    h = EQ_RAD_EARTH*8  
-    mu = SGP_EARTH
-    period = 90*60
-    for e in [1.0,1.5,2.0,3.0,4.0]:
-        tt = np.linspace(-period,period,endpoint=False)
-        for t in tt:
-            M  = mu**2/(h**3) * (abs(e**2-1))**(3/2) * t if e != 1 else (mu**2/(h**3))*t 
-            try:
+    def test_kepler_universal_time_elliptical(self):
+        h = EQ_RAD_EARTH*8  
+        mu = SGP_EARTH
+        for e in [0.0,0.3,0.5,0.7,0.9]:
+            period = 2*m.pi*m.sqrt((h*h/(mu*(1-e*e)))**3/mu)
+            tt = np.linspace(0,period,endpoint=False)
+            for t in tt:
+                M  = mu**2/(h**3) * (abs(e**2-1))**(3/2) * t
                 kep = mean_2_true(M,e)
-            except: continue # can't compare is kepler doesn't work
-            uni = time_2_true(t,e,h,mu)
-            assert within_1_percent(uni,kep)
+                uni = time_2_true(t,e,h,mu)
+                assert within_1_percent(uni,kep)
 
-def test_kepler_universal_theta_elliptical():
-    h = EQ_RAD_EARTH*8
-    mu = SGP_EARTH
-    for e in [0.0,0.3,0.5,0.7,0.9]:
-        tt = np.linspace(0.01,2*m.pi,endpoint=False)
-        for t in tt:
-            uni = true_2_time(t,e,h,mu)
-            try:
+    def test_kepler_universal_time_hyper(self):
+        h = EQ_RAD_EARTH*8  
+        mu = SGP_EARTH
+        period = 90*60
+        for e in [1.0,1.5,2.0,3.0,4.0]:
+            tt = np.linspace(-period,period,endpoint=False)
+            for t in tt:
+                M  = mu**2/(h**3) * (abs(e**2-1))**(3/2) * t if e != 1 else (mu**2/(h**3))*t 
+                try:
+                    kep = mean_2_true(M,e)
+                except: continue # can't compare is kepler doesn't work
+                uni = time_2_true(t,e,h,mu)
+                assert within_1_percent(uni,kep)
+
+    def test_kepler_universal_theta_elliptical(self):
+        h = EQ_RAD_EARTH*8
+        mu = SGP_EARTH
+        for e in [0.0,0.3,0.5,0.7,0.9]:
+            tt = np.linspace(0.01,2*m.pi,endpoint=False)
+            for t in tt:
+                uni = true_2_time(t,e,h,mu)
+                try:
+                    M = true_2_mean(t,e)
+                except: continue # can't compare is kepler doesn't work
+                kep = M /( mu**2/(h**3) * (abs(e**2-1))**(3/2))
+                assert within_1_percent(uni,kep)
+
+    def test_kepler_universal_theta_hyper(self):
+        h = EQ_RAD_EARTH*8
+        mu = SGP_EARTH
+        for e in [1.0,1.5,2.0,3.0,4.0]:
+            asymp_ang = m.acos(-1/e)
+            tt = np.linspace(-asymp_ang + 0.05,asymp_ang - 0.05,endpoint=False)
+            for t in tt:
+                uni = true_2_time(t,e,h,mu)
                 M = true_2_mean(t,e)
-            except: continue # can't compare is kepler doesn't work
-            kep = M /( mu**2/(h**3) * (abs(e**2-1))**(3/2))
-            assert within_1_percent(uni,kep)
-
-def test_kepler_universal_theta_hyper():
-    h = EQ_RAD_EARTH*8
-    mu = SGP_EARTH
-    for e in [1.0,1.5,2.0,3.0,4.0]:
-        asymp_ang = m.acos(-1/e)
-        tt = np.linspace(-asymp_ang + 0.05,asymp_ang - 0.05,endpoint=False)
-        for t in tt:
-            uni = true_2_time(t,e,h,mu)
-            M = true_2_mean(t,e)
-            kep = M /( mu**2/(h**3) * (abs(e**2-1))**(3/2)) if e != 1 else (
-                M / (mu**2/(h**3)))
-            assert within_1_percent(uni,kep)
+                kep = M /( mu**2/(h**3) * (abs(e**2-1))**(3/2)) if e != 1 else (
+                    M / (mu**2/(h**3)))
+                assert within_1_percent(uni,kep)
 
 
-def test_uni_round_trip_elliptical():
-    h = EQ_RAD_EARTH*8
-    mu = SGP_EARTH
-    for e in [0.0,0.3,0.5,0.7,0.9]:
-        tt = np.linspace(0,2*m.pi, 49,endpoint=False)
-        for t in tt:
-            time = true_2_time(t,e,h,mu)
-            t2 = time_2_true(time,e,h,mu)
-            time2 = true_2_time(t2,e,h,mu)
-            assert within_1_percent(time,time2)
-            assert within_1_percent(t,t2)
+    def test_uni_round_trip_elliptical(self):
+        h = EQ_RAD_EARTH*8
+        mu = SGP_EARTH
+        for e in [0.0,0.3,0.5,0.7,0.9]:
+            tt = np.linspace(0,2*m.pi, 49,endpoint=False)
+            for t in tt:
+                time = true_2_time(t,e,h,mu)
+                t2 = time_2_true(time,e,h,mu)
+                time2 = true_2_time(t2,e,h,mu)
+                assert within_1_percent(time,time2)
+                assert within_1_percent(t,t2)
 
-def test_uni_round_trip_hyper():
-    h = EQ_RAD_EARTH*8
-    mu = SGP_EARTH
-    for e in [1.0,1.5,2.0,3.0,4.0]:
-        asymp_ang = m.acos(-1/e)
-        tt = np.linspace(-asymp_ang + 0.05,asymp_ang - 0.05,endpoint=False)
-        for t in tt:
-            time = true_2_time(t,e,h,mu)
-            t2 = time_2_true(time,e,h,mu)
-            time2 = true_2_time(t2,e,h,mu)
-            assert within_1_percent(time,time2)
-            assert within_1_percent(t,t2)
+    def test_uni_round_trip_hyper(self):
+        h = EQ_RAD_EARTH*8
+        mu = SGP_EARTH
+        for e in [1.0,1.5,2.0,3.0,4.0]:
+            asymp_ang = m.acos(-1/e)
+            tt = np.linspace(-asymp_ang + 0.05,asymp_ang - 0.05,endpoint=False)
+            for t in tt:
+                time = true_2_time(t,e,h,mu)
+                t2 = time_2_true(time,e,h,mu)
+                time2 = true_2_time(t2,e,h,mu)
+                assert within_1_percent(time,time2)
+                assert within_1_percent(t,t2)
 
-# ========= curtis tests ==================
+
 class Test_Curtis_exercises:
 
     @pytest.fixture
@@ -186,7 +187,7 @@ class Test_Curtis_exercises:
         ob.change_apses(9600,21000)
         assert within_1_percent(ob.e, 0.37255)
         theta = ob.time_to_theta(3*60*60)
-        assert within_1_percent(theta, np.radians(193.2)) # curtis answer wrong? (should be 195.8?)
+        assert within_1_percent(theta, np.radians(193.2))
 
     def test_curtis_3_4(self,fixt_ob:Orbit):
         ob = fixt_ob
@@ -266,7 +267,7 @@ class Test_Curtis_exercises:
         assert within_1_percent(ob.i, np.radians(30.19))
         assert within_1_percent(ob.polar_equation(0), 4952+6378)
         assert within_1_percent(ob.t_p, 256.1)
-        assert within_1_percent(ob.time_to_theta(0), np.radians(350.8)) # time to theta is wrong
+        assert within_1_percent(ob.time_to_theta(0), np.radians(350.8))
 
         
     def test_curtis_5_3(self):
@@ -284,7 +285,52 @@ class Test_Curtis_exercises:
         origin = orbit_from_keplerian(1,0,0,0,0,0,SGP_EARTH)
         origin.change_apses(800+EQ_RAD_EARTH, 480+EQ_RAD_EARTH)
         destination = orbit_from_keplerian(1,0,0,0,0,0,SGP_EARTH)
-        destination.a = (16_000+EQ_RAD_EARTH)*2
-        destination.e = 0
+        destination.a = (16_000+EQ_RAD_EARTH)
 
-        # TODO
+
+        dv1,dv2,_,_,_ = trajectory_optimizer(origin,destination,(0,destination.period,0,destination.period),1,1)
+        assert within_1_percent(dv1, 1.7225)
+        assert within_1_percent(dv2, 1.3297)
+
+
+
+class Test_transfers:
+
+    def assert_optim_works(self,time_range, origin,destination):
+        dvarr,(idx_s, idx_e) = porkchop_from_orbits(origin,destination,time_range,time_range, rendezvous=True)
+        dv_cost = dvarr[idx_s,idx_e]
+        st = time_range[idx_s]
+        et = time_range[idx_e]
+
+        dvi,dvr,st2,et2,_ = trajectory_optimizer(origin,destination,(time_range[0],time_range[-1],time_range[0],time_range[-1]),1,1)
+        
+        if False:
+            plt.imshow(dvarr.T,extent=(time_range[0],time_range[-1],time_range[0],time_range[-1]), origin="lower",vmax=30)
+            plt.scatter(st,et, label="prokchop min")
+            plt.scatter(st2,et2,label="optimizer")
+            plt.legend()
+            plt.show()
+        
+        dv_tot = dvi + dvr
+        assert dv_cost >= dv_tot
+
+    def test_opt_mars_2000(self):
+        rang = np.linspace(0,2*YEAR)
+        self.assert_optim_works(rang,Earth,Mars)
+    
+    def test_opt_mars_2010(self):
+        rang = np.linspace(10*YEAR,13*YEAR)
+        self.assert_optim_works(rang,Earth,Mars)
+    
+    def test_opt_jupiter_2000(self):
+        rang = np.linspace(0,6*YEAR)
+        self.assert_optim_works(rang,Earth,Jupiter)
+
+    def test_opt_jupiter_2010(self):
+        rang = np.linspace(10*YEAR,16*YEAR)
+        self.assert_optim_works(rang,Earth,Jupiter)
+
+
+        
+
+

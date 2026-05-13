@@ -9,24 +9,4 @@ for each ISO, calculate the optimal trajectory, optimising for min dV, or min to
 use this to generate a probability distribution of required dv for either just flyby, or rendezvouz
 this should give a dv needed for the 90% criteria
 
-(start without gravity assists, perhaps add that to the optimizer later)
 
-Perhaps change from Nelder-mead to iterated local search, see: [this KSP KOS code](https://github.com/maneatingape/rsvp/tree/main/src)
-
-
-TODO:
-- [x] read Dorsey to get a detection model
-- [x] incorporate this for FINAL iso generation and detection
-- [x] fix trajectory optimization b/c it's slow from fix
-- [ ] figure out absolute magnitude curve for ATLAS/Borisov
-- [ ] doublecheck FINAL dv values for icpt & rdvz
-- [ ] incoporate Jupiter model
-- [ ] charcterize optimal trajectories (time, range, etc.) (make loads of graphs from panda)
-- [ ] write about it
-- more?
-
-
-
-
-
-- [ ] make proper dockstrings with input output? 

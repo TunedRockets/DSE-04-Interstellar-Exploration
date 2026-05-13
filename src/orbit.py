@@ -9,7 +9,7 @@ Created: 2025-06-11
 '''
 import numpy as np
 from .utilities import *
-from typing import Callable
+from typing import Callable, overload
 import matplotlib.pyplot as plt
 import math as m
 from tqdm import tqdm
@@ -201,26 +201,46 @@ class Orbit():
 
         return e 
 
+    @overload
+    def polar_equation(self,theta:float)->float:...
+    @overload
+    def polar_equation(self,theta:np.ndarray)->np.ndarray:...
     def polar_equation(self,theta:float|np.ndarray)->float|np.ndarray:
         '''simple polar equation that returns r for a given theta.
         (numpy vector compatible)'''
         return self.p/(1+self.e*np.cos(theta))
     
+    @overload
+    def tangential_v(self,theta:float)->float:...
+    @overload
+    def tangential_v(self,theta:np.ndarray)->np.ndarray:...
     def tangential_v(self,theta:float|np.ndarray)->float|np.ndarray:
         '''tangential velocity for a given theta
         (numpy vector compatible)'''
         return self.h/self.polar_equation(theta)
     
+    @overload
+    def radial_v(self,theta:float)->float:...
+    @overload
+    def radial_v(self,theta:np.ndarray)->np.ndarray:...
     def radial_v(self,theta:float|np.ndarray)->float|np.ndarray:
         '''radial velocity for given theta
         (numpy vector compatible)'''
         return self.sgp/self.h * self.e*np.sin(theta)
 
+    @overload
+    def flight_path_angle(self,theta:float)->float:...
+    @overload
+    def flight_path_angle(self,theta:np.ndarray)->np.ndarray:...
     def flight_path_angle(self,theta:float|np.ndarray)->float|np.ndarray:
         '''flight path angle from horizon
         (numpy vector compatible)'''
         return np.atan(self.e*np.sin(theta)/(1+self.e*np.cos(theta)))
 
+    @overload
+    def velocity(self,theta:float)->float:...
+    @overload
+    def velocity(self,theta:np.ndarray)->np.ndarray:...
     def velocity(self,theta:float|np.ndarray)->float|np.ndarray:
         '''scalar velocity for given theta
         (numpy vector compatible)'''
@@ -880,8 +900,7 @@ Functions for creating or optimising intercepts between two orbits
 def trajectory_optimizer(
         origin:Orbit,
         destination:Orbit,
-        start_time:float,
-        end_time:float,
+        time_bounds:tuple[float,float,float,float],
         w_insertion:float = 1,
         w_relv:float = 0,
         w_travel_time:float = 0,
@@ -934,8 +953,8 @@ def trajectory_optimizer(
     # 2D optimization using Nelder-Mead
     # first define optimizer function:
     def F(s:float,t:float)->float: # start + travel time
-        if s < start_time: return m.inf
-        if s + t > end_time: return m.inf # ensure we're not outside bounds
+        if not (time_bounds[0]<s < time_bounds[1]): return m.inf
+        if not (time_bounds[2] < s + t < time_bounds[3]): return m.inf # ensure we're not outside bounds
         r1,v1 = origin.time_to_rv(s)
         r2,v2 = destination.time_to_rv(s+t)
         try:
@@ -956,16 +975,31 @@ def trajectory_optimizer(
         )
         return weight
     
-    dt = end_time-start_time
+    low_time = min(time_bounds)
+    high_time = max(time_bounds)
 
-    pois = _times_of_interest(origin,destination,start_time,end_time)
-    extremes = np.array([ # to fill out in case pois is empty
-        [start_time, end_time],
-        [start_time,start_time+dt/10],
-        [end_time-dt/10,end_time],
-        [start_time,start_time + dt/2]
+    dts = (time_bounds[1] - time_bounds[0])/10
+    dte = (time_bounds[3] - time_bounds[2])/10
+    dt = (0.5*(dte+dts))
+
+    pois = _times_of_interest(origin,destination,low_time,high_time)
+    extremes = np.array([ # to fill out in case pois is empty (slightly inside the bounds)
+        [time_bounds[0]+dts, time_bounds[2]+dte],
+        [time_bounds[1]-dts, time_bounds[2]+dte],
+        [time_bounds[1]-dts, time_bounds[3]-dte],
+        [time_bounds[0]+dts, time_bounds[3]-dte],
+        [time_bounds[0], time_bounds[2]+dte], # extra layer for when bounds are same
+        [time_bounds[1]-dts, time_bounds[3]-dte],
+        [time_bounds[0], time_bounds[3]-dte],
     ])
     pois = np.vstack((pois, extremes))
+
+    # exclude based on bounds:
+    pois = pois[pois[:,0] > time_bounds[0]]
+    pois = pois[pois[:,0] < time_bounds[1]]
+    pois = pois[pois[:,1] > time_bounds[2]]
+    pois = pois[pois[:,1] < time_bounds[3]]
+
 
     # exclude times based on max:
     pois = pois[pois[:,1] < max_intercept_time]
@@ -990,9 +1024,10 @@ def trajectory_optimizer(
     best = pois[0:5] if len(pois) >= 5 else pois
     dv_best = dv_pois[0:5] if len(dv_pois) >= 5 else dv_pois
 
+
     # prestudy those close to optimal:
-    best = best[dv_best < dv_best[0]*1.05]
-    bestopt = [simple_hill_descent_2d(F,x, dt/10, 5) for x in best]
+    best = best[dv_best < dv_best[0]*1.5]
+    bestopt = [simple_hill_descent_2d(F,x, dt/4, 10) for x in best]
     bof = []
     for bo in bestopt:
         bof.append(F(bo[0],bo[1]))
@@ -1002,7 +1037,7 @@ def trajectory_optimizer(
     # try the best:
     for p in bestopt:
         try:
-            s_opt,t_opt = nelder_mead_2d(F,p,-dt/20, 1e-6, max_iter=1000) #type:ignore
+            s_opt,t_opt = nelder_mead_2d(F,p,-dt/2, 1e-6, max_iter=1000) #type:ignore
             break # found one
         except (ValueError, ArithmeticError):
             # this one didn't work
@@ -1018,7 +1053,7 @@ def trajectory_optimizer(
 
 def porkchop_plot(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
                     rv2_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
-                    start_range:list[float], end_range:list[float],
+                    start_range:list[float]|np.ndarray, end_range:list[float]|np.ndarray,
                     sgp:float, short_way:bool = True, rendezvous = True, min_alt=0):
     '''
     Solves lambert's problem for all given starting and ending times. rv1_fn and rv2_fn are functions that return the position and velocity at a given time.
@@ -1079,7 +1114,7 @@ def porkchop_plot(rv1_fn:Callable[[float], tuple[np.ndarray,np.ndarray]],
     
     return array, idx_best
 
-def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float], end_range:list[float],
+def porkchop_from_orbits(ob1:Orbit, ob2:Orbit,start_range:list[float]|np.ndarray, end_range:list[float]|np.ndarray,
                         short_way:bool = True, rendezvous = True, min_alt=0):
     '''calculates the porkchop plot between two orbits, assumes sgp based on the first orbit
     returns a 2d array of all Dv values, and index of the lowest one.\n
@@ -1130,6 +1165,13 @@ def _times_of_interest(origin:Orbit, destination:Orbit, lower_time:float, upper_
 
     # hohmann:
     if (origin.e < 1 and destination.e < 1):
+
+        # figure out eccentric hohmann
+        # pe->ap, ap->pe, ap->ap, pe->pe ?
+
+
+
+
         t = origin.hohmann_time(destination)
         t = np.array(inside_modulo_bounds(lower_time,t,upper_time, origin.synodic_period(destination)))
         t2 = t + origin.hohmann_travel_time(destination)

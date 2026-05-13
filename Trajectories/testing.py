@@ -25,7 +25,7 @@ range_time = np.linspace(start_time,end_time,100)
 # dv_arr, idx = Orbit.porkchop_intercept(ob1,ob2,range_time,range_time) # type: ignore
 dv_arr, idx = porkchop_plot(ob1.time_to_rv,ob2.time_to_rv,range_time,range_time,ob1.sgp) # type: ignore
 
-dv1,dv2,st,et,_ = trajectory_optimizer(ob1,ob2,start_time,end_time,w_relv=0)
+dv1,dv2,st,et,_ = trajectory_optimizer(ob1,ob2,(start_time,end_time,start_time,end_time),w_relv=0)
 
 
 print(f"delta v: {dv_arr[*idx]}, at idx: {idx}")

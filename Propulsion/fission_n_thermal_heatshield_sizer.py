@@ -1221,10 +1221,11 @@ if __name__ == "__main__":
             print_results=False
         )
 
-        m_wet_actual_spacecraft = launch_mass_hypergolic - kick_dry_hypergolic - kick_prop_hypergolic
-        m_dry_actual_spacecraft = m_wet_actual_spacecraft - spacecraft_prop_hypergolic
+        m_wet_actual_spacecraft = launch_mass_hypergolic - kick_dry_hypergolic - kick_prop_hypergolic + 0.02*spacecraft_prop_hypergolic
+        m_dry_actual_spacecraft = m_wet_actual_spacecraft - 1.02*spacecraft_prop_hypergolic
         m_payload = 126.30 # kg (full set for rendezvous with 10% margin)
         m_structure_without_tanks_and_ADCS_and_TTC = remaining_mass_margin_hypergolic - m_payload
+        launch_mass_hypergolic = launch_mass_hypergolic + 0.02*kick_prop_hypergolic + 0.02*spacecraft_prop_hypergolic
 
         if dry_mass == 100 or dry_mass == 1000 or dry_mass == 2700 or dry_mass == 3000 or dry_mass == 3300 or dry_mass == 5000 or dry_mass == 10000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3300:
             # print("\n\n" + "=" * 80)
@@ -1251,6 +1252,7 @@ if __name__ == "__main__":
             print("KICK STAGE", '\n')
             print("launch mass hypergolic =", launch_mass_hypergolic, "kg")
             print("kickstage propellant mass =", kick_prop_hypergolic, "kg, launch mass fraction = ", kick_prop_hypergolic / launch_mass_hypergolic)
+            print("kickstage propellant mass margin =", 0.02*kick_prop_hypergolic)
             print("kickstage dry mass =", kick_dry_hypergolic, "kg, launch mass fraction = ", kick_dry_hypergolic / launch_mass_hypergolic)
             x_h = remaining_mass_margin_hypergolic
             print("=" * 80)

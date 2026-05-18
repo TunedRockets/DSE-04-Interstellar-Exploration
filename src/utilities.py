@@ -5,6 +5,7 @@ By: Johannes Nilsson
 import numpy as np
 import math as m
 from typing import Callable
+import matplotlib.pyplot as plt
 
 # === constants =============================
 
@@ -86,7 +87,7 @@ def inside_modulo_bounds(lower, value, upper, modulo):
     # go through to add to list
     l = []
     while value <= upper:
-        if lower < value < upper: l.append(value)
+        if lower <= value < upper: l.append(value)
         value += modulo
     return l
 
@@ -303,22 +304,22 @@ def simple_hill_descent_2d(f:Callable[[float,float],float],x0:np.ndarray, x0_siz
     center = x0
     centerF = F(x0)
     for _ in range(steps):
-        left = center + np.array([-x0_size,0])
-        right = center + np.array([x0_size,0])
-        up = center + np.array([0,x0_size])
-        down = center + np.array([0,-x0_size])
+        left = center + np.array([-x0_size,x0_size/8])
+        right = center + np.array([x0_size,-x0_size/8])
+        up = center + np.array([x0_size/8,x0_size])
+        down = center + np.array([-x0_size/8,-x0_size])
         leftF = F(left)
         rightF = F(right)
         upF = F(up)
         downF = F(down)
 
-        i = np.argmin([leftF,rightF,upF,downF])
-        minn = [left,right,up,down][i]
-        minnF = [leftF,rightF,upF,downF][i]
+        i = np.argmin([leftF,rightF,upF,downF, centerF])
+        minn = [left,right,up,down, center][i]
+        minnF = [leftF,rightF,upF,downF, centerF][i]
         if minnF < centerF:
             center = minn
             centerF = minnF
-        x0_size *= 0.7
+        else: x0_size *= 0.7
     return center # type:ignore
 
 # === Linear algebra =======

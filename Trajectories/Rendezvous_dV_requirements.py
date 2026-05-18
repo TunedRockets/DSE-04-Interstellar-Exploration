@@ -125,7 +125,7 @@ def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     
     # intercept:
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_t,detect_t+MAX_MISSION_TIME*YEAR, **icpt_weights)
+        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), **icpt_weights)
         out.update({
             "icpt_idv":insert_dv, 
             "icpt_rdv": rdvz_dv, 
@@ -137,7 +137,7 @@ def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
         pass # no intercept :(
     # rendezvous:
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_t,detect_t+MAX_MISSION_TIME*YEAR, **rdvz_weights)
+        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), **rdvz_weights)
         out.update({
             "rdvz_idv":insert_dv, 
             "rdvz_rdv": rdvz_dv, 

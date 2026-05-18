@@ -9,4 +9,5 @@ import math as m
 import numpy as np
 from src.test_orbits import *
 
-test_uni_round_trip_hyper()
+t = Borisov.time_after_periapsis_to_theta(9*31*DAY)
+print(Borisov.polar_equation(t)/AU)

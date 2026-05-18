@@ -25,7 +25,7 @@ ISOs = get_ISO(rm=3)
 for ISO,detect_time,_ in ISOs:
 
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,detect_time,detect_time+max_time, **weight)
+        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,(detect_time,detect_time+max_time,detect_time,detect_time+max_time), **weight)
     except:
         print("Omtimizser did not converge")
         continue

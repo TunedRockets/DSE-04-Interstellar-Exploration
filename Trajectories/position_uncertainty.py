@@ -5,8 +5,9 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
 from src.orbit import Orbit
-from src.utilities import AU
+from src.utilities import AU, root_finder_bisection
 import numpy as np
+import math as m
 from Rendezvous_dV_requirements import get_data, recreate_ISO
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -49,25 +50,61 @@ def orbit_shuffle(ob:Orbit)->None:
     ob.arg_p += dargp
     ob.t_p += dtp
 
+def error_distance():
+    df = get_data()
+    df = df[df["rdvz_total"] < 19.3]
 
-df = get_data()
-df = df[df["rdvz_total"] < 19.3]
+    errors = []
+    for _ in tqdm(range(100), desc="making disturbances"):
+        for i, row in df.iterrows():
+            ob,_,_ = recreate_ISO(row)
+            t_end = row['rdvz_t_arrival'] - row['time_until_periapsis'] + row['t_p'] # time of arrival
+            r = ob.time_to_rv(t_end)[0]
+            orbit_shuffle(ob)
+            r_err = ob.time_to_rv(t_end)[0]
+            errors.append(r_err - r)
 
-errors = []
+    errors = np.array(errors)
+    dists = np.linalg.norm(errors, axis=1)
+    print(f'avg={np.average(dists)}\tstd={np.std(dists)}\tmax={np.max(dists)}\tmin={np.min(dists)}')
 
-for i, row in tqdm(df.iterrows(), desc="making disturbances"):
-    ob,_,_ = recreate_ISO(row)
-    t_end = row['rdvz_t_arrival'] - row['time_until_periapsis'] + row['t_p'] # time of arrival
-    r = ob.time_to_rv(t_end)[0]
-    orbit_shuffle(ob)
-    r_err = ob.time_to_rv(t_end)[0]
-    errors.append(r_err - r)
+    ax = plt.figure().add_subplot(projection='3d')
+    ax.scatter(errors[:,0],errors[:,1],errors[:,2],color="blue") # type:ignore
+    ax.scatter(0,0,0, lw=3, color="red")
+    plt.show()
 
-errors = np.array(errors)
-dists = np.linalg.norm(errors, axis=1)
-print(f'avg={np.average(dists)}\tstd={np.std(dists)}\tmax={np.max(dists)}\tmin={np.min(dists)}')
 
-ax = plt.figure().add_subplot(projection='3d')
-ax.scatter(errors[:,0],errors[:,1],errors[:,2],color="blue") # type:ignore
-ax.scatter(0,0,0, lw=3, color="red")
-plt.show()
+
+# figure out detection distance:
+def HG(H:float, r_delta:float, r_obj:float, phi:float):
+    # HG constants:
+    A1 = 3.332
+    A2 = 1.862
+    B1 = 0.631
+    B2 = 1.218
+    G = 0.15
+    varphi1 = m.exp(-A1 * m.tan(phi/2)**B1)
+    varphi2 = m.exp(-A2 * m.tan(phi/2)**B2)
+    phase = 2.5*m.log10((1-G)*varphi1 + G*varphi2)
+
+    V = H + 5*m.log10(r_delta) + 5*m.log10(r_obj) - phase
+    return V
+
+# LORRI number:
+r_delta = 44 # [AU]
+r_obj = 1_900_000 / AU # [AU]
+phi = 0 # roughly
+
+V = HG(10.4, r_delta,r_obj,phi)
+print(V)
+
+# Our worst case:
+H = 12
+r_delta = 50 # [au]
+phi = 0
+V = 9.5
+F = lambda r: HG(H, r_delta, r/AU, phi)
+
+r = root_finder_bisection(F,1,1_000_000)
+print(f"{r=:.1f}\t for: {r_delta=:.1f} AU")
+

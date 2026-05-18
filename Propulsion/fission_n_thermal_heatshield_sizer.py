@@ -1045,7 +1045,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
     l = 2 # m, 
 
-    actual_heatshield_area = 6*l**2/2
+    actual_heatshield_area = 6*l**2/2 # maximum assumed shield area - the s/c will most likely not be a cube, but a cylinder
 
     heatshield_mass = heatshield_areal_density * actual_heatshield_area
 
@@ -1223,8 +1223,8 @@ if __name__ == "__main__":
 
         m_wet_actual_spacecraft = launch_mass_hypergolic - kick_dry_hypergolic - kick_prop_hypergolic
         m_dry_actual_spacecraft = m_wet_actual_spacecraft - spacecraft_prop_hypergolic
-        m_payload = 126.30 # kg (full set for rendezvous)
-        m_structure_without_tanks_and_ADCS = remaining_mass_margin_hypergolic - m_payload
+        m_payload = 126.30 # kg (full set for rendezvous with 10% margin)
+        m_structure_without_tanks_and_ADCS_and_TTC = remaining_mass_margin_hypergolic - m_payload
 
         if dry_mass == 100 or dry_mass == 1000 or dry_mass == 2700 or dry_mass == 3000 or dry_mass == 3300 or dry_mass == 5000 or dry_mass == 10000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3300:
             # print("\n\n" + "=" * 80)
@@ -1245,8 +1245,8 @@ if __name__ == "__main__":
             print("reactor mass =", reactor_hypergolic, "kg, s/c total mass fraction = ", reactor_hypergolic / m_wet_actual_spacecraft)
             print("heatshield mass =", heatshield_calculated_mass, "kg, s/c total mass fraction = ", heatshield_calculated_mass / m_wet_actual_spacecraft)
             print("remaining mass margin =", remaining_mass_margin_hypergolic, "kg, launch mass fraction = ", remaining_mass_margin_hypergolic / m_wet_actual_spacecraft)    
-            print("structural mass without tanks and ADCS =", m_structure_without_tanks_and_ADCS, "kg, s/c total mass fraction = ", m_structure_without_tanks_and_ADCS / m_wet_actual_spacecraft)
-            
+            print("structural mass without tanks and ADCS and TTC =", m_structure_without_tanks_and_ADCS_and_TTC, "kg, s/c total mass fraction = ", m_structure_without_tanks_and_ADCS_and_TTC / m_wet_actual_spacecraft)
+
             print('\n')
             print("KICK STAGE", '\n')
             print("launch mass hypergolic =", launch_mass_hypergolic, "kg")
@@ -1394,7 +1394,7 @@ if __name__ == "__main__":
     ax.plot(
         x_h,
         launch_masses_hypergolic[hypergolic_mask],
-        linestyle="--",
+        linestyle="-",
         linewidth=3,
         label="Hypergolic Total Launch Mass"
     )
@@ -1402,35 +1402,35 @@ if __name__ == "__main__":
     ax.plot(
         x_h,
         kick_stage_propellants_hypergolic[hypergolic_mask],
-        linestyle="--",
+        linestyle="-",
         label="Hypergolic Kickstage Propellant"
     )
 
     ax.plot(
         x_h,
         spacecraft_propellants_hypergolic[hypergolic_mask],
-        linestyle="--",
+        linestyle="-",
         label="Hypergolic Spacecraft Propellant"
     )
 
     ax.plot(
         x_h,
         kick_stage_dry_masses_hypergolic[hypergolic_mask],
-        linestyle="--",
+        linestyle="-",
         label="Hypergolic Kickstage Dry Mass"
     )
 
     ax.plot(
         x_h,
         radiator_masses_hypergolic[hypergolic_mask],
-        linestyle="--",
+        linestyle="-",
         label="Hypergolic Radiator Mass"
     )
 
     ax.plot(
         x_h,
         reactor_masses_hypergolic[hypergolic_mask],
-        linestyle="--",
+        linestyle="-",
         label="Hypergolic Reactor Mass"
     )
 

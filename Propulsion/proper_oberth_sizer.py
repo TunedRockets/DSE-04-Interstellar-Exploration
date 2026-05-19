@@ -11,6 +11,7 @@ from tqdm import tqdm
 import matplotlib as mpl
 # mpl.use('TkAgg')
 import matplotlib.pyplot as plt
+from Power.powerinsizeout import reactor
 
 # ============================================================
 #                         CONSTANTS
@@ -533,9 +534,14 @@ def run_configuration(
             1 + feed_system_fraction
         )
 
-        reactor_mass = (
-            reactor_thermal_power / 1e3
-        ) * reactor_specific_mass
+        anhong_reactor_mass, anhong_reactor_mass_fuel  = reactor(reactor_electric_power)
+
+
+        # reactor_mass = max((
+        #     reactor_thermal_power / 1e3
+        # ) * reactor_specific_mass, anhong_reactor_mass)
+
+        reactor_mass = anhong_reactor_mass + anhong_reactor_mass_fuel
 
         radiator_mass = (
             radiator_area
@@ -688,7 +694,7 @@ def run_configuration(
 
 if __name__ == "__main__":
 
-    dry_masses = np.linspace(1, 10000, 10000)
+    dry_masses = np.linspace(0, 2000, 10000)
 
     launch_masses_thermal = []
     remaining_masses_thermal = []
@@ -715,6 +721,8 @@ if __name__ == "__main__":
     # RUN SWEEP
     # ============================================================
 
+    last_printed_bin = -1
+
     for dry_mass in tqdm(dry_masses, desc="Running mass sweep"):
 
 
@@ -737,10 +745,10 @@ if __name__ == "__main__":
         m_payload = 126.30  # kg (full set for rendezvous with 10% margin)
         m_structure_without_tanks_and_ADCS_and_TTC = remaining_mass_margin_hypergolic - m_payload
         launch_mass_hypergolic = launch_mass_hypergolic + 0.02 * kick_prop_hypergolic + 0.02 * spacecraft_prop_hypergolic
+        launch_mass_bin = int(launch_mass_hypergolic // 100)
 
-        if dry_mass == 100 or dry_mass == 1000 or dry_mass == 2700 or dry_mass == 3000 or dry_mass == 3300 or dry_mass == 5000 or dry_mass == 10000 or int(
-                math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3000 or int(
-                math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3300:
+        if launch_mass_bin != last_printed_bin:
+            last_printed_bin = launch_mass_bin
             # print("\n\n" + "=" * 80)
             # print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, THERMAL OPTION")
             # print("=" * 80)
@@ -750,35 +758,96 @@ if __name__ == "__main__":
             #     thermal=True,
             #     print_results=True
             # )
-            print("\n\n" + "=" * 80)
-            print("DETAILED SUMMARY FOR DRY MASS (spacecraft + kick stage) =", dry_mass, "kg, NON-THERMAL OPTION")
-            print("spacecraft total (wet) mass without kick stage = ", m_wet_actual_spacecraft)
-            print("spacecraft dry mass = ", m_dry_actual_spacecraft)
-            print("spacecraft propellant mass =", spacecraft_prop_hypergolic, "kg, s/c total mass fraction = ",
-                  spacecraft_prop_hypergolic / m_wet_actual_spacecraft)
-            print("radiator mass =", radiator_hypergolic, "kg, s/c total mass fraction = ",
-                  radiator_hypergolic / m_wet_actual_spacecraft)
-            print("reactor mass =", reactor_hypergolic, "kg, s/c total mass fraction = ",
-                  reactor_hypergolic / m_wet_actual_spacecraft)
-            print("heatshield mass =", heatshield_calculated_mass, "kg, s/c total mass fraction = ",
-                  heatshield_calculated_mass / m_wet_actual_spacecraft)
-            print("remaining mass margin =", remaining_mass_margin_hypergolic, "kg, launch mass fraction = ",
-                  remaining_mass_margin_hypergolic / m_wet_actual_spacecraft)
-            print("structural mass without tanks and ADCS and TTC =", m_structure_without_tanks_and_ADCS_and_TTC,
-                  "kg, s/c total mass fraction = ",
-                  m_structure_without_tanks_and_ADCS_and_TTC / m_wet_actual_spacecraft)
-            # print("ADCS and TTC mass = ", remaining_mass_margin_hypergolic - m_structure_without_tanks_and_ADCS_and_TTC, "kg, s/c total mass fraction = ", (remaining_mass_margin_hypergolic - m_structure_without_tanks_and_ADCS_and_TTC) /m_wet_actual_spacecraft)
+            print("\n" + "=" * 90)
+            print("BUS SUBSYSTEM BUDGET (QUARTER-SPLIT CORRECTED)")
+            print("=" * 90)
 
-            print('\n')
-            print("KICK STAGE", '\n')
-            print("launch mass hypergolic =", launch_mass_hypergolic, "kg")
-            print("kickstage propellant mass =", kick_prop_hypergolic, "kg, launch mass fraction = ",
-                  kick_prop_hypergolic / launch_mass_hypergolic)
-            print("kickstage propellant mass margin =", 0.02 * kick_prop_hypergolic)
-            print("kickstage dry mass =", kick_dry_hypergolic, "kg, launch mass fraction = ",
-                  kick_dry_hypergolic / launch_mass_hypergolic)
-            x_h = remaining_mass_margin_hypergolic
-            print("=" * 80)
+            # ============================================================
+            # PRIMARY SUBSYSTEMS (DIRECT FROM MODEL)
+            # ============================================================
+
+            print("\n--- PRIMARY SUBSYSTEMS ---")
+
+            print(
+                f"Scientific Payload (Rendezvous + margin): {m_payload:10.2f} kg   ({m_payload / m_wet_actual_spacecraft * 100:.1f}%)")
+
+            print(
+                f"Propulsion (incl. tanks + EP + kick)    : {spacecraft_prop_hypergolic:10.2f} kg   ({spacecraft_prop_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")
+
+            print(
+                f"Power System (Reactor)                  : {reactor_hypergolic:10.2f} kg   ({reactor_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")
+
+            print(
+                f"Reactor Radiator                        : {radiator_hypergolic:10.2f} kg   ({radiator_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")
+            print(
+                f"Remaining Mass Thresshold               : {m_structure_without_tanks_and_ADCS_and_TTC:10.2f} kg   ({m_structure_without_tanks_and_ADCS_and_TTC / m_wet_actual_spacecraft * 100:.1f}%)")
+
+            # ============================================================
+            # QUARTER SUBDIVISION (ADCS / TT&C / LANDING)
+            # ============================================================
+
+            print("\n--- SECONDARY SUBSYSTEMS ---")
+
+            structures_mass = 0.2*m_dry_actual_spacecraft
+
+            residual_mass = m_structure_without_tanks_and_ADCS_and_TTC - structures_mass
+
+            # Quarter split: 2/4 landing, 1/4 ADCS, 1/4 TT&C
+            landing_mass = 2 / 4 * residual_mass
+            adcs_mass = 1 / 4 * residual_mass
+            ttc_mass = 1 / 4 * residual_mass
+
+            print(
+                f"Structures Mass                         : {structures_mass:10.2f} kg   ({structures_mass / m_wet_actual_spacecraft * 100:.1f}%)")
+            print(
+                f"Landing System                          : {landing_mass:10.2f} kg   ({landing_mass / m_wet_actual_spacecraft * 100:.1f}%)")
+            print(
+                f"ADCS                                    : {adcs_mass:10.2f} kg   ({adcs_mass / m_wet_actual_spacecraft * 100:.1f}%)")
+            print(
+                f"TT&C                                    : {ttc_mass:10.2f} kg   ({ttc_mass / m_wet_actual_spacecraft * 100:.1f}%)")
+
+            # ============================================================
+            # MASS TOTALS
+            # ============================================================
+
+            print("\n--- MASS TOTALS ---")
+
+            print(f"Spacecraft Wet Mass                     : {m_wet_actual_spacecraft:10.2f} kg   (100%)")
+            print(f"Spacecraft Dry Mass                     : {m_dry_actual_spacecraft:10.2f} kg   ({m_dry_actual_spacecraft / m_wet_actual_spacecraft * 100:.1f}%)")
+
+            print(f"Remaining Mass Margin                   : {remaining_mass_margin_hypergolic:10.2f} kg")
+
+            # ============================================================
+            # KICK STAGE
+            # ============================================================
+
+            print("\n" + "-" * 90)
+            print("KICK STAGE")
+            print("-" * 90)
+
+            print(f"Kick-stage Propellant                   : {kick_prop_hypergolic:10.2f} kg")
+            print(f"Kick-stage Dry Mass                     : {kick_dry_hypergolic:10.2f} kg")
+            print(f"Thermal Shielding (Kick-stage)          : {heatshield_calculated_mass:10.2f} kg")
+
+            print(f"\nLaunch Mass (with kick stage)           : {launch_mass_hypergolic:10.2f} kg")
+
+            # ============================================================
+            # CONSISTENCY CHECK
+            # ============================================================
+
+            reconstructed = (
+                    m_wet_actual_spacecraft
+                    + kick_prop_hypergolic
+                    + kick_dry_hypergolic
+                    + heatshield_calculated_mass
+            )
+
+            # print("\n--- CONSISTENCY CHECK ---")
+            # print(f"Reconstructed Launch Mass               : {reconstructed:10.2f} kg")
+            # print(f"Model Launch Mass                       : {launch_mass_hypergolic:10.2f} kg")
+            # print(f"Delta                                   : {launch_mass_hypergolic - reconstructed:10.2f} kg")
+            #
+            # print("\n" + "=" * 90)
 
             run_configuration(
                 dry_mass,

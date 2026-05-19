@@ -1383,7 +1383,7 @@ if __name__ == "__main__":
 
         (Star48BV, "Star48BV"),
 
-        (ESCB, "ESC-B (Ariane 6 Second Stage)"),
+        # (ESCB, "ESC-B (Ariane 6 Second Stage)"),
 
         (ESC_A, "ESC-A (Ariane 5 Second Stage)"),
 
@@ -1447,7 +1447,7 @@ if __name__ == "__main__":
         kickstages,
         total_dv,
         rdvz_dv,
-        vertical_wetmass=11240.2,
+        vertical_wetmass=8600,
         vertical_color='black',
         # vertical_label='Updated Mass Budget'
     )

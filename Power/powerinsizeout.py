@@ -81,5 +81,5 @@ def rtgsize(power_elec):
     # Rtg
     rtg_power_density = 296/56
     # 1/2*(296-296*0.7)*20*365*24*3600 + 296*0.7*20*365*24*3600 = 156418560000, 43 MWh
-    rtg_mass = required_electric_power_hypergolic / rtg_power_density
+    rtg_mass = power_elec / rtg_power_density
     return rtg_mass, None

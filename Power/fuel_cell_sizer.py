@@ -54,45 +54,17 @@ ion_isp = 4150                      # s - based on NEXT thruster performance, av
 ion_thruster_thrust = 0.237         # N - based on NEXT thruster performance, higher value (lower 0.236)
 ion_efficiency = 0.70               # - based on NEXT thruster performance
 
-
-# ------------------------------------------------------------
-# Solar thermal kick stage
-# ------------------------------------------------------------
-
-# Water
-thermal_prop_molecular_mass = 18 / 1000  # kg/mol
-
-# Propellant density
-# Water: ~1000 kg/m^3
-# Liquid hydrogen: ~70 kg/m^3
-# Liquid methane: ~420 kg/m^3
-
-propellant_density = 1000  # kg/m^3
-
-solar_thermal_chamber_temperature = 1673  # K
-
-tank_pressure = 5e5  # Pa
-
-max_chamber_pressure = 50e5  # 50 bar
-
-pump_efficiency = 0.70
-
-
-# ------------------------------------------------------------
-# Reactor / Brayton
-# ------------------------------------------------------------
-
-brayton_hot_side_temperature = 1673  # K
-radiator_emissivity = 0.9
-brayton_eta_fraction = 0.6
-
-
 # ------------------------------------------------------------
 # Solar flyby
 # ------------------------------------------------------------
 
 perihelion_distance = 10 * R_sun
 solar_absorptivity = 0.95
+
+# Powergen
+select = 2
+selection = ["fuel_cell", "reactor", "rtg"]
+selection = selection[select]
 
 
 # ============================================================
@@ -197,205 +169,8 @@ def get_required_electric_power(
     )
 
 
-# ============================================================
-#                THERMAL ROCKET PERFORMANCE
-# ============================================================
 
-def get_exhaust_velocity_thermal(
-        T_chamber,
-        molecular_mass):
-
-    gamma = 1.4
-
-    return np.sqrt(
-        (2 * gamma / (gamma - 1))
-        * (R_universal / molecular_mass)
-        * T_chamber
-    )
-
-
-def get_thermal_isp(
-        T_chamber,
-        molecular_mass):
-
-    return (
-        get_exhaust_velocity_thermal(
-            T_chamber,
-            molecular_mass
-        )
-        / g0
-    )
-
-
-def get_thermal_power_required(
-        mdot,
-        T_chamber,
-        T_inlet,
-        molecular_mass):
-
-    cp = (
-        (7 / 2)
-        * (R_universal / molecular_mass)
-    )
-
-    return (
-        mdot
-        * cp
-        * (T_chamber - T_inlet)
-    )
-
-
-
-# ============================================================
-#                   PUMP / PRESSURE MODEL
-# ============================================================
-
-def get_chamber_pressure(
-        tank_pressure,
-        electric_pump_power,
-        mdot,
-        pump_efficiency,
-        propellant_density):
-
-    if mdot <= 0:
-        return tank_pressure
-
-    delta_p = (
-        electric_pump_power
-        * propellant_density
-        * pump_efficiency
-        / mdot
-    )
-
-    return tank_pressure + delta_p
-
-
-def get_required_pump_power(
-        desired_pressure,
-        tank_pressure,
-        mdot,
-        pump_efficiency,
-        propellant_density):
-
-    delta_p = max(
-        0,
-        desired_pressure - tank_pressure
-    )
-
-    return (
-        mdot
-        * delta_p
-        / (
-            propellant_density
-            * pump_efficiency
-        )
-    )
-
-
-# ============================================================
-#                   BRAYTON OPTIMIZER
-# ============================================================
-
-def optimize_brayton_radiator(
-        electric_power,
-        T_hot,
-        emissivity=0.9,
-        T_space=3,
-        eta_fraction=0.6):
-
-    def radiator_area(T_cold):
-
-        if (
-            T_cold <= T_space
-            or T_cold >= T_hot
-        ):
-            return np.inf
-
-        eta = (
-            eta_fraction
-            * (1 - T_cold / T_hot)
-        )
-
-        if eta <= 0:
-            return np.inf
-
-        thermal_power = electric_power / eta
-
-        waste_heat = (
-            thermal_power
-            - electric_power
-        )
-
-        return (
-            waste_heat
-            / (
-                emissivity
-                * sigma
-                * (
-                    T_cold**4
-                    - T_space**4
-                )
-            )
-        )
-
-    result = minimize_scalar(
-        radiator_area,
-        bounds=(300, T_hot - 1),
-        method='bounded'
-    )
-
-    T_cold = result.x
-
-    eta = (
-        eta_fraction
-        * (1 - T_cold / T_hot)
-    )
-
-    thermal_power = electric_power / eta
-
-    waste_heat = (
-        thermal_power
-        - electric_power
-    )
-
-    area = radiator_area(T_cold)
-
-    return (
-        T_cold,
-        eta,
-        thermal_power,
-        waste_heat,
-        area
-    )
-
-
-# ============================================================
-#                 SOLAR THERMAL SYSTEM
-# ============================================================
-
-def get_solar_flux(distance):
-    return (
-        F_1AU
-        * (AU / distance)**2
-    )
-
-
-def get_heatshield_area(
-        required_thermal_power,
-        solar_flux,
-        absorptivity):
-
-    usable_flux = (
-        solar_flux
-        * absorptivity
-    )
-
-    return (
-        required_thermal_power
-        / usable_flux
-    )
-
-def run_configuration(dry_mass_assumption, thermal, print_results=False):
+def run_configuration(dry_mass_assumption, print_results=False):
 
     # ============================================================
     #                   ELECTRIC PROP STAGE
@@ -449,30 +224,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
 
     # ============================================================
-    #                   SOLAR THERMAL STAGE
-    # ============================================================
-
-    thermal_isp = get_thermal_isp(
-        solar_thermal_chamber_temperature,
-        thermal_prop_molecular_mass
-    )
-
-    oberth_propellant_thermal = (
-        get_prop_mass_with_end_mass(
-            oberth_delta_v,
-            spacecraft_total_mass,
-            thermal_isp
-        )
-    )
-
-    kickstage_initial_mass_thermal = (
-        spacecraft_total_mass
-        + oberth_propellant_thermal
-    )
-
-    kickstage_final_mass_thermal = spacecraft_total_mass
-
-    # ============================================================
     #            HYPERGOLIC KICKSTAGE OPTION
     # ============================================================
 
@@ -522,14 +273,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # Plane change
     # ------------------------------------------------------------
 
-    plane_change_thrust_thermal = (
-        get_required_thrust(
-            plane_change_delta_v,
-            ion_isp,
-            kickstage_initial_mass_thermal,
-            plane_change_burn_time
-        )
-    )
     plane_change_thrust_hypergolic = (
         get_required_thrust(
             plane_change_delta_v,
@@ -539,13 +282,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
         )
     )
 
-    plane_change_power_thermal = (
-        get_required_electric_power(
-            plane_change_thrust_thermal,
-            ion_isp,
-            ion_efficiency
-        )
-    )
     plane_change_power_hypergolic = (
         get_required_electric_power(
             plane_change_thrust_hypergolic,
@@ -578,25 +314,12 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
 
     # ------------------------------------------------------------
-    # Reactor sized by max electric propulsion load
+    # Max electric propulsion load
     # ------------------------------------------------------------
 
-    required_reactor_electric_power_thermal = max(
-        plane_change_power_thermal,
-        rendezvous_power
-    )
-
-    required_reactor_electric_power_hypergolic = max(
+    required_electric_power_hypergolic = max(
         plane_change_power_hypergolic,
         rendezvous_power
-    )
-
-    required_thruster_count_thermal = math.ceil(
-        max(
-            plane_change_thrust_thermal,
-            rendezvous_thrust
-        )
-        / ion_thruster_thrust
     )
 
     required_thruster_count_hypergolic = math.ceil(
@@ -609,105 +332,54 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
 
     # ============================================================
-    #              SOLAR THERMAL OBERTH SIZING
+    #                Power System SIZING
     # ============================================================
 
-    oberth_mdot_thermal = (
-        oberth_propellant_thermal
-        / oberth_burn_time
-    )
 
-    oberth_thrust_thermal = (
-        oberth_mdot_thermal
-        * thermal_isp
-        * g0
-    )
+    # Fuel Cells
 
-    required_thermal_power = (
-        get_thermal_power_required(
-            oberth_mdot_thermal,
-            solar_thermal_chamber_temperature,
-            20,
-            thermal_prop_molecular_mass
-        )
-    )
+    fuel_cell_BOP_power_density = 12000/118 # W/kg
+    fuel_cell_reactants_specific_energy = 3661*0.7 # Wh/kg
 
-    solar_flux = get_solar_flux(
-        perihelion_distance
-    )
+    # print(required_electric_power_hypergolic / 1e3)
+    fuel_cell_mass = required_electric_power_hypergolic / fuel_cell_BOP_power_density
+    # print(required_electric_power_hypergolic * plane_change_burn_time / 3600 / 1e6)
+    fuel_cell_reactants_mass = required_electric_power_hypergolic * plane_change_burn_time / 3600 / fuel_cell_reactants_specific_energy
 
-    required_heatshield_area = (
-        get_heatshield_area(
-            required_thermal_power,
-            solar_flux,
-            solar_absorptivity
-        )
-    )
+    # Reactor
+
+    brayton_cycle_efficiency = 0.13446458166714917
+
+    # Uranium-235 fission energy
+    energy_one_fission = 169.1 * 10**(6) *  1.602176634 * 10**(-19) # MeV * J/eV source https://web.archive.org/web/20190505175631/http://www.kayelaby.npl.co.uk/atomic_and_nuclear_physics/4_7/4_7_1.html
+    energy_fission_mol = energy_one_fission * 6.02214076* 10**(23) # J per Mol https://www.nist.gov/si-redefinition/meet-constants
+    kg_per_mol_u235 = 235/1000 # g per mol / 1000
+    u235_specific_energy = energy_fission_mol / kg_per_mol_u235 # J per kg
 
 
-    # ============================================================
-    #                     PUMP SIZING
-    # ============================================================
+    # (elec power / brayton ) /  u235_specific_energy = kg per second (of pure u235)
+    # minimum haleu mass = kg per sec / 0.2 , this is also haleu mass rate https://world-nuclear.org/information-library/nuclear-fuel-cycle/conversion-enrichment-and-fabrication/high-assay-low-enriched-uranium-haleu
+    # fuel mass to sustain mission = burn_time * haleu mass rate
 
-    pump_power_required = (
-        get_required_pump_power(
-            max_chamber_pressure,
-            tank_pressure,
-            oberth_mdot_thermal,
-            pump_efficiency,
-            propellant_density
-        )
-    )
+    # elec power / brayton / u235_specific energy / 0.2 * burn time = fuel mass
 
-    available_pump_power = (
-        required_reactor_electric_power_thermal
-    )
+    reactor_fuel_equivalent_specific_energy = brayton_cycle_efficiency * u235_specific_energy * 0.2 # Wh/kg
 
-    achievable_pressure = get_chamber_pressure(
-        tank_pressure,
-        available_pump_power,
-        oberth_mdot_thermal,
-        pump_efficiency,
-        propellant_density
-    )
-
-    actual_chamber_pressure = min(
-        achievable_pressure,
-        max_chamber_pressure
-    )
+    reactor_BOP_power_density = 100000* brayton_cycle_efficiency /100 # W/kg 
 
 
-    # ============================================================
-    #                REACTOR / RADIATOR SIZING
-    # ============================================================
+    reactor_fuel_mass = (plane_change_power_hypergolic * plane_change_burn_time + rendezvous_power* rendezvous_burn_time) / reactor_fuel_equivalent_specific_energy
+    # print("fuelamsss;", reactor_fuel_mass)
+    reactor_fuel_mass = reactor_fuel_mass / 0.1 # burn up mass https://beyondnerva.wordpress.com/fission-power-systems/systems-for-nuclear-auxiliary-power-snap/snap-10-10a-and-snapshot/
+    # print("fuelamsss;", reactor_fuel_mass)
 
-    (
-        radiator_Tcold_thermal,
-        brayton_efficiency_thermal,
-        reactor_thermal_power_thermal,
-        reactor_waste_heat_thermal,
-        radiator_area_thermal
-    ) = optimize_brayton_radiator(
-        required_reactor_electric_power_thermal,
-        brayton_hot_side_temperature,
-        radiator_emissivity,
-        3,
-        brayton_eta_fraction
-    )
+    reactor_mass = required_electric_power_hypergolic / reactor_BOP_power_density
 
-    (
-        radiator_Tcold_hypergolic,
-        brayton_efficiency_hypergolic,
-        reactor_thermal_power_hypergolic,
-        reactor_waste_heat_hypergolic,
-        radiator_area_hypergolic
-    ) = optimize_brayton_radiator(
-        required_reactor_electric_power_hypergolic,
-        brayton_hot_side_temperature,
-        radiator_emissivity,
-        3,
-        brayton_eta_fraction
-    )
+
+    # Rtg
+    rtg_power_density = 296/56
+    # 1/2*(296-296*0.7)*20*365*24*3600 + 296*0.7*20*365*24*3600 = 156418560000, 43 MWh
+    rtg_mass = required_electric_power_hypergolic / rtg_power_density
 
 
     if print_results:
@@ -728,9 +400,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
               ion_thruster_thrust,
               "N")
 
-        print("Required thruster count (Thermal Option):",
-              required_thruster_count_thermal)
-
         print("Required thruster count (Hypergolic Option):",
               required_thruster_count_hypergolic)
 
@@ -742,14 +411,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
               plane_change_burn_time / DAY,
               "days )")
 
-        print("Plane change thrust (Thermal Option):",
-              plane_change_thrust_thermal,
-              "N")
-
-        print("Plane change electric power (Thermal Option):",
-              plane_change_power_thermal / 1e3,
-              "kW")
-
         print("Plane change thrust (Hypergolic Option):",
               plane_change_thrust_hypergolic,
               "N")
@@ -757,8 +418,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
         print("Plane change electric power (Hypergolic Option):",
               plane_change_power_hypergolic / 1e3,
               "kW")
-
-
 
         print()
 
@@ -778,57 +437,17 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
 
         # ============================================================
-        #                   REACTOR SYSTEM
+        #                   Power Generation
         # ============================================================
 
         print()
         print("=" * 80)
-        print("FISSION REACTOR")
+        print("Power Generation")
         print("=" * 80)
-
-        print("Required electric output (Thermal Option):",
-              required_reactor_electric_power_thermal / 1e3,
-              "kW")
 
         print("Required electric output (Hypergolic Option):",
-              required_reactor_electric_power_hypergolic / 1e3,
+              required_electric_power_hypergolic / 1e3,
               "kW")
-
-
-        print("Required thermal power (Hypergolic Option):",
-              reactor_thermal_power_hypergolic / 1e3,
-              "kW")
-
-        print("Brayton efficiency (Hypergolic Option):",
-              brayton_efficiency_hypergolic)
-
-        print("Waste heat (Hypergolic Option):",
-              reactor_waste_heat_hypergolic / 1e3,
-              "kW")
-
-
-        # ============================================================
-        #                      RADIATOR SYSTEM
-        # ============================================================
-
-        print()
-        print("=" * 80)
-        print("RADIATOR")
-        print("=" * 80)
-
-        print("Radiator cold side temperature (Thermal Option):",
-              radiator_Tcold_thermal,
-              "K")
-        print("Radiator cold side temperature (Hypergolic Option):",
-              radiator_Tcold_hypergolic,
-              "K")
-
-        print("Radiator area (Thermal Option):",
-              radiator_area_thermal,
-              "m^2")
-        print("Radiator area (Hypergolic Option):",
-              radiator_area_hypergolic,
-              "m^2")
 
 
         # ============================================================
@@ -844,8 +463,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
                                     initial_mass,
                                     final_mass,
                                     achieved_dv,
-                                    tank_pressure_bar,
-                                    chamber_pressure_bar,
                                     extra_power=0):
 
             print()
@@ -871,34 +488,9 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
             print("Target delta-v:", oberth_delta_v, "m/s")
             print("Delta-v error:", achieved_dv - oberth_delta_v, "m/s")
 
-            print()
-            print("Tank pressure:", tank_pressure_bar, "bar")
-            print("Chamber pressure:", chamber_pressure_bar, "bar")
 
             if extra_power > 0:
                 print("Auxiliary power load:", extra_power / 1e3, "kW")
-
-
-            # ------------------------------------------------------------
-            # THERMAL KICKSTAGE REPORT
-            # ------------------------------------------------------------
-
-            print_kickstage_summary(
-                name="SOLAR THERMAL",
-                isp=thermal_isp,
-                prop_mass=oberth_propellant_thermal,
-                mdot=oberth_mdot_thermal,
-                thrust=oberth_thrust_thermal,
-                burn_time=oberth_burn_time,
-                initial_mass=kickstage_initial_mass_thermal,
-                final_mass=kickstage_final_mass_thermal,
-                achieved_dv=thermal_isp * g0 * math.log(
-                    kickstage_initial_mass_thermal / kickstage_final_mass_thermal
-                ),
-                tank_pressure_bar=tank_pressure / 1e5,
-                chamber_pressure_bar=actual_chamber_pressure / 1e5,
-                extra_power=0
-            )
 
 
             # ------------------------------------------------------------
@@ -915,8 +507,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
                 initial_mass=hypergolic_kickstage_initial_mass,
                 final_mass=hypergolic_kickstage_final_mass,
                 achieved_dv=hypergolic_achieved_dv,
-                tank_pressure_bar=hypergolic_chamber_pressure / 1e5,
-                chamber_pressure_bar=hypergolic_chamber_pressure / 1e5,
                 extra_power=0
             )
 
@@ -951,9 +541,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
             print()
 
-            print("Oberth propellant (Thermal Option):",
-                  oberth_propellant_thermal,
-                  "kg")
 
             print("Oberth propellant (Hypergolic Option):",
                   oberth_propellant_hypergolic,
@@ -965,9 +552,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
                   spacecraft_total_mass,
                   "kg")
 
-            print("Combined initial launch mass (Thermal Option):",
-                  kickstage_initial_mass_thermal,
-                  "kg")
 
             print("Combined initial launch mass (Kickstage Option):",
                   kickstage_initial_mass_hypergolic,
@@ -990,68 +574,24 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     ppp_mass_per_kw = 7             # kg/kW (power processing + harness)
     feed_system_fraction = 0.1
 
-    ion_system_mass_thermal = (
-        required_thruster_count_thermal * ion_thruster_mass
-        + ppp_mass_per_kw * (required_reactor_electric_power_thermal / 1e3)
-    )
-
     ion_system_mass_hypergolic = (
         required_thruster_count_hypergolic * ion_thruster_mass
-        + ppp_mass_per_kw * (required_reactor_electric_power_hypergolic / 1e3)
+        + ppp_mass_per_kw * (required_electric_power_hypergolic / 1e3)
     )
 
-    ion_system_mass_thermal *= (1 + feed_system_fraction)
     ion_system_mass_hypergolic *= (1 + feed_system_fraction)
 
 
     # ------------------------------------------------------------
-    # Reactor mass model
+    # power gen mass model
     # ------------------------------------------------------------
 
-    reactor_specific_mass = 130/100  # kg/kW thermal (SNAP)
-
-    reactor_mass_thermal = (
-        reactor_thermal_power_thermal / 1e3
-    ) * reactor_specific_mass
-
-    reactor_mass_hypergolic = (
-        reactor_thermal_power_hypergolic / 1e3
-    ) * reactor_specific_mass
-
-
-    # ------------------------------------------------------------
-    # Radiator mass model
-    # ------------------------------------------------------------
-
-    radiator_areal_density = 5  # kg/m^2
-
-    radiator_mass_thermal = radiator_area_thermal * radiator_areal_density
-    radiator_mass_hypergolic = radiator_area_hypergolic * radiator_areal_density
-
-
-    # ------------------------------------------------------------
-    # Solar-thermal kickstage dry mass
-    # ------------------------------------------------------------
-
-    tank_structural_fraction = 0.1
-    pump_specific_power_mass = 2  # kg/kW pump system
-
-    kickstage_dry_mass_thermal = (
-        tank_structural_fraction * oberth_propellant_thermal
-        + pump_specific_power_mass * pump_power_required / 1e3
-    )
-
-    heatshield_areal_density = 17.57  # kg/m^2 (high-temp heat shield - Parker Solar Probe heritage)
-
-    l = 7 # m,
-    r = 4 # m
-
-    actual_heatshield_area = l*r # maximum assumed shield area - the s/c will most likely not be a cube, but a cylinder
-
-    heatshield_mass = heatshield_areal_density * actual_heatshield_area
-
-    kickstage_dry_mass_thermal += heatshield_mass
-
+    if selection == "fuel_cell":
+        power_gen_mass_hypergolic = fuel_cell_mass + fuel_cell_reactants_mass
+    elif selection == "reactor":
+        power_gen_mass_hypergolic = reactor_mass # + reactor_fuel_mass
+    elif selection == "rtg":
+        power_gen_mass_hypergolic = rtg_mass
 
     # ------------------------------------------------------------
     # Hypergolic kickstage dry mass
@@ -1068,19 +608,10 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     #               TOTAL DRY MASS BUDGET
     # ============================================================
 
-    system_dry_mass_thermal = (
-        0
-        + ion_system_mass_thermal
-        + reactor_mass_thermal
-        + radiator_mass_thermal
-        + kickstage_dry_mass_thermal
-    )
-
     system_dry_mass_hypergolic = (
         0
         + ion_system_mass_hypergolic
-        + reactor_mass_hypergolic
-        + radiator_mass_hypergolic
+        + power_gen_mass_hypergolic
         + kickstage_dry_mass_hypergolic
     )
 
@@ -1089,8 +620,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     #               PAYLOAD MARGIN ANALYSIS
     # ============================================================
 
-    payload_remaining_thermal = dry_mass_assumption - system_dry_mass_thermal
-    payload_remaining_hypergolic = dry_mass_assumption - system_dry_mass_hypergolic-heatshield_mass
+    payload_remaining_hypergolic = dry_mass_assumption - system_dry_mass_hypergolic
 
     # payload_remaining_thermal =  margin_loss_thermal - dry_mass_assumption
     # payload_remaining_hypergolic = margin_loss_hypergolic - dry_mass_assumption
@@ -1106,27 +636,18 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
         print("=" * 80)
 
         print("\n--- ION PROPULSION ---")
-        print("Thermal architecture:", ion_system_mass_thermal, "kg")
         print("Hypergolic architecture:", ion_system_mass_hypergolic, "kg")
 
-        print("\n--- REACTOR ---")
-        print("Thermal architecture:", reactor_mass_thermal, "kg")
-        print("Hypergolic architecture:", reactor_mass_hypergolic, "kg")
-
-        print("\n--- RADIATORS ---")
-        print("Thermal architecture:", radiator_mass_thermal, "kg")
-        print("Hypergolic architecture:", radiator_mass_hypergolic, "kg")
+        print("\n--- Power Generator ---")
+        print("Hypergolic architecture:", power_gen_mass_hypergolic, "kg")
 
         print("\n--- KICKSTAGE DRY MASS ---")
-        print("Thermal architecture:", kickstage_dry_mass_thermal, "kg")
         print("Hypergolic architecture:", kickstage_dry_mass_hypergolic, "kg")
 
         print("\n--- TOTAL DRY MASS ---")
-        print("Thermal architecture:", system_dry_mass_thermal, "kg")
         print("Hypergolic architecture:", system_dry_mass_hypergolic, "kg")
 
         print("\n--- TOTAL LAUNCH MASS ---")
-        print("Thermal architecture:", kickstage_initial_mass_thermal, "kg")
         print("Hypergolic architecture:", kickstage_initial_mass_hypergolic, "kg")
 
         print("\n--- PAYLOAD IMPACT ---")
@@ -1138,18 +659,6 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # ============================================================
     # UPDATED RETURN STATEMENT
     # ============================================================
-
-    if thermal:
-        return (
-            kickstage_initial_mass_thermal,
-            payload_remaining_thermal,
-            oberth_propellant_thermal,
-            plane_change_propellant + rendezvous_propellant,
-            kickstage_dry_mass_thermal,
-            radiator_mass_thermal,
-            reactor_mass_thermal, 
-            heatshield_mass
-        )
     else:
         return (
             kickstage_initial_mass_hypergolic,
@@ -1157,34 +666,23 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
             oberth_propellant_hypergolic,
             plane_change_propellant + rendezvous_propellant,
             kickstage_dry_mass_hypergolic,
-            radiator_mass_hypergolic,
-            reactor_mass_hypergolic, 
-            heatshield_mass
+            power_gen_mass_hypergolic
         )
+
 if __name__ == "__main__":
 
     dry_masses = np.linspace(1, 10000, 10000)
 
-    launch_masses_thermal = []
-    remaining_masses_thermal = []
-
     launch_masses_hypergolic = []
     remaining_masses_hypergolic = []
 
-    kick_stage_propellants_thermal = []
     kick_stage_propellants_hypergolic = []
 
-    spacecraft_propellants_thermal = []
     spacecraft_propellants_hypergolic = []
 
-    kick_stage_dry_masses_thermal = []
     kick_stage_dry_masses_hypergolic = []
 
-    radiator_masses_thermal = []
-    radiator_masses_hypergolic = []
-
-    reactor_masses_thermal = []
-    reactor_masses_hypergolic = []
+    power_gen_masses_hypergolic = []
 
     # ============================================================
     # RUN SWEEP
@@ -1193,42 +691,18 @@ if __name__ == "__main__":
     for dry_mass in tqdm(dry_masses, desc="Running mass sweep"):
 
         (
-            launch_mass_thermal,
-            remaining_mass_margin_thermal,
-            kick_prop_thermal,
-            spacecraft_prop_thermal,
-            kick_dry_thermal,
-            radiator_thermal,
-            reactor_thermal, 
-            heatshield_calculated_mass
-        ) = run_configuration(
-            dry_mass,
-            thermal=True,
-            print_results=False
-        )
-
-        (
             launch_mass_hypergolic,
             remaining_mass_margin_hypergolic,
             kick_prop_hypergolic,
             spacecraft_prop_hypergolic,
             kick_dry_hypergolic,
-            radiator_hypergolic,
-            reactor_hypergolic, 
-            heatshield_calculated_mass
+            power_gen_hypergolic 
         ) = run_configuration(
             dry_mass,
-            thermal=False,
             print_results=False
         )
 
-        m_wet_actual_spacecraft = launch_mass_hypergolic - kick_dry_hypergolic - kick_prop_hypergolic + 0.02*spacecraft_prop_hypergolic
-        m_dry_actual_spacecraft = m_wet_actual_spacecraft - 1.02*spacecraft_prop_hypergolic
-        m_payload = 126.30 # kg (full set for rendezvous with 10% margin)
-        m_structure_without_tanks_and_ADCS_and_TTC = remaining_mass_margin_hypergolic - m_payload
-        launch_mass_hypergolic = launch_mass_hypergolic + 0.02*kick_prop_hypergolic + 0.02*spacecraft_prop_hypergolic
-
-        if dry_mass == 100 or dry_mass == 1000 or dry_mass == 2700 or dry_mass == 3000 or dry_mass == 3300 or dry_mass == 5000 or dry_mass == 10000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3000 or int(math.ceil(m_wet_actual_spacecraft / 100.0)) * 100 == 3300:
+        if dry_mass == 100 or dry_mass == 1000 or dry_mass == 2700 or dry_mass == 3000 or dry_mass == 3300 or dry_mass == 5000 or dry_mass == 10000:
             # print("\n\n" + "=" * 80)
             # print("DETAILED SUMMARY FOR DRY MASS =", dry_mass, "kg, THERMAL OPTION")
             # print("=" * 80)
@@ -1238,46 +712,26 @@ if __name__ == "__main__":
             #     thermal=True,
             #     print_results=True
             # )
+            m_wet_actual_spacecraft = launch_mass_hypergolic - kick_dry_hypergolic - kick_prop_hypergolic
             print("\n\n" + "=" * 80)
             print("DETAILED SUMMARY FOR DRY MASS (spacecraft + kick stage) =", dry_mass, "kg, NON-THERMAL OPTION")
             print("spacecraft total (wet) mass without kick stage = ", m_wet_actual_spacecraft)
-            print("spacecraft dry mass = ", m_dry_actual_spacecraft)
             print("spacecraft propellant mass =", spacecraft_prop_hypergolic, "kg, s/c total mass fraction = ", spacecraft_prop_hypergolic / m_wet_actual_spacecraft)
-            print("radiator mass =", radiator_hypergolic, "kg, s/c total mass fraction = ", radiator_hypergolic / m_wet_actual_spacecraft)
-            print("reactor mass =", reactor_hypergolic, "kg, s/c total mass fraction = ", reactor_hypergolic / m_wet_actual_spacecraft)
-            print("heatshield mass =", heatshield_calculated_mass, "kg, s/c total mass fraction = ", heatshield_calculated_mass / m_wet_actual_spacecraft)
-            print("remaining mass margin =", remaining_mass_margin_hypergolic, "kg, launch mass fraction = ", remaining_mass_margin_hypergolic / m_wet_actual_spacecraft)    
-            print("structural mass without tanks and ADCS and TTC =", m_structure_without_tanks_and_ADCS_and_TTC, "kg, s/c total mass fraction = ", m_structure_without_tanks_and_ADCS_and_TTC / m_wet_actual_spacecraft)
-
+            print("power generator mass =", power_gen_hypergolic, "kg, s/c total mass fraction = ", power_gen_hypergolic / m_wet_actual_spacecraft)
             print('\n')
             print("KICK STAGE", '\n')
             print("launch mass hypergolic =", launch_mass_hypergolic, "kg")
             print("kickstage propellant mass =", kick_prop_hypergolic, "kg, launch mass fraction = ", kick_prop_hypergolic / launch_mass_hypergolic)
-            print("kickstage propellant mass margin =", 0.02*kick_prop_hypergolic)
             print("kickstage dry mass =", kick_dry_hypergolic, "kg, launch mass fraction = ", kick_dry_hypergolic / launch_mass_hypergolic)
-            x_h = remaining_mass_margin_hypergolic
+        
             print("=" * 80)
 
             run_configuration(
                 dry_mass,
-                thermal=False,
                 print_results=False
             )
 
 
-        # --------------------------------------------------------
-        # Thermal
-        # --------------------------------------------------------
-
-        launch_masses_thermal.append(launch_mass_thermal)
-        remaining_masses_thermal.append(remaining_mass_margin_thermal)
-
-        kick_stage_propellants_thermal.append(kick_prop_thermal)
-        spacecraft_propellants_thermal.append(spacecraft_prop_thermal)
-
-        kick_stage_dry_masses_thermal.append(kick_dry_thermal)
-        radiator_masses_thermal.append(radiator_thermal)
-        reactor_masses_thermal.append(reactor_thermal)
 
         # --------------------------------------------------------
         # Hypergolic
@@ -1290,44 +744,28 @@ if __name__ == "__main__":
         spacecraft_propellants_hypergolic.append(spacecraft_prop_hypergolic)
 
         kick_stage_dry_masses_hypergolic.append(kick_dry_hypergolic)
-        radiator_masses_hypergolic.append(radiator_hypergolic)
-        reactor_masses_hypergolic.append(reactor_hypergolic)
+        power_gen_masses_hypergolic.append(power_gen_hypergolic)
 
     # ============================================================
     # CONVERT TO ARRAYS
     # ============================================================
 
-    launch_masses_thermal = np.array(launch_masses_thermal)
-    remaining_masses_thermal = np.array(remaining_masses_thermal)
-
     launch_masses_hypergolic = np.array(launch_masses_hypergolic)
     remaining_masses_hypergolic = np.array(remaining_masses_hypergolic)
 
-    kick_stage_propellants_thermal = np.array(kick_stage_propellants_thermal)
     kick_stage_propellants_hypergolic = np.array(kick_stage_propellants_hypergolic)
 
-    spacecraft_propellants_thermal = np.array(spacecraft_propellants_thermal)
     spacecraft_propellants_hypergolic = np.array(spacecraft_propellants_hypergolic)
 
-    kick_stage_dry_masses_thermal = np.array(kick_stage_dry_masses_thermal)
     kick_stage_dry_masses_hypergolic = np.array(kick_stage_dry_masses_hypergolic)
 
-    radiator_masses_thermal = np.array(radiator_masses_thermal)
-    radiator_masses_hypergolic = np.array(radiator_masses_hypergolic)
-
-    reactor_masses_thermal = np.array(reactor_masses_thermal)
-    reactor_masses_hypergolic = np.array(reactor_masses_hypergolic)
+    power_gen_masses_hypergolic = np.array(power_gen_masses_hypergolic)
 
     # ============================================================
     # FILTER VALID SOLUTIONS
     # ============================================================
 
     max_launch_mass = 20_000  # kg (20 tons)
-
-    thermal_mask = (
-            (remaining_masses_thermal >= 0)
-            & (launch_masses_thermal <= max_launch_mass)
-    )
 
     hypergolic_mask = (
             (remaining_masses_hypergolic >= 0)
@@ -1397,7 +835,7 @@ if __name__ == "__main__":
     ax.plot(
         x_h,
         launch_masses_hypergolic[hypergolic_mask],
-        linestyle="-",
+        linestyle="--",
         linewidth=3,
         label="Hypergolic Total Launch Mass"
     )
@@ -1405,36 +843,29 @@ if __name__ == "__main__":
     ax.plot(
         x_h,
         kick_stage_propellants_hypergolic[hypergolic_mask],
-        linestyle="-",
+        linestyle="--",
         label="Hypergolic Kickstage Propellant"
     )
 
     ax.plot(
         x_h,
         spacecraft_propellants_hypergolic[hypergolic_mask],
-        linestyle="-",
+        linestyle="--",
         label="Hypergolic Spacecraft Propellant"
     )
 
     ax.plot(
         x_h,
         kick_stage_dry_masses_hypergolic[hypergolic_mask],
-        linestyle="-",
+        linestyle="--",
         label="Hypergolic Kickstage Dry Mass"
     )
 
     ax.plot(
         x_h,
-        radiator_masses_hypergolic[hypergolic_mask],
-        linestyle="-",
-        label="Hypergolic Radiator Mass"
-    )
-
-    ax.plot(
-        x_h,
-        reactor_masses_hypergolic[hypergolic_mask],
-        linestyle="-",
-        label="Hypergolic Reactor Mass"
+        power_gen_masses_hypergolic[hypergolic_mask],
+        linestyle="--",
+        label="Hypergolic Power Gen Mass"
     )
 
     # ============================================================
@@ -1448,7 +879,6 @@ if __name__ == "__main__":
         "Launch Mass and Component Breakdown\n"
         "vs Remaining Allowable Dry Mass"
     )
-
 
     ax.axhline(0, color="black", linewidth=1)
     ax.axvline(0, color="black", linewidth=1)

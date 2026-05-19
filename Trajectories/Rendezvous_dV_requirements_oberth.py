@@ -205,8 +205,9 @@ def add_dv_hist(origin, max_time, weights, N, PLOT=False, lon_per=None)->None:
 
             # ==== plotting ====
             # fig = plt.figure()
-            ax = get_solar_system_ax()
-
+            # ax = get_solar_system_ax()
+            ax = plt.figure().add_subplot(projection='3d')
+            ax.scatter(0, 0, 0, lw=3, color="red")
             # plot original orbit
             plot_orbit(ax, origin, time=detect_time, ThreeDee=True, label="Original")
             # rebuild orbit
@@ -1152,7 +1153,9 @@ if __name__ == "__main__":
     df = df.sort_values('rdvz_total', ignore_index=True)
     print(df)
     if PLOT:
-        ax = get_solar_system_ax()
+        # ax = get_solar_system_ax()
+        ax = plt.figure().add_subplot(projection='3d')
+        ax.scatter(0, 0, 0, lw=3, color="red")
         plot_from_row(ax, df.iloc[0], 20)
         plt.axis('equal')
         plt.legend()

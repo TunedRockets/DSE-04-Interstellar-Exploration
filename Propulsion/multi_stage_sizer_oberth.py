@@ -543,7 +543,7 @@ def size_spacecraft(
     verbose=False
 ):
 
-    initial_mass, payload_mass, required_prop, _, _, _, _ =run_configuration(bus_mass, thermal=False, print_results=False)
+    initial_mass, payload_mass, required_prop, _, _, _, _, _ =run_configuration(bus_mass, thermal=False, print_results=False)
     needed_excess_dv = float(total_dv - rdvz_dv)
 
 

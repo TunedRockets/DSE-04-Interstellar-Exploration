@@ -31,6 +31,8 @@ rho_b = 2.7
 rho_AD_MLI = 0.0447 # = m_a_MLI bcs AREA DENSITY!!!
 rho_ob = 2.7
 rho_w = 2.7
+rho_honeycomb1 = 0.018 # polyamide - https://www.sciencedirect.com/science/article/pii/S0094576524003874
+rho_honeycomb2 = 0.370 # Al - https://www.sciencedirect.com/science/article/pii/S0094576524003874
 
 t_eq_MLI = rho_AD_MLI/rho_ob
 
@@ -38,10 +40,10 @@ v = np.arange(0.1, 30.1, 0.1) # km/s
 # print(v)
 
 
-def calculate_d_c(v, S1, S2, vt1, vt2, theta):
+def calculate_d_c(v, S1, S2, vt1, vt2, theta, t_ob, t_b, t_w):
     return ((((t_w**alpha+t_b)/K_3S)*(sigma_y_ksi/40)**(1/2)+t_ob+K_MLI*t_eq_MLI)/(0.6*np.cos(theta)**delta*rho_p**(1/2)*v**(2/3)))**(18/19)
 
-def calculate_d_c_larger_than_vt2(v, S1, S2, vt1, vt2, theta):
+def calculate_d_c_larger_than_vt2(v, S1, S2, vt1, vt2, theta, t_ob, t_b, t_w):
     return (1.155*(S1**(1/3)*(t_b+K_tw*t_w)**(2/3)+(K_S2*S2**beta)*(t_w**gamma)*np.cos(theta)**(-epsilon))*(sigma_y_ksi/70)**(1/3))/((K_3D**(2/3))*(rho_p**(1/3))*(rho_ob**(1/9))*(v**(2/3))*(np.cos(theta)**delta))
 
 # velocities [km/s] vs type of material 
@@ -53,8 +55,8 @@ vt21 = 7
 vt12 = 4
 vt22 = 10
 
-def calculate_d_c_failure_rear_wall_in_shatter_veloc_regime(v, S1, S2, vt1, vt2, theta):
-    return calculate_d_c(vt1, S1, S2, vt1, vt2, theta) + (calculate_d_c_larger_than_vt2(vt2, S1, S2, vt1, vt2, theta) - calculate_d_c(vt1, S1, S2, vt1, vt2, theta)) / (vt2 - vt1) * (v - vt1)
+def calculate_d_c_failure_rear_wall_in_shatter_veloc_regime(v, S1, S2, vt1, vt2, theta, t_ob, t_b, t_w):
+    return calculate_d_c(vt1, S1, S2, vt1, vt2, theta, t_ob, t_b, t_w) + (calculate_d_c_larger_than_vt2(vt2, S1, S2, vt1, vt2, theta, t_ob, t_b, t_w) - calculate_d_c(vt1, S1, S2, vt1, vt2, theta, t_ob, t_b, t_w)) / (vt2 - vt1) * (v - vt1)
 
 # 1. Ensure your functions are defined to take (v, S1, constant)
 # def calculate_d_c(v, s, c): ...
@@ -71,44 +73,44 @@ funcs = [
 # 3. Calculate using the 'args' parameter to pass S1 and the constant
 
 # S1 = 3.5 cm
-# theta = 0
+theta = 0
 
 # type 1
-y_S2_0_theta0  = np.piecewise(v, conditions1, funcs, 3.5, 0, vt11, vt21, theta=np.radians(0))
-y_S2_10_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 10, vt11, vt21, theta=np.radians(0))
-y_S2_20_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 20, vt11, vt21, theta=np.radians(0))
-y_S2_30_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 30, vt11, vt21, theta=np.radians(0))
-y_S2_40_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 40, vt11, vt21, theta=np.radians(0))
+y_S2_0_theta0  = np.piecewise(v, conditions1, funcs, 3.5, 0, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_10_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 10, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_20_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 20, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_30_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 30, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_40_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 40, vt11, vt21, theta, t_ob, t_b, t_w)
 
 # type 2
-y_S2_0_1_theta0  = np.piecewise(v, conditions2, funcs, 3.5, 0, vt12, vt22, theta=np.radians(0))
-y_S2_10_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 10, vt12, vt22, theta=np.radians(0))
-y_S2_20_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 20, vt12, vt22, theta=np.radians(0))
-y_S2_30_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 30, vt12, vt22, theta=np.radians(0))
+y_S2_0_1_theta0  = np.piecewise(v, conditions2, funcs, 3.5, 0, vt12, vt22, theta, t_ob, t_b, t_w)
+y_S2_10_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 10, vt12, vt22, theta, t_ob, t_b, t_w)
+y_S2_20_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 20, vt12, vt22, theta, t_ob, t_b, t_w)
+y_S2_30_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 30, vt12, vt22, theta, t_ob, t_b, t_w)
 
 
 # theta = 45
 
-# type 1
-y_S2_0_2_theta45  = np.piecewise(v, conditions1, funcs, 3.5, 0, vt11, vt21, theta=np.radians(45))
-y_S2_10_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 10, vt11, vt21, theta=np.radians(45))
-y_S2_20_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 20, vt11, vt21, theta=np.radians(45))
-y_S2_30_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 30, vt11, vt21, theta=np.radians(45))
+# # type 1
+# y_S2_0_2_theta45  = np.piecewise(v, conditions1, funcs, 3.5, 0, vt11, vt21, theta=np.radians(45))
+# y_S2_10_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 10, vt11, vt21, theta=np.radians(45))
+# y_S2_20_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 20, vt11, vt21, theta=np.radians(45))
+# y_S2_30_2_theta45 = np.piecewise(v, conditions1, funcs, 3.5, 30, vt11, vt21, theta=np.radians(45))
 
-# type 2
-y_S2_0_3_theta45  = np.piecewise(v, conditions2, funcs, 3.5, 0, vt12, vt22, theta=np.radians(45))
-y_S2_10_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 10, vt12, vt22, theta=np.radians(45))
-y_S2_20_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 20, vt12, vt22, theta=np.radians(45))
-y_S2_30_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 30, vt12, vt22, theta=np.radians(45))
+# # type 2
+# y_S2_0_3_theta45  = np.piecewise(v, conditions2, funcs, 3.5, 0, vt12, vt22, theta=np.radians(45))
+# y_S2_10_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 10, vt12, vt22, theta=np.radians(45))
+# y_S2_20_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 20, vt12, vt22, theta=np.radians(45))
+# y_S2_30_3_theta45 = np.piecewise(v, conditions2, funcs, 3.5, 30, vt12, vt22, theta=np.radians(45))
 
 # S1 = 4 cm
 # theta = 0
-# type 1
-y_S2_0_theta0_S1_4  = np.piecewise(v, conditions1, funcs, 4, 0, vt11, vt21, theta=np.radians(0))
-y_S2_10_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 10, vt11, vt21, theta=np.radians(0))
-y_S2_20_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 20, vt11, vt21, theta=np.radians(0))
-y_S2_30_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 30, vt11, vt21, theta=np.radians(0))
-y_S2_40_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 40, vt11, vt21, theta=np.radians(0))
+# # type 1
+# y_S2_0_theta0_S1_4  = np.piecewise(v, conditions1, funcs, 4, 0, vt11, vt21, theta=np.radians(0))
+# y_S2_10_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 10, vt11, vt21, theta=np.radians(0))
+# y_S2_20_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 20, vt11, vt21, theta=np.radians(0))
+# y_S2_30_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 30, vt11, vt21, theta=np.radians(0))
+# y_S2_40_theta0_S1_4 = np.piecewise(v, conditions1, funcs, 4, 40, vt11, vt21, theta=np.radians(0))
 
 # def plot_ballistic_limit_1x(v, y1, y2, y3, y4, y5 = None, labels=None):
 #     # S2 = 0
@@ -146,12 +148,12 @@ plt.plot(v, y_S2_20_theta0)
 plt.plot(v, y_S2_0_1_theta0)
 plt.plot(v, y_S2_10_1_theta0)
 plt.plot(v, y_S2_20_1_theta0)
-plt.plot(v, y_S2_0_2_theta45)
-plt.plot(v, y_S2_10_2_theta45)
-plt.plot(v, y_S2_20_2_theta45)
-plt.plot(v, y_S2_0_3_theta45)
-plt.plot(v, y_S2_10_3_theta45)
-plt.plot(v, y_S2_20_3_theta45)
+# plt.plot(v, y_S2_0_2_theta45)
+# plt.plot(v, y_S2_10_2_theta45)
+# plt.plot(v, y_S2_20_2_theta45)
+# plt.plot(v, y_S2_0_3_theta45)
+# plt.plot(v, y_S2_10_3_theta45)
+# plt.plot(v, y_S2_20_3_theta45)
 # plt.ylim(0, 1)
 plt.xlabel('Velocity (km/s)')
 plt.ylabel('Critical Diameter (cm)')
@@ -183,20 +185,10 @@ plt.show()
 plot_ballistic_limit_5x(v, y_S2_0_theta0, y_S2_10_theta0, y_S2_20_theta0, y_S2_30_theta0, y_S2_40_theta0, labels=['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
 
 # S2 = {0, 10, 20, 30}, type 1, theta = 0deg, S1 = 4 cm
-plot_ballistic_limit_5x(v, y_S2_0_theta0_S1_4, y_S2_10_theta0_S1_4, y_S2_20_theta0_S1_4, y_S2_30_theta0_S1_4, y_S2_40_theta0_S1_4, labels=['S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+# plot_ballistic_limit_5x(v, y_S2_0_theta0_S1_4, y_S2_10_theta0_S1_4, y_S2_20_theta0_S1_4, y_S2_30_theta0_S1_4, y_S2_40_theta0_S1_4, labels=['S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
 plt.legend(['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
 plt.show()
 
-
-# Custom stuff:
-# Comet Interceptor: S1 = 5cm, S2 = 2.5cm, t_ob = 0.03 cm, t_b = 0.15 cm, t_w = 0.15 cm, theta = 0deg
-y_Comet_Interceptor = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, theta=np.radians(0))
-plt.plot(v, y_Comet_Interceptor)
-plt.xlabel('Velocity (km/s)')
-plt.ylabel('Critical Diameter (cm)')
-plt.title('Ballistic Limit vs Velocity for Comet Interceptor')
-plt.grid()
-plt.show()
 
 # NEED TO QUANTIFY!!! the mass increase for +10cm of S2
 
@@ -211,28 +203,73 @@ if indices[0].size > 0:
 
 conditions_optimum = [v_list < vt11, (v_list >= vt11) & (v_list <= vt21), v_list > vt21]
 
-def calculate_mass_per_area_g_per_cm_sq(S1, S2, t_ob, t_b, t_w, rho_ob, rho_b):
-    mass = t_ob * rho_ob + t_b * rho_b + t_w * rho_ob 
-    return mass
+l = 2 # m
 
-def calculate_optimum(S1_list, S2_list, t_ob, t_b, t_w, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc):
+def calculate_mass_for_half_whole_and_margin_sc_shielding(S1, S2, t_ob, t_b, t_w, rho_ob, rho_b, side_length, honeycomb1, honeycomb2):
+    mass = (t_ob * rho_ob + t_b * rho_b + t_w * rho_ob) # in cm*g/cm^3 = g/cm^2
+    mass = 10*mass # convert to kg/m^2
+    mass = mass * 3*side_length**2 
+    if honeycomb1:
+        mass+= S1*side_length**2*rho_honeycomb1*10 # assumed honeycomb 
+    if honeycomb2:
+        mass+= S2*side_length**2*rho_honeycomb2*10 # assumed honeycomb 
+    mass_half = mass
+    mass_whole = mass * 2
+    mass_with_margin = mass_whole*1.1 # add 10% margin for the structure of the shield - fixing components/rods for the plate
+    return mass_half, mass_whole, mass_with_margin
+
+# def calculate_mass_for_whole_sc_shielding(S1, S2, t_ob, t_b, t_w, rho_ob, rho_b, side_length):
+#     mass = (t_ob * rho_ob + t_b * rho_b + t_w * rho_ob) # in g/cm^2
+#     mass = 10*mass # convert to kg/m^2
+#     mass = mass * 6*side_length**2 
+#     mass*= 2 # add margin for the structure of the shield - fixing components/rods for the plate
+#     return mass
+
+
+def calculate_optimum(S1_list, S2_list, t_ob_list, t_b_list, t_w_list, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc):
     for S1_element in S1_list:
         for S2_element in S2_list:
             for t_ob_element in t_ob_list:
                 for t_b_element in t_b_list:
                     for t_w_element in t_w_list:
-                        y = np.piecewise(v_list, conditions_optimum, funcs, S1_element, S2_element, vt11, vt21, theta=np.radians(theta))
-                        if y[indices[0][0]]>=target_value_dc and calculate_mass_per_area_g_per_cm_sq(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b) < 1:
-                            print(f"S1: {S1_element} cm, S2: {S2_element} cm for Critical Diameter: {target_value_dc} cm at {v_max}km/s, mass is {calculate_mass_per_area_g_per_cm_sq(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b)} g/cm^2")
+                        y = np.piecewise(v_list, conditions_optimum, funcs, S1_element, S2_element, vt11, vt21, theta, t_ob_element, t_b_element, t_w_element)
+                        mass_half_1, mass_whole_1, mass_with_margin_1 = calculate_mass_for_half_whole_and_margin_sc_shielding(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b, l, True, True)
+                        if y[indices[0][0]]>=target_value_dc and mass_with_margin_1 < 200 and (S1_element+S2_element) <= 20:
+                            print(f"S1: {S1_element} cm, S2: {S2_element} cm, t_ob: {t_ob_element} cm, t_b: {t_b_element} cm, t_w: {t_w_element} cm for d_c: {target_value_dc} cm at {v_max}km/s, 1/2 m = {round(mass_half_1, 2)} kg, ", 
+                                  f"m = {round(mass_whole_1, 2)} kg, 1.1m = {round(mass_with_margin_1, 2)} kg")
                         # Find the velocity at which the critical diameter is equal to the optimum value
                         # v_optimum = np.interp(optimum_value, y, v_list)
                         # print(f"S1: {S1} cm, S2: {S2} cm -> Optimum Velocity: {v_optimum:.2f} km/s for Critical Diameter: {optimum_value} cm")
 
-t_ob_list = [0.03, 0.05, 0.1] # cm
-t_b_list = [0.15, 0.2, 0.3]
-t_w_list = [0.15, 0.2, 0.3]
-S1_list=[2, 3.5, 4, 4.5, 5]
-S2_list=[0, 10, 20, 30, 40]
+t_ob_list = [0.03, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10] # cm
+t_b_list = [0.1, 0.15, 0.2, 0.3, 0.5, 1, 0.75, 1.5, 2, 5, 10]
+t_w_list = [0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10, 30, 50]
+# t_b_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 0.75, 1.5, 2, 5, 10]
+# t_w_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10, 30, 50]
+# t_w_list = [0.5, 0.75, 1, 1.5, 2, 5, 10]
+
+# t_ob_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50] # cm
+# t_b_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50]
+# t_w_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50]
+S1_list=[0, 0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 10, 20, 30, 40, 50, 60, 70] # cm
+S2_list=[0, 0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7.5,10, 20, 30, 40, 50, 60]
 # theta_value = np.radians(0)
 theta=0
-calculate_optimum(S1_list, S2_list, t_ob, t_b, t_w, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc=0.3)
+calculate_optimum(S1_list, S2_list, t_ob_list, t_b_list, t_w_list, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc=0.1)
+
+# Custom stuff:
+# Comet Interceptor: S1 = 5cm, S2 = 2.5cm, t_ob = 0.03 cm, t_b = 0.15 cm, t_w = 0.15 cm, theta = 0deg
+y_Comet_Interceptor = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, 0, 0.03, 0.15, 0.15)
+y_ours = np.piecewise(v, conditions1, funcs, 1, 0.5, vt11, vt21, 0, 0.03, 0.1, 0.1)
+mass_Comet_Interceptor_half, mass_Comet_Interceptor_whole, mass_Comet_Interceptor_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(5, 2.5, 0.03, 0.15, 0.15, rho_ob, rho_b, l, True, True)
+mass_ours_half, mass_ours_whole, mass_ours_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(1, 0.5, 0.03, 0.1, 0.1, rho_ob, rho_b, l, True, True)
+print(f"Comet Interceptor: mass for 1/2 m = {round(mass_Comet_Interceptor_half, 2)} kg, mass for m = {round(mass_Comet_Interceptor_whole, 2)} kg, mass for 1.5m = {round(mass_Comet_Interceptor_with_margin, 2)} kg")
+print(f"Our design: mass for 1/2 m = {round(mass_ours_half, 2)} kg, mass for m = {round(mass_ours_whole, 2)} kg, mass for 1.5m = {round(mass_ours_with_margin, 2)} kg")
+plt.plot(v, y_Comet_Interceptor)
+plt.plot(v, y_ours)
+plt.xlabel('Velocity (km/s)')
+plt.ylabel('Critical Diameter (cm)')
+plt.title('Ballistic Limit vs Velocity for Comet Interceptor vs our Design')
+plt.legend(['Comet Interceptor', 'Our Design'])
+plt.grid()
+plt.show()

@@ -494,11 +494,12 @@ if __name__ == "__main__":
 
 
 
-    df = df[df["rdvz_total"] < 19.3]
+    # df = df[df["rdvz_total"] < 19.3]
+    df = df[df['icpt_idv'] < 4]
 
-    data = df['ISO_excess_velocity']
+    data = df['icpt_rdv']
     plt.hist(data, density=True, bins=40)
-    print(f'average: {np.average(data)}\t std: {np.std(data)}')
+    print(f'average: {np.average(data):.3f}\t std: {np.std(data):.3f}\t max: {np.max(data):.3f}')
     plt.show()
 
 

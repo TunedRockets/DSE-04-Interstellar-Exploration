@@ -30,10 +30,11 @@ rho_p = 2.7
 rho_b = 2.7
 rho_AD_MLI = 0.0447 # = m_a_MLI bcs AREA DENSITY!!!
 rho_ob = 2.7
+rho_w = 2.7
 
 t_eq_MLI = rho_AD_MLI/rho_ob
 
-v = np.arange(0, 30.1, 0.1) # km/s
+v = np.arange(0.1, 30.1, 0.1) # km/s
 # print(v)
 
 
@@ -198,3 +199,40 @@ plt.grid()
 plt.show()
 
 # NEED TO QUANTIFY!!! the mass increase for +10cm of S2
+
+v_max = 10
+v_list = np.arange(1.0, v_max+0.1, 1.0) #km/s
+# Find where the value is close to 100
+indices = np.where(np.isclose(v_list, v_max))
+
+# Extract the first match
+if indices[0].size > 0:
+    print(indices[0][0])  # Output: 91
+
+conditions_optimum = [v_list < vt11, (v_list >= vt11) & (v_list <= vt21), v_list > vt21]
+
+def calculate_mass_per_area_g_per_cm_sq(S1, S2, t_ob, t_b, t_w, rho_ob, rho_b):
+    mass = t_ob * rho_ob + t_b * rho_b + t_w * rho_ob 
+    return mass
+
+def calculate_optimum(S1_list, S2_list, t_ob, t_b, t_w, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc):
+    for S1_element in S1_list:
+        for S2_element in S2_list:
+            for t_ob_element in t_ob_list:
+                for t_b_element in t_b_list:
+                    for t_w_element in t_w_list:
+                        y = np.piecewise(v_list, conditions_optimum, funcs, S1_element, S2_element, vt11, vt21, theta=np.radians(theta))
+                        if y[indices[0][0]]>=target_value_dc and calculate_mass_per_area_g_per_cm_sq(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b) < 1:
+                            print(f"S1: {S1_element} cm, S2: {S2_element} cm for Critical Diameter: {target_value_dc} cm at {v_max}km/s, mass is {calculate_mass_per_area_g_per_cm_sq(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b)} g/cm^2")
+                        # Find the velocity at which the critical diameter is equal to the optimum value
+                        # v_optimum = np.interp(optimum_value, y, v_list)
+                        # print(f"S1: {S1} cm, S2: {S2} cm -> Optimum Velocity: {v_optimum:.2f} km/s for Critical Diameter: {optimum_value} cm")
+
+t_ob_list = [0.03, 0.05, 0.1] # cm
+t_b_list = [0.15, 0.2, 0.3]
+t_w_list = [0.15, 0.2, 0.3]
+S1_list=[2, 3.5, 4, 4.5, 5]
+S2_list=[0, 10, 20, 30, 40]
+# theta_value = np.radians(0)
+theta=0
+calculate_optimum(S1_list, S2_list, t_ob, t_b, t_w, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc=0.3)

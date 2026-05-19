@@ -1023,7 +1023,7 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
     # Radiator mass model
     # ------------------------------------------------------------
 
-    radiator_areal_density = 3  # kg/m^2
+    radiator_areal_density = 5  # kg/m^2
 
     radiator_mass_thermal = radiator_area_thermal * radiator_areal_density
     radiator_mass_hypergolic = radiator_area_hypergolic * radiator_areal_density

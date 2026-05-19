@@ -251,8 +251,8 @@ t_w_list = [0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10, 30, 50]
 # t_ob_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50] # cm
 # t_b_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50]
 # t_w_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50]
-S1_list=[0, 0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 10, 20, 30, 40, 50, 60, 70] # cm
-S2_list=[0, 0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7.5,10, 20, 30, 40, 50, 60]
+S1_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 10, 20, 30, 40, 50, 60, 70] # cm
+S2_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7.5,10, 20, 30, 40, 50, 60]
 # theta_value = np.radians(0)
 theta=0
 calculate_optimum(S1_list, S2_list, t_ob_list, t_b_list, t_w_list, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc=0.1)
@@ -260,11 +260,11 @@ calculate_optimum(S1_list, S2_list, t_ob_list, t_b_list, t_w_list, sigma_y_ksi, 
 # Custom stuff:
 # Comet Interceptor: S1 = 5cm, S2 = 2.5cm, t_ob = 0.03 cm, t_b = 0.15 cm, t_w = 0.15 cm, theta = 0deg
 y_Comet_Interceptor = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, 0, 0.03, 0.15, 0.15)
-y_ours = np.piecewise(v, conditions1, funcs, 1, 0.5, vt11, vt21, 0, 0.03, 0.1, 0.1)
+y_ours = np.piecewise(v, conditions1, funcs, 3, 0.5, vt11, vt21, 0, 0.03, 0.1, 0.1)
 mass_Comet_Interceptor_half, mass_Comet_Interceptor_whole, mass_Comet_Interceptor_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(5, 2.5, 0.03, 0.15, 0.15, rho_ob, rho_b, l, True, True)
-mass_ours_half, mass_ours_whole, mass_ours_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(1, 0.5, 0.03, 0.1, 0.1, rho_ob, rho_b, l, True, True)
-print(f"Comet Interceptor: mass for 1/2 m = {round(mass_Comet_Interceptor_half, 2)} kg, mass for m = {round(mass_Comet_Interceptor_whole, 2)} kg, mass for 1.5m = {round(mass_Comet_Interceptor_with_margin, 2)} kg")
-print(f"Our design: mass for 1/2 m = {round(mass_ours_half, 2)} kg, mass for m = {round(mass_ours_whole, 2)} kg, mass for 1.5m = {round(mass_ours_with_margin, 2)} kg")
+mass_ours_half, mass_ours_whole, mass_ours_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(3, 0.5, 0.03, 0.1, 0.1, rho_ob, rho_b, l, True, True)
+print(f"Comet Interceptor: mass for 1/2 m = {round(mass_Comet_Interceptor_half, 2)} kg, mass for m = {round(mass_Comet_Interceptor_whole, 2)} kg, mass for 1.1m = {round(mass_Comet_Interceptor_with_margin, 2)} kg")
+print(f"Our design: mass for 1/2 m = {round(mass_ours_half, 2)} kg, mass for m = {round(mass_ours_whole, 2)} kg, mass for 1.1m = {round(mass_ours_with_margin, 2)} kg")
 plt.plot(v, y_Comet_Interceptor)
 plt.plot(v, y_ours)
 plt.xlabel('Velocity (km/s)')

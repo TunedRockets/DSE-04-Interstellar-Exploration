@@ -1043,9 +1043,10 @@ def run_configuration(dry_mass_assumption, thermal, print_results=False):
 
     heatshield_areal_density = 17.57  # kg/m^2 (high-temp heat shield - Parker Solar Probe heritage)
 
-    l = 2 # m, 
+    l = 7 # m,
+    r = 4 # m
 
-    actual_heatshield_area = 6*l**2/2 # maximum assumed shield area - the s/c will most likely not be a cube, but a cylinder
+    actual_heatshield_area = l*r # maximum assumed shield area - the s/c will most likely not be a cube, but a cylinder
 
     heatshield_mass = heatshield_areal_density * actual_heatshield_area
 
@@ -1447,6 +1448,7 @@ if __name__ == "__main__":
         "Launch Mass and Component Breakdown\n"
         "vs Remaining Allowable Dry Mass"
     )
+
 
     ax.axhline(0, color="black", linewidth=1)
     ax.axvline(0, color="black", linewidth=1)

@@ -493,6 +493,7 @@ def run_configuration(
             rendezvous_power
         )
 
+
         required_thruster_count = math.ceil(
             max(
                 plane_change_thrust,
@@ -500,6 +501,7 @@ def run_configuration(
             )
             / ion_thruster_thrust
         )
+
 
         # --------------------------------------------------------
         # Reactor / radiator
@@ -627,6 +629,9 @@ def run_configuration(
         + kickstage_propellant
         + kickstage_dry_mass
     )
+
+    # print("Required power: ", reactor_electric_power / 1000, "kW")
+    # print("Required thrusters: ", required_thruster_count)
 
     if print_results:
 
@@ -772,7 +777,7 @@ if __name__ == "__main__":
                 f"Scientific Payload (Rendezvous + margin): {m_payload:10.2f} kg   ({m_payload / m_wet_actual_spacecraft * 100:.1f}%)")
 
             print(
-                f"Propulsion (incl. tanks + EP + kick)    : {spacecraft_prop_hypergolic:10.2f} kg   ({spacecraft_prop_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")
+                f"Propulsion (incl. tanks + EP)    : {0.12*spacecraft_prop_hypergolic:10.2f} kg   ({0.12*spacecraft_prop_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")
 
             print(
                 f"Power System (Reactor)                  : {reactor_hypergolic:10.2f} kg   ({reactor_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")

@@ -3,18 +3,19 @@ Script for generating a distributions of dV expected for the ISO intercept
 
 
 '''
-from src2.orbit import Orbit, oberth_effect_optimzer, plot_orbit, orbit_from_lambert, orbit_from_rv, orbit_from_ephemeris
-from src2.get_ISO import get_ISO, load_ISOs
-from src2.examples import Mercury, Venus, Mars, Earth, Jupiter, Saturn, Uranus, Neptune, Pluto, get_solar_system_ax
-from src2.utilities import AU, YEAR, SGP_SUN, DAY
+
+
 import pandas as pd
 import sys
 from pathlib import Path
 
-
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
+from src2.orbit import Orbit, oberth_effect_optimzer, plot_orbit, orbit_from_lambert, orbit_from_rv, orbit_from_ephemeris
+from src2.get_ISO import get_ISO, load_ISOs
+from src2.examples import Mercury, Venus, Mars, Earth, Jupiter, Saturn, Uranus, Neptune, Pluto, get_solar_system_ax
+from src2.utilities import AU, YEAR, SGP_SUN, DAY
 
-PLOT= True
+PLOT= False
 
 if PLOT:
     import matplotlib as mpl
@@ -1076,7 +1077,7 @@ if __name__ == "__main__":
     # plt.show()
 
     DV_THRESHOLD = 24
-    MAX_RDVZ_DISTANCE = 200  # AU
+    MAX_RDVZ_DISTANCE = 20  # AU
 
     total_dv = df['rdvz_total']
 
@@ -1087,6 +1088,8 @@ if __name__ == "__main__":
         ]
 
     total = len(df_reach)
+    print(df_reach.iloc[0])
+    input()
 
     pct_200 = 100 * np.sum(df_reach['rdvz_r'] < 200) / total
     pct_150 = 100 * np.sum(df_reach['rdvz_r'] < 150) / total

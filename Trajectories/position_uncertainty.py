@@ -90,21 +90,25 @@ def HG(H:float, r_delta:float, r_obj:float, phi:float):
     V = H + 5*m.log10(r_delta) + 5*m.log10(r_obj) - phase
     return V
 
-# LORRI number:
-r_delta = 44 # [AU]
-r_obj = 1_900_000 / AU # [AU]
-phi = 0 # roughly
 
-V = HG(10.4, r_delta,r_obj,phi)
-print(V)
+error_distance()
 
-# Our worst case:
-H = 12
-r_delta = 50 # [au]
-phi = 0
-V = 9.5
-F = lambda r: HG(H, r_delta, r/AU, phi)
 
-r = root_finder_bisection(F,1,1_000_000)
-print(f"{r=:.1f}\t for: {r_delta=:.1f} AU")
+# # LORRI number:
+# r_delta = 44 # [AU]
+# r_obj = 1_900_000 / AU # [AU]
+# phi = 0 # roughly
+
+# V = HG(10.4, r_delta,r_obj,phi)
+# print(V)
+
+# # Our worst case:
+# H = 12
+# r_delta = 50 # [au]
+# phi = 0
+# V = 9.5
+# F = lambda r: HG(H, r_delta, r/AU, phi)
+
+# r = root_finder_bisection(F,1,1_000_000)
+# print(f"{r=:.1f}\t for: {r_delta=:.1f} AU")
 

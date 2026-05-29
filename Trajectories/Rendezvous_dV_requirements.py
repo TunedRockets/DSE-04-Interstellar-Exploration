@@ -495,22 +495,20 @@ if __name__ == "__main__":
 
 
     # df = df[df["rdvz_total"] < 19.3]
-    df = df[df['icpt_idv'] < 4]
-
-    data = df['icpt_rdv']
-    plt.hist(data, density=True, bins=40)
-    print(f'average: {np.average(data):.3f}\t std: {np.std(data):.3f}\t max: {np.max(data):.3f}')
-    plt.show()
+    df = df[df['magnitude_generation_method'] == "Omuamua"]
+    # df = df[df['magnitude_generation_method'] == "atlas-borisov"]
 
 
+    data = df['detection_r']
+    print(f'detection r: {np.average(data):.3f}')
+    data = df['periapsis']
+    print(f'periapsis: {np.average(data):.3f}')
+    data = df['time_until_periapsis']
+    print(f'time_until_periapsis: {np.average(data):.3f}')
+    print(f'count: {len(df)}')
 
 
-    plots_for_iso_detection()
-    plots_for_dv_histogram()
-    plots_for_probability_map()
-    
 
-    run_in_background()
 
 
     # example of using the functions:
@@ -530,4 +528,4 @@ if __name__ == "__main__":
 
 
 
-    run_in_background()
+    # run_in_background()

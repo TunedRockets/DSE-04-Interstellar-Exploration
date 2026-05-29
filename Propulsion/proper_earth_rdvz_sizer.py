@@ -144,6 +144,8 @@ def run_configuration(spacecraft_dry_mass, print_results=False):
         ion_efficiency
     )
 
+    print("Required propulsive power: ", reactor_electric_power/1000, "kW")
+
     required_thruster_count = math.ceil(
         rendezvous_thrust / ion_thruster_thrust
     )
@@ -260,7 +262,7 @@ if __name__ == "__main__":
 
             print("\n--- PRIMARY SYSTEMS ---")
             row("Scientific Payload Rendezvous (with margin)", "5.8%", 126.3, "Selected previously")
-            row("Propulsion (incl. tanks)", "51.9%", spacecraft_propellant, "Model output")
+            row("Propulsion (incl. tanks)", 0.15*spacecraft_propellant*100/(dry_mass+spacecraft_propellant), 0.12*spacecraft_propellant, "Model output")
             row("Power System (Fission Reactor)", "6.3%", reactor_mass, "")
             row("Reactor Radiator", "0.2%", radiator_mass, "")
 

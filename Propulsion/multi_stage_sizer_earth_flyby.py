@@ -554,6 +554,11 @@ NewGlennLauncher = Launcher(
     UpperStage=NewGlennUpper
 )
 
+VegaC_Launcher = Launcher(
+    LEO_payload=3300,
+    UpperStage=VegaC_AVUM_plus
+)
+
 # ============================================================
 # SPACECRAFT SIZING
 # ============================================================
@@ -910,9 +915,9 @@ def plot_launcher_wetmass_feasibility(
     ax.set_xlabel("Spacecraft Wet Mass [kg]")
     ax.set_ylabel("Launcher")
 
-    ax.set_title(
-        "Launcher / Kickstage Feasibility vs Spacecraft Wet Mass"
-    )
+    # ax.set_title(
+    #     "Launcher / Kickstage Feasibility vs Spacecraft Wet Mass"
+    # )
 
     ax.grid(
         True,
@@ -952,13 +957,15 @@ def plot_launcher_wetmass_feasibility(
         Patch(color="#006400", label="Direct Injection")
     ]
 
+
     for ks in kickstage_names:
-        legend_handles.append(
-            Patch(color=mode_colors[ks], label=ks)
-        )
+        if ks != "":
+            legend_handles.append(
+                Patch(color=mode_colors[ks], label=ks)
+            )
 
     ax.legend(
-        handles=legend_handles,
+        handles=legend_handles[::-1],
         loc="upper left",
         bbox_to_anchor=(1.02, 1),
         borderaxespad=0.0,
@@ -1372,59 +1379,54 @@ if __name__ == "__main__":
 
     launchers = [
 
-        (Ariane64_Launcher, "Ariane 64"),
+        (VegaC_Launcher, "Vega C"),
+
         (Ariane62_Launcher, "Ariane 62"),
-
-        (FalconHeavy_Expendable,
-         "Falcon Heavy (Expendable)"),
-
-        (FalconHeavy_Reusable,
-         "Falcon Heavy (Reusable)"),
-
-        (SLS_Block1_ICPS,
-         "SLS Block 1 (ICPS)"),
-
-        (Starship_SuperHeavy,
-         "Starship + Super Heavy"),
-
-        (Vulcan,
-         "Vulcan Centaur"),
-
-        (SLS_CentaurV,
-         "SLS + Centaur V"),
 
         (Falcon9,
          "Falcon 9"),
 
+        (Ariane64_Launcher, "Ariane 64"),
+
+        (Starship_SuperHeavy,
+         "Starship + Super Heavy"),
+
+        (FalconHeavy_Reusable,
+         "Falcon Heavy (Reusable)"),
+
+        (Vulcan,
+         "Vulcan Centaur"),
+
         (NewGlennLauncher,
-         "New Glenn")
+         "New Glenn"),
+
+        (FalconHeavy_Expendable,
+         "Falcon Heavy (Expendable)"),
+
+        (SLS_Block1_ICPS,
+         "SLS Block 1 (ICPS)"),
+
+        (SLS_CentaurV,
+         "SLS + Centaur V"),
     ]
 
     kickstages = [
 
-        (Helios, "Helios"),
-
-        (Star63, "Star63"),
-
-        (Star48BV, "Star48BV"),
-
-        # (ESCB, "ESC-B (Ariane 6 Second Stage)"),
-
-        (ESC_A, "ESC-A (Ariane 5 Second Stage)"),
+        (VegaC_Zefiro9, "VegaC Zefiro9"),
 
         (Orion38, "Orion38"),
 
-        (VegaC_Zefiro9, "VegaC Zefiro9"),
-
         (VegaC_AVUM_plus, "VegaC AVUM +"),
+
+        (Star48BV, "Star48BV"),
+
+        (Star63, "Star63"),
 
         (Astris, "Astris"),
 
-        # (CentaurV, "Centaur V"),
+        (ESC_A, "ESC-A (Ariane 5 Second Stage)"),
 
-        # (Ariane64Upper, "Ariane 64 Upper"),
-
-        # (NewGlennUpper, "New Glenn S2"),
+        (Helios, "Helios"),
 
         (None, "")
     ]
@@ -1472,7 +1474,7 @@ if __name__ == "__main__":
         kickstages,
         total_dv,
         rdvz_dv,
-        vertical_wetmass=850,
+        vertical_wetmass=701.5,
         vertical_color='black',
         # vertical_label='Updated Mass Budget'
     )

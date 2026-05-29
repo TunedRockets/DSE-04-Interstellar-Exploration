@@ -83,3 +83,22 @@ def rtgsize(power_elec):
     # 1/2*(296-296*0.7)*20*365*24*3600 + 296*0.7*20*365*24*3600 = 156418560000, 43 MWh
     rtg_mass = power_elec / rtg_power_density
     return rtg_mass, None
+
+def solar(power_elec):
+
+    solar_efficiency = 0.27
+    solar_constant = 1361  # W/m²
+    degradation = 0.77
+    distance_au = 1.0
+
+    areal_density = 4.0  # kg/m² (ROSA-class assumption)
+
+    flux = solar_constant / (distance_au ** 2)
+
+    effective_eff = solar_efficiency * degradation
+
+    area = power_elec / (flux * effective_eff)
+
+    mass = area * areal_density
+
+    return area, mass

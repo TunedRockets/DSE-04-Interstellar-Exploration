@@ -41,16 +41,16 @@ M_pl += 200 # [kg]
 
 # propulsion:
 Isp_ion = 4150 # [s]
-dV_ion = 17 # [km/s] Ion required dv
+dV_ion = 17 + 3 # [km/s] Ion required dv
 Am_ion = 0.01 # [m^2/kg] area per mass for ion system (replace with lambda?)
 l_ion = 0.05 # [-] ion tank mass fraction
 Me_ion = 100 # [kg] ion engine mass
 P_ion = 7400 # [w] power per ion engine
 F_ion = 0.237 # [N] thrust per ion engine
 
-T_max = 86_000 * 365 # one year
+T_max = 86_000 * 365 * 1.31 # plane change burn time
 
-a_min = dV_ion/T_max # [m/s^2] minimum acceleration
+a_min = 3/T_max # [m/s^2] minimum acceleration
 
 
 Isp_boost = 330 # [s]
@@ -73,12 +73,12 @@ Psp_nuke = 134 # [w/kg] reactor power density
 
 # === variables ===
 
-M_ion = 100 # [kg] ion propulsion mass (incl-tanks)
-A_heat = 50 # [m^2] heat shield area
+M_ion = 51 # [kg] ion propulsion mass (incl-tanks)
+A_heat = 21 # [m^2] heat shield area
 M_heat = A_heat*rho_heat*t_heat # [kg] heat shield mass
-M_nuke = 50 # [kg] reactor mass
-M_boost = 1000 # [kg] boost propulsion mass (incl-tanks)
-N_ion = 2 # [-] number of ion engines
+M_nuke = 58 # [kg] reactor mass
+M_boost = 106 # [kg] boost propulsion mass (incl-tanks)
+N_ion = 1 # [-] number of ion engines
 
 
 
@@ -122,6 +122,6 @@ for _ in range(10000):
     print(f"Heat shield area is: {A_heat}")
 
     #ion engines:
-    N_ion = m.ceil(M_cruise_dry*a_min/F_ion)
+    N_ion = m.ceil(M_boost_wet*a_min/F_ion)
     print(f"Ion engine number: {N_ion}")
 

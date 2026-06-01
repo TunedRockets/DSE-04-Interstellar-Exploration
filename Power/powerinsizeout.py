@@ -65,7 +65,6 @@ def reactor(power_elec, burn_time=41366655.26322658):
     # elec power / brayton / u235_specific energy / 0.2 * burn time = fuel mass
 
     reactor_fuel_equivalent_specific_energy = brayton_cycle_efficiency * u235_specific_energy * 0.2 # Wh/kg
-
     reactor_BOP_power_density = 100000* brayton_cycle_efficiency /100 # W/kg 
 
 
@@ -75,7 +74,8 @@ def reactor(power_elec, burn_time=41366655.26322658):
     # print("fuelamsss;", reactor_fuel_mass)
 
     reactor_mass = power_elec / reactor_BOP_power_density
-    return reactor_mass, reactor_fuel_mass
+    thermal_power = power_elec/brayton_cycle_efficiency
+    return reactor_mass, reactor_fuel_mass, thermal_power
 
 def rtgsize(power_elec):
     # Rtg

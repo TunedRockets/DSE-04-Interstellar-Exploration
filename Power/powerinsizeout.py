@@ -114,10 +114,6 @@ def rtgsize(power_elec):
     rtg_mass = power_elec / rtg_power_density
     return rtg_mass, None
 
-<<<<<<< HEAD
-
-# 176.4 W for flyby instruments
-=======
 def solar(power_elec):
 
     solar_efficiency = 0.27
@@ -136,4 +132,3 @@ def solar(power_elec):
     mass = area * areal_density
 
     return area, mass
->>>>>>> c68358a96a2eb644f87cb798534a80f9c6d6f79d

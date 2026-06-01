@@ -129,31 +129,6 @@ class TSDiagram:
         plt.show()
 
 
-# =========================================================
-# REACTOR
-# =========================================================
-class Reactor:
-    def __init__(self, gas):
-        self.gas = gas
-        self.cp = gas.cp
-
-    def required_heat(self, Tin, Tout):
-        return self.cp * (Tout - Tin)
-
-    def power(self, mdot, Tin, Tout):
-        return mdot * self.required_heat(Tin, Tout)
-
-    def report(self, mdot, Tin, Tout):
-        Q = self.power(mdot, Tin, Tout)
-        q_spec = self.required_heat(Tin, Tout)
-
-        print("\n--- Reactor Report ---")
-        print(f"Mass flow: {mdot:.3f} kg/s")
-        print(f"Tin: {Tin:.1f} K")
-        print(f"Tout: {Tout:.1f} K")
-        print(f"Specific heat added: {q_spec:.2f} J/kg")
-        print(f"Thermal power: {Q:.2f} W")
-
 
 # =========================================================
 # BRAYTON CYCLE (kept, but corrected entropy usage)

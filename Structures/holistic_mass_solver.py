@@ -5,12 +5,13 @@ Stealing bits and pieces from the other code
 
 '''
 import math as m
+from Power.powerinsizeout import reactor
 
 # ==== consts =====
 
 static_mass = 50+100+200
 '''[kg] mass of scientific payload, antenna, bus and oter non-varying things'''
-static_power_draw = 200 + 190
+static_power_draw = 1600
 '''[w] static power draw of non-propulsion equipment'''
 static_area = (2.2**2)*m.pi + 2*2
 '''[m^2] static exposed area of bus, antenna, etc.'''
@@ -63,6 +64,21 @@ A_heat_margin = 1.1
 # reactor:
 Psp_nuke = 134
 '''[w/kg] reactor power density'''
+
+# Stefan–Boltzmann constant
+sigma = 5.670374419e-8  # W/m^2/K^4
+
+# Inputs
+T_cold = 1298.0679247865448  # K
+areal_density = 15           # kg/m^2
+emissivity = 0.9
+
+# Power areal density (W/m^2)
+q = emissivity * sigma * T_cold**4
+
+# Specific power (W/kg)
+rad_specific_power = q / areal_density
+
 
 def dv2mf(dV:float, isp:float, m1:float, l:float)->float:
     '''dv [in km/s], specific impulse, non-tank-mass, 
@@ -209,13 +225,12 @@ class Hestia():
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
 
 
-        # get fuel tank mass:
-        mf = dv2mf(dV_ion,Isp_ion, 
-                  self.upper_stage_pl_mass + self.Number_ions*Me_ion, 
-                  l_ion)
-        self.Mass_ion_fuel = mf
+        m_rdzv = dv2mf(dV_rdvz, Isp_ion, self.upper_stage_pl_mass+ self.Number_ions*Me_ion, l_ion)
 
-        # TODO: if needed, split fuel requirements for parking burn and inclination change burn
+        m_plane = dv2mf(dV_inclination, Isp_ion, self.lower_stage_dry_mass + ((1+l_ion) * m_rdzv) + self.Number_ions * Me_ion, l_ion)
+
+        mf = m_plane + m_rdzv
+        self.Mass_ion_fuel = mf
 
         print(f"ion engine number: {self.Number_ions}, xenon: {self.Mass_ion_fuel:5.1f} kg")
 
@@ -233,10 +248,23 @@ class Hestia():
 
         Preq = static_power_draw + self.Number_ions*P_ion # needed power
 
-        self.Mass_power_truss = Preq / Psp_nuke
-        self.Power_provided = Preq
-        print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
+        reactor_mass, reactor_fuel_mass, thermal_power = reactor(Preq)
 
+        reactor_mass += reactor_fuel_mass
+        self.Mass_power_truss = reactor_mass
+        self.Power_provided = Preq
+
+        # Radiator
+        disipated_power = thermal_power - Preq
+
+        radiator_mass = disipated_power/rad_specific_power
+
+        self.Mass_power_truss += radiator_mass
+
+        print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
+        print(f'thermal power: {thermal_power:5.1f} W')
+        print(f'radiator mass: {radiator_mass:5.1f} kg')
+        print(f'radiator area: {radiator_mass/areal_density:5.1f} m2')
     def size_heat_shield(self):
         '''uses very simple model, include better system later'''
 

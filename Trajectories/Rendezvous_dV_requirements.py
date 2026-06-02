@@ -8,10 +8,9 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
-from src.orbit import Orbit, trajectory_optimizer, orbit_from_lambert_transfer, plot_orbit, get_solar_system_ax
+import jkat
+from jkat import AU, YEAR, DAY
 from src.get_ISO import get_ISO
-from src.examples import Earth, Jupiter
-from src.utilities import AU, YEAR, SGP_SUN, DAY
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m
@@ -22,9 +21,21 @@ import pandas as pd
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data" 
 PICKLE_NAME = "ISOdata.pic"
-icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-MAX_MISSION_TIME = 10 # [years]
+
+MAX_MISSION_TIME = 30 # [years]
+MAX_BOOST_DV = 4
+
+
+# ap = 5.45 AU
+# pe = 10 sun radii
+# longp = 124.14 *
+# raan = 100.4 *
+# i = 1.3 *
+from jkat.utils.elements import apse2ae
+a,e = apse2ae(5.45*jkat.AU, 10*jkat.SUN_RADIUS)
+parking_orbit = jkat.orbit_from_ephemeris(
+    a, e, m.radians(1.3), 0, m.radians(124.14), m.radians(100.4), jkat.SUN_MU
+)
 
 # === probability functions =====
 
@@ -100,9 +111,10 @@ col_names = ["detection_r", "periapsis", "magnitude_generation_method", 'time_un
              "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
              "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
              "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
+             "h_turn",'h_rot', "h_idv", "h_rdv", "h_r", "h_t_launch", "h_t_arrival", 'park_longp'
              ]
 
-def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
+def study_ISO(ISO:jkat.Orbit, detect_t:float, gen_type:str)->dict:
     '''study an ISO orbit and return data as a row to be added to a pandas table
 
     :param ISO: the generated ISO in question
@@ -116,40 +128,72 @@ def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     :rtype: dict
     '''
     # initial data
-    detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
+    detect_r = ISO.r(ISO.f(detect_t))/AU
     out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
-           'time_until_periapsis':(ISO.t_p - detect_t)/DAY,
-             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, 
-             "ISO_excess_velocity":ISO.excess_velocity}
+           'time_until_periapsis':(ISO.tp - detect_t)/DAY,
+             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
+             "ISO_excess_velocity":ISO.vinf}
     # check detection distance/time
     
     # intercept:
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), **icpt_weights)
+        res = jkat.direct_transfer(jkat.Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), dv1_w = 1, dv2_w = 0)
         out.update({
-            "icpt_idv":insert_dv, 
-            "icpt_rdv": rdvz_dv, 
-            "icpt_r": er/AU, 
-            "icpt_t_launch":(st - detect_t)/DAY, 
-            "icpt_t_arrival":(et - detect_t)/DAY
+            "icpt_idv":res['dv1'], 
+            "icpt_rdv": res['dv2'], 
+            "icpt_r": res['r']/AU, 
+            "icpt_t_launch":(res['ts'] - detect_t)/DAY, 
+            "icpt_t_arrival":(res['te'] - detect_t)/DAY
         })
     except (ArithmeticError,ValueError):
         pass # no intercept :(
     # rendezvous:
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), **rdvz_weights)
+        res = jkat.direct_transfer(jkat.Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), dv1_w = 1, dv2_w = 1)
         out.update({
-            "rdvz_idv":insert_dv, 
-            "rdvz_rdv": rdvz_dv, 
-            "rdvz_total": insert_dv + rdvz_dv,
-            "rdvz_r": er/AU, 
-            "rdvz_t_launch":(st - detect_t)/DAY, 
-            "rdvz_t_arrival":(et - detect_t)/DAY
+            "rdvz_idv":res['dv1'], 
+            "rdvz_rdv": res['dv2'], 
+            "rdvz_total": res['dv1'] + res['dv2'],
+            "rdvz_r": res['r']/AU, 
+            "rdvz_t_launch":(res['ts'] - detect_t)/DAY, 
+            "rdvz_t_arrival":(res['te'] - detect_t)/DAY
         })
     except (ArithmeticError,ValueError):
         pass # no rendezvous :(
 
     return out
+
+def study_helio(ISO:jkat.Orbit, detect_t:float, gen_type:str):
+    
+    # initial data
+    detect_r = ISO.r(ISO.f(detect_t))/AU
+    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
+           'time_until_periapsis':(ISO.tp - detect_t)/DAY,
+             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
+             "ISO_excess_velocity":ISO.vinf}
+    
+    # do the transfer thing
+    try:
+        res = jkat.trajectories.direct.rotation_direct_transfer(
+            parking_orbit, ISO, f_rot=m.pi, 
+            bounds=(detect_t, detect_t + parking_orbit.T*2, detect_t, detect_t + MAX_MISSION_TIME*YEAR),
+            dv0_w = 1, dv1_w = 1, dv2_w = 1, dv1_max = MAX_BOOST_DV
+        )
+        out.update({
+            'h_turndv' : res['dv0'],
+            'h_idv' : res['dv1'],
+            'h_rdv' : res['dv2'],
+            'h_ion_total' : res['dv0'] + res['dv2'],
+            'h_rot': m.degrees(res['rot']),
+            "h_r": res['r']/AU, 
+            "h_t_launch":(res['ts'] - detect_t)/DAY, 
+            "h_t_arrival":(res['te'] - detect_t)/DAY
+
+
+        })
+    except(ArithmeticError, ValueError): pass # no match :(
+    return out
+
 
 def study_batch(gen_type:str='')->pd.DataFrame:
     '''generate a batch of ISOs, then study each for several ranges of detect_r
@@ -164,7 +208,9 @@ def study_batch(gen_type:str='')->pd.DataFrame:
     # shuffle timings so that does not influence study:
     res_list= []
     for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
-        res_list.append(study_ISO(ISO,detect_t,g_type))
+        out = study_ISO(ISO,detect_t,g_type)
+        out.update(study_helio(ISO,detect_t,g_type))
+        res_list.append(out)
     return pd.DataFrame(res_list)
 
 def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
@@ -204,12 +250,15 @@ def _fix_data():
     data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # ==== change here ====
+    # get the heliocentric values
     np.seterr(all="ignore")
     for i,row in tqdm(data.iterrows(), desc="fixing Excess Velocity",total=len(data)):
-        # if not (row['rdvz_total'] <= 20): continue
-        ISO, _,_ = recreate_ISO(row)
-
-        data.loc[i, 'ISO_excess_velocity'] =  ISO.excess_velocity 
+        if not 'h_idv' in row: continue
+        ISO, detect_t,g_type = recreate_ISO(row)
+        out = study_helio(ISO,detect_t,g_type)
+        for key, val in out.items():
+            if key.startswith('h'):
+                data.loc[i, key] = val
 
 
     # =====================
@@ -287,9 +336,10 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
         plt.colorbar(location="right", label=r"$P_s$")
     CS = plt.contour(PP,levels=[0.5,0.9,0.99],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]), colors='k')
     plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
-    if num < 2:
-        plt.ylabel(r'$\Delta V$ budget [km/s]')
-    plt.xlabel(r'$N$')
+    if num > 1:
+        plt.xlabel(r'$N$')
+    plt.ylabel(r'$\Delta V$ budget [km/s]')
+    
     # plt.title(f"Probability map for {"rendezvous" if rdvz else "intercept"}\nAnd estimated ISO detections during {years} year mission")
     if guesses:
         plt.axvline(EL_N,ls='--', color="gray")
@@ -302,7 +352,7 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
     plt.gca().set_aspect(N_range[-1]/V_range[-1])
     return PP, N_range, V_range
 
-def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
+def plot_from_row(row:pd.Series, max_r:float=m.inf):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
 
     :param ax: matplotlib axes to plot in, needs to be 3d
@@ -321,29 +371,48 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     icpt_e = t_detect + row["icpt_t_arrival"]*DAY
     rdvz_s = t_detect + row["rdvz_t_launch"]*DAY
     rdvz_e = t_detect + row["rdvz_t_arrival"]*DAY
-    max_t = max(rdvz_e, icpt_e)
+    
+    rot = m.radians(row['h_rot'])
+    h_s = row['h_t_launch']*DAY
+    h_e = row['h_t_arrival']*DAY
+
+    max_t = max(rdvz_e, icpt_e, h_e)
 
     # get the intercept:
-    ICPT = orbit_from_lambert_transfer(Earth,ISO,icpt_s,icpt_e)
-    plot_orbit(ax, ICPT, (icpt_s,icpt_e), max_alt=AU*max_r + 100, label="Flyby trajectory") # slight margin on max alt
+    ICPT = jkat.orbit_from_lambert_transfer(jkat.Earth,ISO,icpt_s,icpt_e)
+    jkat.plot(ICPT, t_bounds=(icpt_s,icpt_e), max_distance=AU*max_r + 100, label="Flyby trajectory") # slight margin on max alt
 
     # get the rendezvouz:
-    RDVZ = orbit_from_lambert_transfer(Earth,ISO,rdvz_s,rdvz_e)
-    plot_orbit(ax, RDVZ, (rdvz_s,rdvz_e), max_alt=AU*max_r + 100, label="Rendezvous trajectory")
+    RDVZ = jkat.orbit_from_lambert_transfer(jkat.Earth,ISO,rdvz_s,rdvz_e)
+    jkat.plot(RDVZ, t_bounds=(rdvz_s,rdvz_e), max_distance=AU*max_r + 100, label="Rendezvous trajectory")
 
     # plot earth, jupiter and iso:
-    plot_orbit(ax,Earth, max_t, label="Earth", color="Blue")
-    plot_orbit(ax,ISO,(t_detect, max_t), max_alt=AU*max_r + 100, label="ISO")
-    plot_orbit(ax,Jupiter, max_t, label="Jupiter", color="orange")
+    jkat.plot(jkat.Earth, t=max_t, label="Earth", color="Blue")
+    jkat.plot(ISO,(t_detect, max_t), max_alt=AU*max_r + 100, label="ISO")
+    jkat.plot(jkat.Jupiter, t=max_t, label="Jupiter", color="orange")
+
+    # get the parking orbit:
+    jkat.plot(parking_orbit,label="parking orbit", color='gray')
+    _, TURN = jkat.trajectories.orbit_rotation(parking_orbit,rot,f=m.pi)
+    HELIO = jkat.orbit_from_lambert_transfer(TURN,ISO,h_s,h_e)
+    jkat.plot(TURN,label="turned parking orbit", color='light gray')
+    jkat.plot(HELIO, t_bounds=(h_s, h_e), t=max_t, label="Heliocentric intercept")
 
     # printing:
     print(f'intercept:\nlaunches: {row["icpt_t_launch"]:.2f} days after detection, arrives {row["icpt_t_arrival"]:.2f} days after detection at a distance of {row["icpt_r"]} AU')
-    print(f"initial delta v cost is: {row["icpt_idv"]:.2f} km/s, and relative velocity at intercept is {row['icpt_rdv']} km/s\n")
+    print(f"initial delta v cost is: {row["icpt_idv"]:.2f} km/s, and relative velocity at intercept is {row['icpt_rdv']:.2f} km/s\n")
 
     print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]:.2f} days after detection, arrives {row["rdvz_t_arrival"]:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
-    print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
+    print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']:.2f} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
+    
+    print(f'Helio:\nlaunches: {row["h_t_launch"]:.2f} days after detection, arrives {row["h_t_arrival"]:.2f} days after detection at a distance of {row["h_r"]} AU')
+    print(f"ion delta v cost is: {row["h_ion_total"]:.2f} km/s, and relative velocity at intercept is {row['h_rdv']:.2f} km/s, with a boost of {row['h_idv']} km/s")
+    print(f'orbit rotated {m.degrees(rot):.1f} degrees')
+    plt.legend()
+    plt.show()
 
-def recreate_ISO(row:pd.Series)->tuple[Orbit,float,str]:
+
+def recreate_ISO(row:pd.Series)->tuple[jkat.Orbit,float,str]:
     '''recreate the ISO orbit, detection time, and gen_type from row
 
     :param row: _description_
@@ -354,14 +423,14 @@ def recreate_ISO(row:pd.Series)->tuple[Orbit,float,str]:
     :rtype: tuple[Orbit,float,str]
     '''
     # extract orbit:
-    ISO = Orbit(
+    ISO = jkat.Orbit(
         row['parameter'],
         row['e'],
         row['i'],
         row['RAAN'],
         row['arg_p'],
         row['t_p'],
-        SGP_SUN
+        jkat.SUN_MU
     )
     detect_r = row['detection_r']
     t_detect = ISO.theta_to_time(-ISO.crosses_altitude(detect_r*AU)) # type:ignore
@@ -446,10 +515,10 @@ def plots_for_dv_histogram():
    
 def plots_for_probability_map():
     df = get_data()
-    plt.subplot(1,2,1)
+    plt.subplot(2,1,1)
     plt.title("Flyby")
     PPi, N_range, V_range = probability_map(df,False,False,1)
-    plt.subplot(1,2,2)
+    plt.subplot(2,1,2)
     plt.title("Rendezvous")
     PPr, _, _ = probability_map(df,True,False,2)
 
@@ -490,22 +559,23 @@ def run_in_background():
 if __name__ == "__main__":
 
 
-    df = get_data()
+    # df = get_data()
+    # plots_for_probability_map()
 
 
 
-    # df = df[df["rdvz_total"] < 19.3]
-    df = df[df['magnitude_generation_method'] == "Omuamua"]
-    # df = df[df['magnitude_generation_method'] == "atlas-borisov"]
+    # # df = df[df["rdvz_total"] < 19.3]
+    # df = df[df['magnitude_generation_method'] == "Omuamua"]
+    # # df = df[df['magnitude_generation_method'] == "atlas-borisov"]
 
 
-    data = df['detection_r']
-    print(f'detection r: {np.average(data):.3f}')
-    data = df['periapsis']
-    print(f'periapsis: {np.average(data):.3f}')
-    data = df['time_until_periapsis']
-    print(f'time_until_periapsis: {np.average(data):.3f}')
-    print(f'count: {len(df)}')
+    # data = df['detection_r']
+    # print(f'detection r: {np.average(data):.3f}')
+    # data = df['periapsis']
+    # print(f'periapsis: {np.average(data):.3f}')
+    # data = df['time_until_periapsis']
+    # print(f'time_until_periapsis: {np.average(data):.3f}')
+    # print(f'count: {len(df)}')
 
 
 
@@ -529,3 +599,4 @@ if __name__ == "__main__":
 
 
     # run_in_background()
+    pass

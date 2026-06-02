@@ -10,3 +10,9 @@ use this to generate a probability distribution of required dv for either just f
 this should give a dv needed for the 90% criteria
 
 
+Trajectories todo:
+- actual dV incl. low thrust losses
+- (full journey laid out with all manoeuvres)
+- spending excess dv for faster intercept
+- characterize resulting final trajectories probabilistically
+- contingency targets for 10% no ISO chance

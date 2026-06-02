@@ -6,6 +6,7 @@ Stealing bits and pieces from the other code
 '''
 import math as m
 from Power.powerinsizeout import reactor
+from ReactoPy.CycloPy import size_power, radiator_areal_density
 
 # ==== consts =====
 
@@ -69,15 +70,15 @@ Psp_nuke = 134
 sigma = 5.670374419e-8  # W/m^2/K^4
 
 # Inputs
-T_cold = 1298.0679247865448  # K
-areal_density = 15           # kg/m^2
-emissivity = 0.9
+# T_cold = 1298.0679247865448  # K
+areal_density = radiator_areal_density           # kg/m^2
+# emissivity = 0.9
 
 # Power areal density (W/m^2)
-q = emissivity * sigma * T_cold**4
+# q = emissivity * sigma * T_cold**4
 
 # Specific power (W/kg)
-rad_specific_power = q / areal_density
+# rad_specific_power = q / areal_density
 
 
 def dv2mf(dV:float, isp:float, m1:float, l:float)->float:
@@ -248,23 +249,17 @@ class Hestia():
 
         Preq = static_power_draw + self.Number_ions*P_ion # needed power
 
-        reactor_mass, reactor_fuel_mass, thermal_power = reactor(Preq)
+        mass, reactor_mass, radiator_mass, brayton_system_mass, thermal_power, radiator_area = size_power(Preq)
 
-        reactor_mass += reactor_fuel_mass
-        self.Mass_power_truss = reactor_mass
-        self.Power_provided = Preq
-
-        # Radiator
-        disipated_power = thermal_power - Preq
-
-        radiator_mass = disipated_power/rad_specific_power
-
-        self.Mass_power_truss += radiator_mass
+        self.Mass_power_truss = mass
 
         print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
         print(f'thermal power: {thermal_power:5.1f} W')
         print(f'radiator mass: {radiator_mass:5.1f} kg')
         print(f'radiator area: {radiator_mass/areal_density:5.1f} m2')
+
+        self.Power_provided = Preq
+
     def size_heat_shield(self):
         '''uses very simple model, include better system later'''
 

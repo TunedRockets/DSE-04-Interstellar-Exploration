@@ -94,7 +94,7 @@ def reactor_thermal(power_thermal, burn_time=41366655.26322658):
     # elec power / brayton / u235_specific energy / 0.2 * burn time = fuel mass
 
     reactor_fuel_equivalent_specific_energy = u235_specific_energy * 0.2 # Wh/kg
-    reactor_BOP_power_density = 100000 /100 # W/kg
+    reactor_BOP_power_density = 100000 / 100 # W/kg
 
 
     reactor_fuel_mass = power_thermal*burn_time*2.5 / reactor_fuel_equivalent_specific_energy

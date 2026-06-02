@@ -8,7 +8,7 @@ from src2.orbit import *
 import numpy as np
 from tqdm import tqdm
 import matplotlib as mpl
-# mpl.use('TkAgg')
+mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 from proper_oberth_sizer import *
 from multi_stage_sizer_earth_flyby import VegaC_Launcher

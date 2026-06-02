@@ -5,74 +5,92 @@ from typing import Callable
 import math as m
 import numpy as np
 
-def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, detect_t:float, bounds:tuple[float,float,float,float], boost_max:float):
-    '''two stage heliocentric optimizer'''
 
-    bounds = (max(detect_t, bounds[0]), bounds[1], bounds[2], bounds[3])
 
-    peri = park.tp
+def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float):
+    '''find the optimal trajectory for the heliocentric Orberth manoeuvre'''
+
+    peri = park.tp # find periapsis after ISO tp
     while peri < ISO.tp: peri += park.T
 
-    def F(r):
-        dv0, park2 = jkat.trajectories.orbit_rotation(park,r,f=m.pi)
-        try: # periapsis burn
-            retp = jkat.direct_transfer(park2,ISO,
-                ts_min = peri - 100, ts_max = peri + 100, te_min = ISO.tp, te_max = ISO.tp + bounds[3], 
-                dv1_w = 1, dv2_w = 1)
-            wp = retp['dv2'] + np.linalg.norm(dv0) + retp['dv1']
-        except (ArithmeticError, ValueError): wp = m.inf
-        try: # non-peri burn
-            reta = jkat.direct_transfer(park2,ISO,
-                ts_min = peri - park2.T/2, ts_max = peri + park2.T/2, te_min = ISO.tp, te_max = ISO.tp + bounds[3], 
-                dv1_w = 1, dv2_w = 1)
-            wa = reta['dv2'] + np.linalg.norm(dv0) + reta['dv1']
-        except (ArithmeticError, ValueError): wa = m.inf
+    rp, vp = park.vectors(0) # parking orbit periapsis
+    def F(t):
+        ri,vi = ISO.t2vectors(t)
+        vl1,vl2 = jkat.trajectories.lambert(rp, ri, t-peri,park.mu)
+        dv2 = np.linalg.norm(vl2-vi)
 
-        return min(wp,wa)
+        # construct rotation:
+        z = vl1.dot(rp)/rp.dot(rp) * rp
+        v = vl1 - z
+        v = v*np.linalg.norm(vp)/np.linalg.norm(v) # same magnitude as vp
+        rotated = jkat.orbit_from_rv(rp,v,park.mu)
+        dv0 = park.vvec(m.pi) - rotated.vvec(m.pi)
+
+        dv1 = np.linalg.norm(vl1-v)
+        return {
+        "ts": peri,
+        "te": t,
+        'dv0': np.linalg.norm(dv0),
+        "dv1": dv1,
+        "dv2": dv2,
+        'r': np.linalg.norm(ri),
+        'ob': rotated
+    }
+    def w(t):
+        try:
+            res = F(t)
+            return res['dv2'] + res['dv0'] + (0 if res['dv1'] < boost_max else res['dv1']*1000) # heavily discourage dv1
+        except (ValueError, ArithmeticError): return m.inf
+    t_opt = minimizer_1d(w,peri, max_time)
     
-    points = np.linspace(-m.pi, m.pi, 10)
-    Fpoints = []
-    for p in points: Fpoints.append(F(p))
-    points = points[np.argsort(Fpoints)]
-    points = points[np.isfinite(Fpoints)]
+    res = F(t_opt)
+    return res
 
 
-    r_opt = golden_section_minimizer(F,-m.pi, m.pi, tol=m.radians(1))
-    dv0, park2 = jkat.trajectories.orbit_rotation(park,r_opt,f=m.pi)
-    retp = jkat.direct_transfer(park2,ISO,
-                ts_min = peri - 100, ts_max = peri + 100, te_min = ISO.tp, te_max = ISO.tp + bounds[3], 
-                dv1_w = 1, dv2_w = 1)
-    reta = jkat.direct_transfer(park2,ISO,
-                ts_min = peri - park2.T/2, ts_max = peri + park2.T/2, te_min = ISO.tp, te_max = ISO.tp + bounds[3], 
-                dv1_w = 1, dv2_w = 1)
-    if retp['dv2'] + np.linalg.norm(dv0) + retp['dv1'] < reta['dv2'] + np.linalg.norm(dv0) + reta['dv1']:
-        ret = retp 
-        ret['h_type'] = 'peri'
-    else:
-        ret = reta
-        ret['h_type'] = 'api'
+def rotate_to_match(ob:jkat.Orbit, target:jkat.Orbit)->tuple[float, np.ndarray, jkat.Orbit]:
 
-    ret.update({
-        'dv0':dv0, "rot":r_opt
-    })
-    return ret
+    htgt = target.hvec
+    hob = ob.hvec
+    eob = ob.evec
 
+    # project:
+    z = eob*htgt.dot(eob)/eob.dot(eob)
+    htgt = htgt - z
+
+    # figure out angle 
+    angle = m.acos(htgt.dot(hob)/(np.linalg.norm(htgt)*np.linalg.norm(hob)))
+
+    #
+    if np.cross(hob,htgt).dot(eob) > 0:
+        angle *= -1
     
+    return angle, *jkat.trajectories.orbit_rotation(ob,angle,f=m.pi)
 
 
-def golden_section_minimizer(f:Callable, a:float, b:float, tol:float=1e-2)->float:
 
-    invphi =  (m.sqrt(5) - 1) / 2 
+def minimizer_1d(f:Callable, a:float, b:float)->float:
 
-    while b-a > tol:
-        c = b - (b - a) * invphi
-        d = a + (b - a) * invphi
-        if f(c) < f(d):
-            b = d
-        else:  # f(c) > f(d) to find the maximum
-            a = c
+    #preselect:
+    max_step = (b-a)/20
+    pp = np.arange(a,b,max_step)
+    FF = []
+    for p in pp: FF.append(f(p))
+    pp = pp[np.argsort(FF)]
 
-    return (b + a) / 2
+    epsilon = 1e-6
+    alpha = 0.7
+
+    for _ in range(1000):
+        pF = f(p)
+        dp = (pF - f(p-epsilon))/epsilon
+        # pseudo newton but held back
+        step = - pF/dp * alpha
+        if abs(step) > max_step: step = max_step * np.sign(step)
+        max_step = abs(step)
+
+        p = p + step
+        if step < epsilon: return p
+    else: return p
     
     
 

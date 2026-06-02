@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
+from Power.powerinsizeout import reactor_thermal
 
 # Sources:
 
@@ -233,13 +234,13 @@ class BraytonCycle:
         self.diagram.curves.clear()
 
         # self.diagram.isentropic("1", "2", "1-2 compressor")
-        self.diagram.compressor("1", "2", self.eta_c, "1-2 compressor")
-        self.diagram.isobar(self.diagram.states["2"]["P"], "2", "3", "2-3 heat input")
+        self.diagram.compressor("1", "2", self.eta_c, "1-2 Compressor")
+        self.diagram.isobar(self.diagram.states["2"]["P"], "2", "3", "2-3 Reactor")
         # self.diagram.isentropic("3", "4", "3-4 turbine")
-        self.diagram.turbine("3", "4", self.eta_t_hp, "3-4 HP turbine")
+        self.diagram.turbine("3", "4", self.eta_t_hp, "3-4 HP Turbine")
         # self.diagram.isobar(self.diagram.states["4"]["P"], "4", "5", "4-5 exhaust")
-        self.diagram.turbine("4", "5", self.eta_t_lp, "4-5 LP turbine")
-        self.diagram.isobar(self.diagram.states["5"]["P"], "5", "1", "5-1 closure")
+        self.diagram.turbine("4", "5", self.eta_t_lp, "4-5 LP Turbine")
+        self.diagram.isobar(self.diagram.states["5"]["P"], "5", "1", "5-1 Radiator")
 
         self.diagram.plot("Brayton Cycle")
 
@@ -495,7 +496,11 @@ def evaluate_system(
         sol["T1"]
     )
 
-    total = m_comp + m_turb + m_rad + m_alternator
+    reactor_mass, fuel_mass = reactor_thermal(sol['q_in'])
+
+    m_reactor = reactor_mass + fuel_mass
+
+    total = m_comp + m_turb + m_rad + m_alternator + m_reactor
 
     return (
         total,
@@ -503,6 +508,7 @@ def evaluate_system(
         m_turb,
         m_rad,
         m_alternator,
+        m_reactor,
         mdot
     )
 
@@ -511,12 +517,12 @@ def mass_heatmap(engine, W_elec, P1, T3,
                  min_T1=400, max_T1=1500,
                  min_P2=None, max_P2=None,
                  res=120,
-                 limit=1000):
+                 limit=10000):
     if min_P2 is None:
         min_P2 = 1.1*P1
 
     if max_P2 is None:
-        max_P2 = 10*P1
+        max_P2 = 20*P1
 
     sizer = BraytonSizing(engine)
 
@@ -535,39 +541,75 @@ def mass_heatmap(engine, W_elec, P1, T3,
             if out is None:
                 continue
 
-            total, mc, mt, mr, m_alternator, mdot = out
+            total, mc, mt, mr, m_alternator, m_reactor, mdot = out
             if total>limit:
                 total=np.nan
 
             M[i, j] = total
 
             if total < best[0]:
-                best = (total, (T1, P2, mc, mt, mr, m_alternator, mdot))
+                best = (total, (T1, P2, mc, mt, mr, m_alternator, m_reactor, mdot))
 
     # =========================
     # PLOT MASS MAP
     # =========================
     plt.figure(figsize=(9, 6))
 
-    plt.imshow(
+    im = plt.imshow(
         M,
         origin="lower",
         aspect="auto",
-        extent=[P2_vals[0]/BAR, P2_vals[-1]/BAR,
+        extent=[P2_vals[0] / BAR, P2_vals[-1] / BAR,
                 T1_vals[0], T1_vals[-1]]
     )
 
-    plt.colorbar(label="Total Mass (kg)")
-    plt.xlabel("HP Pressure P2 (Bar)")
-    plt.ylabel("T1 (K)")
-    plt.title("Brayton System Mass Map")
+    plt.colorbar(im, label="Total Mass (kg)")
 
     # =========================
     # OPTIMUM
     # =========================
-    T1_opt, P2_opt, mc, mt, mr, m_alternator, mdot = best[1]
+    best_mass = best[0]
+    T1_opt, P2_opt, mc, mt, mr, m_alternator, m_reactor, mdot = best[1]
 
-    plt.scatter(P2_opt/BAR, T1_opt, color="red", label="optimum")
+    # contour grid coordinates
+    X, Y = np.meshgrid(P2_vals / BAR, T1_vals)
+
+    contour_levels = [
+        1.10 * best_mass,
+        1.20 * best_mass
+    ]
+
+    cs = plt.contour(
+        X,
+        Y,
+        M,
+        levels=contour_levels,
+        colors=["white", "cyan"],
+        linewidths=2
+    )
+
+    plt.clabel(
+        cs,
+        fmt={
+            contour_levels[0]: "+10%",
+            contour_levels[1]: "+20%"
+        },
+        inline=True,
+        fontsize=9
+    )
+
+    plt.scatter(
+        P2_opt / BAR,
+        T1_opt,
+        color="red",
+        s=80,
+        zorder=5,
+        label=f"Optimum ({best_mass:.1f} kg)"
+    )
+
+    plt.xlabel("HP Pressure P2 (Bar)")
+    plt.ylabel("T1 (K)")
+    plt.title("Brayton System Mass Map")
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -588,6 +630,7 @@ def mass_heatmap(engine, W_elec, P1, T3,
     print(f"Compressor mass: {mc:.2f} kg")
     print(f"Turbine mass: {mt:.2f} kg")
     print(f"Alternator mass: {m_alternator:.2f} kg")
+    print(f"Reactor mass: {m_reactor:.2f} kg")
     print(f"Radiator mass: {mr:.2f} kg")
     print(f"TOTAL MASS: {best[0]:.2f} kg")
 
@@ -618,7 +661,7 @@ if __name__ == "__main__":
     # efficiency_heatmap(engine, 1*BAR, 1500+273.15)
 
     engine = BraytonCycle(Helium, 0.85, 0.88, 0.90)
-    pressures = np.linspace(10, 40, 10)
+    pressures = np.linspace(1, 40, 30)
     masses = []
     iss_radiator_pressure = 3447 * 1000  # Pa
 

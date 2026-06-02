@@ -170,15 +170,12 @@ def study_helio(ISO:jkat.Orbit, detect_t:float, gen_type:str):
     out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
            'time_until_periapsis':(ISO.tp - detect_t)/DAY,
              "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
-             "ISO_excess_velocity":ISO.vinf}
+             "ISO_excess_velocity":ISO.vinf, 'h_tried': True}
     
     # do the transfer thing
     try:
-        res = jkat.trajectories.direct.rotation_direct_transfer(
-            parking_orbit, ISO, f_rot=m.pi, 
-            bounds=(detect_t, detect_t + parking_orbit.T*2, detect_t, detect_t + MAX_MISSION_TIME*YEAR),
-            dv0_w = 1, dv1_w = 1, dv2_w = 1, dv1_max = MAX_BOOST_DV
-        )
+        from src.helio_optim import helio_optim
+        res = helio_optim(parking_orbit, ISO, detect_t, (detect_t, detect_t + parking_orbit.T, detect_t, detect_t + MAX_MISSION_TIME*YEAR), MAX_BOOST_DV)
         out.update({
             'h_turndv' : res['dv0'],
             'h_idv' : res['dv1'],
@@ -187,11 +184,12 @@ def study_helio(ISO:jkat.Orbit, detect_t:float, gen_type:str):
             'h_rot': m.degrees(res['rot']),
             "h_r": res['r']/AU, 
             "h_t_launch":(res['ts'] - detect_t)/DAY, 
-            "h_t_arrival":(res['te'] - detect_t)/DAY
+            "h_t_arrival":(res['te'] - detect_t)/DAY,
+            'h_max_boost': MAX_BOOST_DV,
 
 
         })
-    except(ArithmeticError, ValueError): pass # no match :(
+    except(ArithmeticError, ValueError): print('no match :(') # no match :(
     return out
 
 
@@ -252,18 +250,19 @@ def _fix_data():
     # ==== change here ====
     # get the heliocentric values
     np.seterr(all="ignore")
-    for i,row in tqdm(data.iterrows(), desc="fixing Excess Velocity",total=len(data)):
-        if not 'h_idv' in row: continue
-        ISO, detect_t,g_type = recreate_ISO(row)
-        out = study_helio(ISO,detect_t,g_type)
-        for key, val in out.items():
-            if key.startswith('h'):
-                data.loc[i, key] = val
-
+    try:
+        for i,row in tqdm(data.iterrows(), desc="fixing Excess Velocity",total=len(data)):
+            if 'h_max_boost' in row: continue
+            ISO, detect_t,g_type = recreate_ISO(row)
+            out = study_helio(ISO,detect_t,g_type)
+            for key, val in out.items():
+                if key.startswith('h'):
+                    data.loc[i, key] = val
+    finally: data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # =====================
 
-    data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
+    
 
 def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kwargs):
     '''generate a probability density histogram of the delta v requirements
@@ -433,7 +432,7 @@ def recreate_ISO(row:pd.Series)->tuple[jkat.Orbit,float,str]:
         jkat.SUN_MU
     )
     detect_r = row['detection_r']
-    t_detect = ISO.theta_to_time(-ISO.crosses_altitude(detect_r*AU)) # type:ignore
+    t_detect = ISO.t(-ISO.cross_radius(detect_r*AU)) # type:ignore
     return ISO, t_detect, row['magnitude_generation_method']
 
 
@@ -558,9 +557,15 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-
-    # df = get_data()
+    
+    df = get_data()
     # plots_for_probability_map()
+    df = df[df['h_tried'] == True]
+    print(df[["h_turndv", "h_idv","h_rdv","h_ion_total","h_rot", "h_r", "h_t_launch", "h_t_arrival", "periapsis"]])
+
+    _fix_data()
+
+
 
 
 

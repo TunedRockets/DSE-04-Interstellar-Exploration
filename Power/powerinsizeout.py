@@ -77,6 +77,34 @@ def reactor(power_elec, burn_time=41366655.26322658):
     thermal_power = power_elec/brayton_cycle_efficiency
     return reactor_mass, reactor_fuel_mass, thermal_power
 
+def reactor_thermal(power_thermal, burn_time=41366655.26322658):
+
+
+    # Uranium-235 fission energy
+    energy_one_fission = 169.1 * 10**(6) *  1.602176634 * 10**(-19) # MeV * J/eV source https://web.archive.org/web/20190505175631/http://www.kayelaby.npl.co.uk/atomic_and_nuclear_physics/4_7/4_7_1.html
+    energy_fission_mol = energy_one_fission * 6.02214076* 10**(23) # J per Mol https://www.nist.gov/si-redefinition/meet-constants
+    kg_per_mol_u235 = 235/1000 # g per mol / 1000
+    u235_specific_energy = energy_fission_mol / kg_per_mol_u235 # J per kg
+
+
+    # (elec power / brayton ) /  u235_specific_energy = kg per second (of pure u235)
+    # minimum haleu mass = kg per sec / 0.2 , this is also haleu mass rate https://world-nuclear.org/information-library/nuclear-fuel-cycle/conversion-enrichment-and-fabrication/high-assay-low-enriched-uranium-haleu
+    # fuel mass to sustain mission = burn_time * haleu mass rate
+
+    # elec power / brayton / u235_specific energy / 0.2 * burn time = fuel mass
+
+    reactor_fuel_equivalent_specific_energy = u235_specific_energy * 0.2 # Wh/kg
+    reactor_BOP_power_density = 100000 /100 # W/kg
+
+
+    reactor_fuel_mass = power_thermal*burn_time*2.5 / reactor_fuel_equivalent_specific_energy
+    # print("fuelamsss;", reactor_fuel_mass)
+    reactor_fuel_mass = reactor_fuel_mass / 0.1 # burn up mass https://beyondnerva.wordpress.com/fission-power-systems/systems-for-nuclear-auxiliary-power-snap/snap-10-10a-and-snapshot/
+    # print("fuelamsss;", reactor_fuel_mass)
+
+    reactor_mass = power_thermal / reactor_BOP_power_density
+    return reactor_mass, reactor_fuel_mass
+
 def reactor_energyver(power_elec, power_energy):
     # Reactor
     brayton_cycle_efficiency = 0.13446458166714917

@@ -536,7 +536,8 @@ def run_configuration(
             1 + feed_system_fraction
         )
 
-        anhong_reactor_mass, anhong_reactor_mass_fuel  = reactor(reactor_electric_power)
+        anhong_reactor_mass, anhong_reactor_mass_fuel, _  = reactor(reactor_electric_power)
+
 
 
         # reactor_mass = max((

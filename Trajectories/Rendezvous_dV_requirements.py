@@ -11,6 +11,7 @@ sys.path.append(str(Path(__file__).parent.parent.resolve()))
 import jkat
 from jkat import AU, YEAR, DAY
 from src.get_ISO import get_ISO
+from src.helio_optim import helio_optim
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m
@@ -174,22 +175,20 @@ def study_helio(ISO:jkat.Orbit, detect_t:float, gen_type:str):
     
     # do the transfer thing
     try:
-        from src.helio_optim import helio_optim
-        res = helio_optim(parking_orbit, ISO, detect_t, (detect_t, detect_t + parking_orbit.T, detect_t, detect_t + MAX_MISSION_TIME*YEAR), MAX_BOOST_DV)
+        
+        res = helio_optim(parking_orbit, ISO, ISO.tp + MAX_MISSION_TIME*YEAR, MAX_BOOST_DV)
         out.update({
             'h_turndv' : res['dv0'],
             'h_idv' : res['dv1'],
             'h_rdv' : res['dv2'],
             'h_ion_total' : res['dv0'] + res['dv2'],
-            'h_rot': m.degrees(res['rot']),
             "h_r": res['r']/AU, 
             "h_t_launch":(res['ts'] - detect_t)/DAY, 
             "h_t_arrival":(res['te'] - detect_t)/DAY,
-            'h_max_boost': MAX_BOOST_DV,
-
-
+            'h_max_boost': MAX_BOOST_DV
         })
     except(ArithmeticError, ValueError): print('no match :(') # no match :(
+    
     return out
 
 
@@ -251,8 +250,8 @@ def _fix_data():
     # get the heliocentric values
     np.seterr(all="ignore")
     try:
-        for i,row in tqdm(data.iterrows(), desc="fixing Excess Velocity",total=len(data)):
-            if 'h_max_boost' in row: continue
+        for i,row in tqdm(data.iterrows(), desc="study helio",total=len(data)):
+            # if 'h_max_boost' in row: continue
             ISO, detect_t,g_type = recreate_ISO(row)
             out = study_helio(ISO,detect_t,g_type)
             for key, val in out.items():
@@ -353,6 +352,7 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
 
 def plot_from_row(row:pd.Series, max_r:float=m.inf):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
+    get row via: df.iloc[<num>]
 
     :param ax: matplotlib axes to plot in, needs to be 3d
     :type ax: _type_
@@ -370,12 +370,16 @@ def plot_from_row(row:pd.Series, max_r:float=m.inf):
     icpt_e = t_detect + row["icpt_t_arrival"]*DAY
     rdvz_s = t_detect + row["rdvz_t_launch"]*DAY
     rdvz_e = t_detect + row["rdvz_t_arrival"]*DAY
-    
-    rot = m.radians(row['h_rot'])
-    h_s = row['h_t_launch']*DAY
-    h_e = row['h_t_arrival']*DAY
 
-    max_t = max(rdvz_e, icpt_e, h_e)
+
+    # recreate parking and helicentric
+    res = helio_optim(parking_orbit,ISO, ISO.tp + MAX_MISSION_TIME*YEAR, MAX_BOOST_DV)
+    ROT:jkat.Orbit = res['ob']
+    HELIO = jkat.orbit_from_lambert(ROT.rvec(0), ISO.t2rvec(res['te']),res['ts'],res['te'], ISO.mu)
+
+
+
+    max_t = max(rdvz_e, icpt_e, res['te'])
 
     # get the intercept:
     ICPT = jkat.orbit_from_lambert_transfer(jkat.Earth,ISO,icpt_s,icpt_e)
@@ -387,15 +391,13 @@ def plot_from_row(row:pd.Series, max_r:float=m.inf):
 
     # plot earth, jupiter and iso:
     jkat.plot(jkat.Earth, t=max_t, label="Earth", color="Blue")
-    jkat.plot(ISO,(t_detect, max_t), max_alt=AU*max_r + 100, label="ISO")
+    jkat.plot(ISO,t_bounds=(t_detect, max_t), max_distance=AU*max_r + 100, label="ISO")
     jkat.plot(jkat.Jupiter, t=max_t, label="Jupiter", color="orange")
 
     # get the parking orbit:
     jkat.plot(parking_orbit,label="parking orbit", color='gray')
-    _, TURN = jkat.trajectories.orbit_rotation(parking_orbit,rot,f=m.pi)
-    HELIO = jkat.orbit_from_lambert_transfer(TURN,ISO,h_s,h_e)
-    jkat.plot(TURN,label="turned parking orbit", color='light gray')
-    jkat.plot(HELIO, t_bounds=(h_s, h_e), t=max_t, label="Heliocentric intercept")
+    jkat.plot(ROT,label="turned parking orbit", color='gray')
+    jkat.plot(HELIO, t_bounds=(res['ts'], res['te']-100), t=max_t, label="Heliocentric intercept")
 
     # printing:
     print(f'intercept:\nlaunches: {row["icpt_t_launch"]:.2f} days after detection, arrives {row["icpt_t_arrival"]:.2f} days after detection at a distance of {row["icpt_r"]} AU')
@@ -406,7 +408,6 @@ def plot_from_row(row:pd.Series, max_r:float=m.inf):
     
     print(f'Helio:\nlaunches: {row["h_t_launch"]:.2f} days after detection, arrives {row["h_t_arrival"]:.2f} days after detection at a distance of {row["h_r"]} AU')
     print(f"ion delta v cost is: {row["h_ion_total"]:.2f} km/s, and relative velocity at intercept is {row['h_rdv']:.2f} km/s, with a boost of {row['h_idv']} km/s")
-    print(f'orbit rotated {m.degrees(rot):.1f} degrees')
     plt.legend()
     plt.show()
 
@@ -560,10 +561,14 @@ if __name__ == "__main__":
     
     df = get_data()
     # plots_for_probability_map()
-    df = df[df['h_tried'] == True]
-    print(df[["h_turndv", "h_idv","h_rdv","h_ion_total","h_rot", "h_r", "h_t_launch", "h_t_arrival", "periapsis"]])
+    df = df[pd.notna(df['h_idv'])]
+    df = df.sort_values('h_idv', ignore_index=True)
+    print(df[["h_turndv", "h_idv","h_rdv","h_ion_total", "h_r", "h_t_launch", "h_t_arrival", "periapsis"]])
+    plot_from_row(df.iloc[0])
 
+    input()
     _fix_data()
+    
 
 
 

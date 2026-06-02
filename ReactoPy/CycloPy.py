@@ -4,8 +4,8 @@ from scipy.optimize import fsolve
 from Power.powerinsizeout import reactor_thermal
 from matplotlib.patches import Patch
 
-# import matplotlib as mpl
-# mpl.use('tkagg')
+import matplotlib as mpl
+mpl.use('tkagg')
 # Sources:
 
 # https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/Sort_107145.pdf
@@ -982,12 +982,12 @@ if __name__ == "__main__":
     for low_pressure in low_pressures:
         best = mass_heatmap(
             engine,
-            W_elec=30000,
+            W_elec=46000,
             P1=low_pressure * BAR,
             T3=max_reactor_temp,
             max_T1=max_radiator_temp,
             # plot=False,
-            # plot_mode="2d",
+            plot_mode="3d",
             # mass_budget=300
         )
         print(f"LP Pressure: {low_pressure:.2f} bar")

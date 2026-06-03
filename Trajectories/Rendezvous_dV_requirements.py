@@ -17,6 +17,8 @@ import numpy as np
 import math as m
 from tqdm import tqdm
 import pandas as pd
+import multiprocessing as mp
+from functools import partial
 
 # SETTINGS:
 
@@ -25,7 +27,7 @@ PICKLE_NAME = "ISOdata.pic"
 
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 4
-LONGP_NUM = 12
+LONGP_NUM = 20
 
 
 # ap = 5.45 AU
@@ -160,7 +162,16 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float, gen_type:str)->di
 
     return out
 
-
+def job(longp, ISO, detect_t, g_type)->dict:
+            np.seterr(all="ignore")
+            out1 = study_ISO(ISO,get_parking(longp),detect_t, g_type)
+            if out1 == {}: return {}
+            name = f"{longp:3.1f}"
+            return {
+                f'h_tdv_{name}' : out1['h_tdv'],
+                f'h_idv_{name}' : out1['h_idv'],
+                f'h_rdv_{name}' : out1['h_rdv'], 
+            }
 
 def study_batch(gen_type:str='', longp_num:int = 45)->pd.DataFrame:
     '''generate a batch of ISOs, then study each for several ranges of detect_r
@@ -180,15 +191,18 @@ def study_batch(gen_type:str='', longp_num:int = 45)->pd.DataFrame:
             'time_until_periapsis':(ISO.tp - detect_t)/DAY,
                 "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
                 "ISO_excess_velocity":ISO.vinf}
-        for longp in np.linspace(0,2*np.pi, longp_num):
-            out1 = study_ISO(ISO,get_parking(longp),detect_t, g_type)
-            if out1 == {}: continue
-            name = f"{longp:3.1f}"
-            out.update({
-                f'h_tdv_{name}' : out1['h_tdv'],
-                f'h_idv_{name}' : out1['h_idv'],
-                f'h_rdv_{name}' : out1['h_rdv'], 
-            })
+        
+        longps = np.linspace(0,2*np.pi, longp_num)
+
+        
+        pjob = partial(job, ISO=ISO, detect_t=detect_t, g_type=g_type)
+        
+        with mp.Pool() as p:
+            outs = p.map(pjob,longps)
+        for o in outs:
+            out.update(o)
+
+            
         out.update(study_ISO(ISO,parking_orbit,detect_t,g_type))
         res_list.append(out)
     return pd.DataFrame(res_list)
@@ -541,7 +555,7 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-    df = get_data()
+    df = get_data(1)
     # prob_needed = 0.0152 # N = 150
     prob_needed = 0.0076 # N = 300
 

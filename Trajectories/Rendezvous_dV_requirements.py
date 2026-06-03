@@ -532,7 +532,7 @@ def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 45):
         wreq = v[n-1]
         vv.append(vreq)
         ww.append(wreq)
-        print(f" for {name}: number required is: {n} out of {len(v)}, corresponding to: {vreq:3.2f} km/s")
+        print(f" for {name}: number required is: {n} out of {len(v)}, corresponding to: {wreq:3.2f} --- {vreq:3.2f} km/s")
 
     plt.polar(pp,vv, label='upper bound')
     plt.polar(pp,ww, label='lower bound')
@@ -556,7 +556,7 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-    df = get_data()
+    df = get_data(1)
     # prob_needed = 0.0152 # N = 150
     prob_needed = 0.0076 # N = 300
 
@@ -574,7 +574,10 @@ if __name__ == "__main__":
     assert (n_needed + 1) / prob_needed > len(df)
     print(f'dv needed (rough): {df.iloc[n_needed]['h_idv']} --- {df.iloc[n_needed+1]['h_idv']} km/s')
     
-    plt.hist(df['h_idv'],bins=len(df)//50)
+    bins = max(len(df)//50,10)
+
+
+    plt.hist(df['h_idv'],bins=bins)
     plt.show()
     # plot_from_row(df.iloc[1], 10*AU)
 

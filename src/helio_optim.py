@@ -20,13 +20,28 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float
         dv2 = np.linalg.norm(vl2-vi)
 
         # construct rotation:
+        
         z = vl1.dot(rp)/rp.dot(rp) * rp
-        v = vl1 - z
-        v = v*np.linalg.norm(vp)/np.linalg.norm(v) # same magnitude as vp
-        rotated = jkat.orbit_from_rv(rp,v,park.mu)
+        vproj = vl1 - z
+        vt = np.linalg.norm(vp) * vproj/np.linalg.norm(vproj) # same magnitude as vp
+        rotated = jkat.orbit_from_rv(rp,vt,park.mu)
         dv0 = park.vvec(m.pi) - rotated.vvec(m.pi)
 
-        dv1 = np.linalg.norm(vl1-v)
+        dv1 = vl1-vt
+
+        assert np.linalg.norm(rotated.rvec(0) - rp) < 1 # same periapsis
+        assert np.linalg.norm(rotated.rvec(m.pi) - park.rvec(m.pi)) < 1 # same apoapsis
+        assert abs(vt.dot(rp)) < 1e-5 # v is strictly tangential
+
+
+        radial_angle = m.pi/2 - m.acos(
+            rp.dot(dv1) / (np.linalg.norm(dv1) * np.linalg.norm(rp))
+        )
+        radial_burn = dv1.dot(rp)/rp.dot(rp) * rp
+
+
+        dv1 = np.linalg.norm(dv1)
+        
         return {
         "ts": peri,
         "te": t,
@@ -34,15 +49,19 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float
         "dv1": dv1,
         "dv2": dv2,
         'r': np.linalg.norm(ri),
+        'radial': radial_angle,
+        'rad_burn': np.linalg.norm(radial_burn),
         'ob': rotated
     }
     def w(t):
         try:
             res = F(t)
-            return res['dv2'] + res['dv0'] + (0 if res['dv1'] < boost_max else res['dv1']*1000) # heavily discourage dv1
-        except (ValueError, ArithmeticError): return m.inf
-    t_opt = minimizer_1d(w,peri, max_time)
+            # return (res['dv2'] + res['dv0']) + (0 if res['dv1'] < boost_max else res['dv1']*10_000) # heavily discourage dv1
+            return res['dv1']
+        except (ValueError, ArithmeticError, AssertionError): return m.inf
     
+    
+    t_opt = minimizer_1d(w,peri, max_time)
     res = F(t_opt)
     return res
 
@@ -68,29 +87,21 @@ def rotate_to_match(ob:jkat.Orbit, target:jkat.Orbit)->tuple[float, np.ndarray, 
 
 
 
-def minimizer_1d(f:Callable, a:float, b:float)->float:
+def minimizer_1d(f:Callable, a:float, b:float, tol:float = 1e-4)->float:
 
-    #preselect:
-    max_step = (b-a)/20
-    pp = np.arange(a,b,max_step)
-    FF = []
-    for p in pp: FF.append(f(p))
-    pp = pp[np.argsort(FF)]
+    invphi = (m.sqrt(5) - 1) / 2  #
 
-    epsilon = 1e-6
-    alpha = 0.7
+    # golden section search:
+    while b - a > tol:
+        c = b - (b - a) * invphi
+        d = a + (b - a) * invphi
+        fc = f(c); fd = f(d)
+        if fc < fd:
+            b = d
+        else:  # f(c) > f(d) to find the maximum
+            a = c
 
-    for _ in range(1000):
-        pF = f(p)
-        dp = (pF - f(p-epsilon))/epsilon
-        # pseudo newton but held back
-        step = - pF/dp * alpha
-        if abs(step) > max_step: step = max_step * np.sign(step)
-        max_step = abs(step)
-
-        p = p + step
-        if step < epsilon: return p
-    else: return p
+    return (b + a) / 2
     
     
 

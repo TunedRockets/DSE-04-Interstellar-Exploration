@@ -10,6 +10,16 @@ use this to generate a probability distribution of required dv for either just f
 this should give a dv needed for the 90% criteria
 
 
+Color coordination:
+Earth - cornflowerblue
+Jupiter - darkorange
+ISO - pink
+Park - gray
+Rotated - lightgray
+Trajectory - Purple
+
+
+
 Trajectories todo:
 - actual dV incl. low thrust losses
 - (full journey laid out with all manoeuvres)

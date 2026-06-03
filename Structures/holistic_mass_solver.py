@@ -12,8 +12,10 @@ import pickle
 import matplotlib.pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
 from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor, as_completed
+# from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import Pool
 import os
+
 
 # import psutil
 #
@@ -35,11 +37,10 @@ Isp_ion = 4220
 '''[s] ion drive isp'''
 dV_inclination = 3000
 
-resolution = 10
-dVs_inclination = np.linspace(0, 4000.0, resolution)
+
 '''[m/s] dv for the inclination change maneuver'''
 dV_rdvz = 17_000
-dVs_rdvz = np.linspace(0, 20000.0, resolution)
+
 '''[m/s] dv for the rendezvous'''
 dV_ion = dV_rdvz + dV_inclination
 '''[m/s] total dv required by ion system'''
@@ -72,7 +73,7 @@ l_ion = 0.05
 Isp_boost = 330
 '''[s] boost drive isp'''
 dV_boost = 4_000
-dVs_boost = np.linspace(0, 5000.0, resolution)
+
 '''[m/s] total dv required by boost system'''
 Me_boost = 100
 '''[kg] boost engine mass'''
@@ -352,22 +353,18 @@ def _single_run(args):
         total_mass = sc.total_mass
     except:
         total_mass = np.nan
-    # print()
-    # print("Result completed!")
-    # print("i", i)
-    # print("j", j)
-    # print("k", k)
-    # print()
+    print()
+    print("Result completed!")
+    print("i", i)
+    print("j", j)
+    print("k", k)
+    print()
 
     return i, j, k, total_mass
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
+# from concurrent.futures import ProcessPoolExecutor, as_completed
 
-def generate_mass_database(n_workers=20, resolution=10):
-
-    dVs_incl = np.linspace(0, 4000, resolution)
-    dVs_rdvz = np.linspace(0, 20000, resolution)
-    dVs_boost = np.linspace(0, 5000, resolution)
+def generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost):
 
     jobs = [
         (i, j, k, dv_inc, dv_rdvz, dv_boost)
@@ -378,18 +375,20 @@ def generate_mass_database(n_workers=20, resolution=10):
 
     masses = np.zeros((len(dVs_incl), len(dVs_rdvz), len(dVs_boost)))
 
-    pbar = tqdm(total=len(jobs), desc="Mass DB")
+    # pbar = tqdm(total=len(jobs), desc="Mass DB")
 
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        futures = [executor.submit(_single_run, job) for job in jobs]
+    with Pool() as p:
+        results = p.map(_single_run, jobs,5)
 
-        for fut in as_completed(futures):
-            i, j, k, mass = fut.result()
+        for result in results:
+            i, j, k, mass = result
             # print("Result appended!")
             masses[i, j,k] = mass
-            pbar.update(1)
+            # pbar.update(1)
 
-    pbar.close()
+    print("Run complete!")
+
+    # pbar.close()
 
     data = {
         "dV_inclination": dVs_incl,
@@ -434,11 +433,13 @@ def plot_mass_database(data):
             method="animate",
             args=[
                 [str(i)],
-                dict(mode="immediate",
-                     frame=dict(duration=0, redraw=True),
-                     transition=dict(duration=0))
+                dict(
+                    mode="immediate",
+                    frame=dict(duration=0, redraw=True),
+                    transition=dict(duration=0)
+                )
             ],
-            label=str(i)
+            label=f"{data['dV_inclination'][i]:.0f} m/s"
         )
         for i in range(len(data["dV_inclination"]))
     ]
@@ -446,7 +447,7 @@ def plot_mass_database(data):
     sliders = [
         dict(
             active=0,
-            currentvalue={"prefix": "Inclination index: "},
+            currentvalue={"prefix": "Inclination ΔV: "},
             pad={"t": 50},
             steps=steps
         )
@@ -543,6 +544,10 @@ if __name__ == "__main__":
     SC = Hestia()
 
     # SC._converge()
-    data = generate_mass_database(n_workers=20, resolution=4)
+    resolution = 10
+    dVs_incl = np.linspace(0, 4000, resolution)
+    dVs_rdvz = np.linspace(0, 17000, resolution)
+    dVs_boost = np.linspace(0, 5000, resolution)
+    data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
     plot_mass_database(data)

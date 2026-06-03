@@ -1,10 +1,12 @@
 
 import jkat
+from Structures.holistic_mass_solver import MassInterpolator
 from typing import Callable
 
 import math as m
 import numpy as np
 
+interpolator = MassInterpolator()
 
 
 def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float):
@@ -57,7 +59,7 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float
         try:
             res = F(t)
             # return (res['dv2'] + res['dv0']) + (0 if res['dv1'] < boost_max else res['dv1']*10_000) # heavily discourage dv1
-            return res['dv1']
+            return interpolator.mass(res['dv0'], res['dv2'], res['dv1'])
         except (ValueError, ArithmeticError, AssertionError): return m.inf
     
     

@@ -7,7 +7,20 @@ Stealing bits and pieces from the other code
 import math as m
 from Power.powerinsizeout import reactor
 from ReactoPy.CycloPy import size_power, radiator_areal_density
+import numpy as np
+import pickle
+import matplotlib.pyplot as plt
+from scipy.interpolate import RegularGridInterpolator
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import os
 
+# import psutil
+#
+# p = psutil.Process()
+#
+# # P-cores only (typical mapping for 13650HX)
+# p.cpu_affinity(list(range(0, 12)))
 # ==== consts =====
 
 static_mass = 50+100+200
@@ -21,8 +34,12 @@ static_area = (2.2**2)*m.pi + 2*2
 Isp_ion = 4220
 '''[s] ion drive isp'''
 dV_inclination = 3000
+
+resolution = 10
+dVs_inclination = np.linspace(0, 4000.0, resolution)
 '''[m/s] dv for the inclination change maneuver'''
 dV_rdvz = 17_000
+dVs_rdvz = np.linspace(0, 20000.0, resolution)
 '''[m/s] dv for the rendezvous'''
 dV_ion = dV_rdvz + dV_inclination
 '''[m/s] total dv required by ion system'''
@@ -34,6 +51,14 @@ F_ion = 0.235
 '''[N] thrust per ion engine'''
 T_max_inclination = 86_000*365*1.31
 '''max time spent on inclination burn'''
+R = 8.31446261815324
+M_xenon = 0.131293
+R_xenon = R/M_xenon
+propellant_margin = 2/100
+
+xenon_tank_pressure = 187*1e5
+xenon_tank_temp = 273.15+20
+xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
 
 T_max_inclination = 86_000*300  # changed from Andres estimate to more pessimistic value
 
@@ -47,6 +72,7 @@ l_ion = 0.05
 Isp_boost = 330
 '''[s] boost drive isp'''
 dV_boost = 4_000
+dVs_boost = np.linspace(0, 5000.0, resolution)
 '''[m/s] total dv required by boost system'''
 Me_boost = 100
 '''[kg] boost engine mass'''
@@ -95,8 +121,20 @@ class Hestia():
     each variable has a method to set itself, which is run through
     every iteration. once iterations have converged it will terminate'''
 
-    def __init__(self) -> None:
-        
+    def __init__(
+            self,
+            dV_inclination=dV_inclination,
+            dV_rdvz=dV_rdvz,
+            dV_boost=dV_boost,
+            verbose=False,
+            convergence_tolerance=1e-8
+    ):
+        self.dV_inclination = dV_inclination
+        self.dV_rdvz = dV_rdvz
+        self.dV_boost = dV_boost
+        self.verbose = verbose
+        self.convergence_tolerance = convergence_tolerance
+
         # the varying variables 
         self.Mass_ion = 51
         '''the ion engines and tanks (not fuel)'''
@@ -141,8 +179,9 @@ class Hestia():
         for _ in range(max_iter):
 
             if self._iterate():
-                print('\n!!! conversion finished !!!\n\n\n\n')
-                print(self)
+                if self.verbose:
+                    print('\n!!! conversion finished !!!\n\n\n\n')
+                    print(self)
                 return
         else:
             raise TimeoutError("Did not converge in time")
@@ -151,8 +190,8 @@ class Hestia():
         '''runs through all iteration methods'''
 
         var_dict = self.__dict__.copy()
-
-        print("\n====== New iteration =====\n")
+        if self.verbose:
+            print("\n====== New iteration =====\n")
         mydir = dir(self)
         myfuncs = [fn for fn in mydir if callable(getattr(self, fn))]
         myfuncs = [fn for fn in myfuncs if fn.startswith('size')]
@@ -164,7 +203,7 @@ class Hestia():
         converged = True
         for key, value in var_dict.items():
 
-            if abs(value - self.__dict__[key]) > 1e-8:
+            if abs(value - self.__dict__[key]) > self.convergence_tolerance:
                 converged = False
         return converged
 
@@ -201,6 +240,10 @@ class Hestia():
         return self.lower_stage_dry_mass + self.Mass_boost_fuel
 
     @property
+    def total_mass(self):
+        return self.lower_stage_wet_mass
+
+    @property
     def Mass_heatshield(self):
         '''mass of heat shield'''
         return self.Area_heatshield * t_heat * rho_heat
@@ -208,12 +251,12 @@ class Hestia():
     @property
     def inclination_burn_time(self):
         '''pessemistic estimate of burn time'''
-        return dV_inclination/(self.Number_ions*F_ion/self.lower_stage_wet_mass)
+        return self.dV_inclination/(self.Number_ions*F_ion/self.lower_stage_wet_mass)
     
     @property
     def rdvz_burn_time(self):
         '''pessemistic estimate of burn time'''
-        return dV_rdvz/(self.Number_ions*F_ion/self.upper_stage_wet_mass)
+        return self.dV_rdvz/(self.Number_ions*F_ion/self.upper_stage_wet_mass)
 
 
     def size_ion_system(self):
@@ -226,23 +269,26 @@ class Hestia():
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
 
 
-        m_rdzv = dv2mf(dV_rdvz, Isp_ion, self.upper_stage_pl_mass+ self.Number_ions*Me_ion, l_ion)
+        m_rdzv = dv2mf(self.dV_rdvz, Isp_ion, self.upper_stage_pl_mass+ self.Number_ions*Me_ion, l_ion)
 
-        m_plane = dv2mf(dV_inclination, Isp_ion, self.lower_stage_dry_mass + ((1+l_ion) * m_rdzv) + self.Number_ions * Me_ion, l_ion)
+        m_plane = dv2mf(self.dV_inclination, Isp_ion, self.lower_stage_dry_mass + ((1+l_ion) * m_rdzv) + self.Number_ions * Me_ion, l_ion)
 
         mf = m_plane + m_rdzv
+        mf = (1+propellant_margin)*mf
         self.Mass_ion_fuel = mf
-
-        print(f"ion engine number: {self.Number_ions}, xenon: {self.Mass_ion_fuel:5.1f} kg")
+        ion_fuel_tank_volume = mf/xenon_density
+        if self.verbose:
+            print(f"ion engine number: {self.Number_ions}"  )
+            print(f"Xenon tank: {self.Mass_ion_fuel} kg, ", f"{ion_fuel_tank_volume} m3")
 
     def size_boost_system(self):
         '''size boost fuel tank and rest'''
 
         m1 = self.lower_stage_pl_mass + Me_boost
-        mf = dv2mf(dV_boost, Isp_boost, m1, l_boost)
+        mf = dv2mf(self.dV_boost, Isp_boost, m1, l_boost)
         self.Mass_boost_fuel = mf
-
-        print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
+        if self.verbose:
+            print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
 
     def size_power_system(self):
         '''uses only simple power density, include better system later'''
@@ -252,11 +298,11 @@ class Hestia():
         mass, reactor_mass, radiator_mass, brayton_system_mass, thermal_power, radiator_area = size_power(Preq)
 
         self.Mass_power_truss = mass
-
-        print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
-        print(f'thermal power: {thermal_power:5.1f} W')
-        print(f'radiator mass: {radiator_mass:5.1f} kg')
-        print(f'radiator area: {radiator_mass/areal_density:5.1f} m2')
+        if self.verbose:
+            print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
+            print(f'thermal power: {thermal_power:5.1f} W')
+            print(f'radiator mass: {radiator_mass:5.1f} kg')
+            print(f'radiator area: {radiator_mass/areal_density:5.1f} m2')
 
         self.Power_provided = Preq
 
@@ -281,18 +327,222 @@ class Hestia():
         # with density of steel (average of reactor + truss)
 
         A += A_fn(self.Mass_boost_fuel,3, 1000) # 3 m cyliner of fuel
-        A += A_fn(self.Mass_ion_fuel,2,1500) # 2 m cyliner of xenon
+        A += A_fn(self.Mass_ion_fuel,2,xenon_density) # 1 m cyliner of xenon
 
         A *= A_heat_margin # margin
 
         self.Area_heatshield = A
         self.Mass_heatshield
+        if self.verbose:
+            print(f'heat shield area is: {A:3.2f} m^2 with a mass of {self.Mass_heatshield:6.1f} kg')
 
-        print(f'heat shield area is: {A:3.2f} m^2 with a mass of {self.Mass_heatshield:6.1f} kg')
+
+def _single_run(args):
+    """Worker function (must be top-level for multiprocessing)."""
+    i, j, k, dv_inc, dv_rdvz, dv_boost = args
+
+    sc = Hestia(
+        dV_inclination=dv_inc,
+        dV_rdvz=dv_rdvz,
+        dV_boost=dv_boost,
+        convergence_tolerance=0.001
+    )
+    try:
+        sc._converge()
+        total_mass = sc.total_mass
+    except:
+        total_mass = np.nan
+    # print()
+    # print("Result completed!")
+    # print("i", i)
+    # print("j", j)
+    # print("k", k)
+    # print()
+
+    return i, j, k, total_mass
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+def generate_mass_database(n_workers=20, resolution=10):
+
+    dVs_incl = np.linspace(0, 4000, resolution)
+    dVs_rdvz = np.linspace(0, 20000, resolution)
+    dVs_boost = np.linspace(0, 5000, resolution)
+
+    jobs = [
+        (i, j, k, dv_inc, dv_rdvz, dv_boost)
+        for i, dv_inc in enumerate(dVs_incl)
+        for j, dv_rdvz in enumerate(dVs_rdvz)
+        for k, dv_boost in enumerate(dVs_boost)
+    ]
+
+    masses = np.zeros((len(dVs_incl), len(dVs_rdvz), len(dVs_boost)))
+
+    pbar = tqdm(total=len(jobs), desc="Mass DB")
+
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        futures = [executor.submit(_single_run, job) for job in jobs]
+
+        for fut in as_completed(futures):
+            i, j, k, mass = fut.result()
+            # print("Result appended!")
+            masses[i, j,k] = mass
+            pbar.update(1)
+
+    pbar.close()
+
+    data = {
+        "dV_inclination": dVs_incl,
+        "dV_rdvz": dVs_rdvz,
+        "dV_boost": dVs_boost,
+        "mass": masses,
+    }
+
+    with open("mass_database.pkl", "wb") as f:
+        pickle.dump(data, f)
+
+    return data
+
+import plotly.graph_objects as go
+
+def plot_mass_database(data):
+
+    X, Y = np.meshgrid(
+        data["dV_rdvz"],
+        data["dV_boost"]
+    )
+
+    frames = []
+
+    for i in range(len(data["dV_inclination"])):
+        Z = data["mass"][i, :, :]
+
+        frames.append(go.Frame(
+            data=[go.Surface(z=Z, x=X, y=Y)],
+            name=str(i)
+        ))
+
+    # initial surface
+    fig = go.Figure(
+        data=[go.Surface(z=data["mass"][0], x=X, y=Y)],
+        frames=frames
+    )
+
+    # build slider steps
+    steps = [
+        dict(
+            method="animate",
+            args=[
+                [str(i)],
+                dict(mode="immediate",
+                     frame=dict(duration=0, redraw=True),
+                     transition=dict(duration=0))
+            ],
+            label=str(i)
+        )
+        for i in range(len(data["dV_inclination"]))
+    ]
+
+    sliders = [
+        dict(
+            active=0,
+            currentvalue={"prefix": "Inclination index: "},
+            pad={"t": 50},
+            steps=steps
+        )
+    ]
+
+    fig.update_layout(
+        title="Mass vs ΔV (interactive inclination slice)",
+        scene=dict(
+            xaxis_title="Rendezvous ΔV",
+            yaxis_title="Boost ΔV",
+            zaxis_title="Mass"
+        ),
+        sliders=sliders
+    )
+
+    fig.show()
+
+from scipy.interpolate import RegularGridInterpolator
+import pickle
+
+
+def load_mass_database(filename="mass_database.pkl"):
+    """
+    Load a precomputed Hestia mass database.
+
+    Returns
+    -------
+    dict with:
+        dV_inclination : np.ndarray
+        dV_rdvz        : np.ndarray
+        dV_boost       : np.ndarray
+        mass           : np.ndarray (3D grid)
+    """
+
+    with open(filename, "rb") as f:
+        data = pickle.load(f)
+
+    required_keys = ["dV_inclination", "dV_rdvz", "dV_boost", "mass"]
+
+    missing = [k for k in required_keys if k not in data]
+    if missing:
+        raise KeyError(f"Missing keys in database file: {missing}")
+
+    # Ensure numpy arrays (pickle sometimes preserves weird types)
+    data["dV_inclination"] = np.asarray(data["dV_inclination"])
+    data["dV_rdvz"] = np.asarray(data["dV_rdvz"])
+    data["dV_boost"] = np.asarray(data["dV_boost"])
+    data["mass"] = np.asarray(data["mass"])
+
+    # Basic sanity check
+    expected_shape = (
+        len(data["dV_inclination"]),
+        len(data["dV_rdvz"]),
+        len(data["dV_boost"])
+    )
+
+    if data["mass"].shape != expected_shape:
+        raise ValueError(
+            f"Mass array shape mismatch.\n"
+            f"Expected {expected_shape}, got {data['mass'].shape}"
+        )
+
+    return data
+
+class MassInterpolator:
+
+    def __init__(self, filename="mass_database.pkl"):
+
+        with open(filename, "rb") as f:
+            data = pickle.load(f)
+
+        self.interp = RegularGridInterpolator(
+            (
+                data["dV_inclination"],
+                data["dV_rdvz"],
+                data["dV_boost"]
+            ),
+            data["mass"]
+        )
+
+    def mass(self, dV_inclination, dV_rdvz, dV_boost):
+
+        point = np.array([
+            dV_inclination,
+            dV_rdvz,
+            dV_boost
+        ])
+
+        return float(self.interp(point))
 
 
 
 if __name__ == "__main__":
     SC = Hestia()
 
-    SC._converge()
+    # SC._converge()
+    data = generate_mass_database(n_workers=20, resolution=4)
+    data = load_mass_database()
+    plot_mass_database(data)

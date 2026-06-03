@@ -4,8 +4,8 @@ from scipy.optimize import fsolve
 from Power.powerinsizeout import reactor_thermal
 from matplotlib.patches import Patch
 
-import matplotlib as mpl
-mpl.use('tkagg')
+# import matplotlib as mpl
+# mpl.use('tkagg')
 # Sources:
 
 # https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/Sort_107145.pdf
@@ -658,7 +658,7 @@ def mass_heatmap(
         limit=1000.0,
         plot=True,
         plot_mode="2d",   # "2d" or "3d"
-        verbose=True,
+        verbose=False,
         mass_budget=None):
     if min_P2 is None:
         min_P2 = 1.01*P1
@@ -915,7 +915,8 @@ def mass_heatmap(
     sol = engine.solve_cycle(P1, P2_opt, T1_opt, T3)
 
     efficiency = sol["net_specific"] / sol["q_in"]
-    engine.plot_ts()
+    if plot:
+        engine.plot_ts()
     if verbose:
         # =========================
         # MASS FLOW PLOT AT OPTIMUM
@@ -986,8 +987,8 @@ if __name__ == "__main__":
             P1=low_pressure * BAR,
             T3=max_reactor_temp,
             max_T1=max_radiator_temp,
-            # plot=False,
-            plot_mode="3d",
+            plot=False,
+            # plot_mode="3d",
             # mass_budget=300
         )
         print(f"LP Pressure: {low_pressure:.2f} bar")

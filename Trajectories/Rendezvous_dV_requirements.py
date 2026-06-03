@@ -155,7 +155,7 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float, gen_type:str)->di
             'h_rad_dv': res['rad_burn'],
             'h_max_boost' : MAX_BOOST_DV
         })
-    except(ArithmeticError, ValueError): pass # no intercept :(
+    except(ArithmeticError, ValueError, AssertionError): pass # no intercept :(
 
 
     return out
@@ -541,7 +541,7 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-    df = get_data(0)
+    df = get_data()
     # prob_needed = 0.0152 # N = 150
     prob_needed = 0.0076 # N = 300
 

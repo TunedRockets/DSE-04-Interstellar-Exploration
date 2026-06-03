@@ -185,26 +185,22 @@ def study_batch(gen_type:str='', longp_num:int = 45)->pd.DataFrame:
     ISOs = get_ISO(gen_type=gen_type)
     # shuffle timings so that does not influence study:
     res_list= []
-    for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
-        detect_r = ISO.r(ISO.f(detect_t))/AU
-        out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
-            'time_until_periapsis':(ISO.tp - detect_t)/DAY,
-                "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
-                "ISO_excess_velocity":ISO.vinf}
-        
-        longps = np.linspace(0,2*np.pi, longp_num)
-
-        
-        pjob = partial(job, ISO=ISO, detect_t=detect_t, g_type=g_type)
-        
-        with mp.Pool() as p:
-            outs = p.map(pjob,longps)
-        for o in outs:
-            out.update(o)
-
+    with mp.Pool() as p:
+        for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
+            detect_r = ISO.r(ISO.f(detect_t))/AU
+            out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
+                'time_until_periapsis':(ISO.tp - detect_t)/DAY,
+                    "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
+                    "ISO_excess_velocity":ISO.vinf}
             
-        out.update(study_ISO(ISO,parking_orbit,detect_t,g_type))
-        res_list.append(out)
+            longps = np.linspace(0,2*np.pi, longp_num)
+            pjob = partial(job, ISO=ISO, detect_t=detect_t, g_type=g_type)
+            outs = p.map(pjob,longps)
+            for o in outs:
+                out.update(o)
+
+            out.update(study_ISO(ISO,parking_orbit,detect_t,g_type))
+            res_list.append(out)
     return pd.DataFrame(res_list)
 
 def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
@@ -524,6 +520,7 @@ def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 45):
 
     pp = []
     vv = []
+    ww = []
 
     for longp in np.linspace(0,2*np.pi, longp_num):
         pp.append(longp)
@@ -532,11 +529,15 @@ def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 45):
         v = v.sort_values(ignore_index=True)
         n = m.ceil(len(v)*fraction)
         vreq = v[n]
+        wreq = v[n-1]
         vv.append(vreq)
+        ww.append(wreq)
         print(f" for {name}: number required is: {n} out of {len(v)}, corresponding to: {vreq:3.2f} km/s")
 
-    plt.polar(pp,vv)
+    plt.polar(pp,vv, label='upper bound')
+    plt.polar(pp,ww, label='lower bound')
     plt.title('oberth dv required per longitude of periapsis')
+    plt.legend()
     plt.show()
         
 
@@ -555,7 +556,7 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-    df = get_data(1)
+    df = get_data()
     # prob_needed = 0.0152 # N = 150
     prob_needed = 0.0076 # N = 300
 

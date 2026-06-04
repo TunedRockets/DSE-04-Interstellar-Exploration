@@ -142,7 +142,7 @@ def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park
             dv0 = res["dv0"]
             dv1 = res["dv1"]
             dv2 = res["dv2"]
-
+            # print(dv0)
             return max(0, (dv0-dv0_budget)) + max(0, (dv1-dv1_budget)) + max(0, (dv2-dv2_budget))
 
         except:
@@ -150,6 +150,9 @@ def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park
 
     t_solution = minimizer_1d(w,peri, max_time)
     res = F(t_solution)
+    # print((w(t_solution)==0))
+    # print(w(t_solution))
+    # print(res)
     return (w(t_solution)==0), res
 
 

@@ -22,9 +22,9 @@ AU = jk.AU
 DAY = jk.DAY
 YEAR = jk.YEAR
 
-dV_inclination_b = 3.000
-dV_oberth_b = 3.000
-dV_rendezvous_b = 3.000
+dV_inclination_b = 4.000
+dV_oberth_b = 6.000
+dV_rendezvous_b = 17.000
 dv_budget = (dV_inclination_b, dV_oberth_b, dV_rendezvous_b)
 
 
@@ -86,24 +86,61 @@ def job(ISOtuple, longp_num, dv_budget):
             })
 
         except (ArithmeticError, ValueError, AssertionError) as e:
-            print("LMAO  ERROR : ", e)
+            # print("LMAO  ERROR : ", e)
+            rows.append({
+                "detection_r": detect_r,
+                "periapsis": ISO.periapsis / AU,
+                "magnitude_generation_method": g_type,
+                "time_until_periapsis": (ISO.tp - detect_t) / DAY,
+                "parameter": ISO.p,
+                "e": ISO.e,
+                "i": ISO.i,
+                "RAAN": ISO.raan,
+                "arg_p": ISO.argp,
+                "t_p": ISO.tp,
+                "ISO_excess_velocity": ISO.vinf,
+
+                "longp": longp,
+
+                "h_tdv": np.inf,
+                "h_idv": np.inf,
+                "h_rdv": np.inf,
+                "h_possible": False,
+            })
             pass
 
-    return rows
+    if len(rows) == 0:
+        return [{
+            "h_possible": False,
+            "longp": np.nan,
+            "h_tdv": np.nan,
+            "h_idv": np.nan,
+            "h_rdv": np.nan,
+            "detection_r": detect_r,
+            "ISO_excess_velocity": ISO.vinf
+        }]
+    else:
+        return rows
 
 
-def study_batch_multi(dv_budget:tuple[float,float,float], gen_type:str='', longp_num: int = 0) -> pd.DataFrame:
-    '''multithreaded analysis'''
+def study_batch_multi(dv_budget, gen_type='', longp_num=0):
 
     ISOs = get_ISO()
     F = partial(job, longp_num=longp_num, dv_budget=dv_budget)
-    # for each ISO get row:
+
     with mp.Pool() as p:
-        res = tqdm(p.imap_unordered(F, ISOs), desc=f"Studying ISOs, (longp_num = {longp_num})", total=len(ISOs))
-        resl = list(res)
+        res = tqdm(
+            p.imap_unordered(F, ISOs),
+            desc=f"Studying ISOs, (longp_num = {longp_num})",
+            total=len(ISOs)
+        )
+
+        resl = list(res)   # <-- MUST be inside context
+
     print("Pool closed")
-    resl = list(res)
+
     flat = [row for sub in resl for row in sub]
+
     return pd.DataFrame(flat)
 
 
@@ -156,19 +193,27 @@ def get_data(extra_batches: int = 0, gen_type: str = "") -> pd.DataFrame:
 
 import matplotlib.pyplot as plt
 
-def plot_reachability_vs_longitude(df, threshold_pct=0.76):
+
+def plot_reachability_vs_longitude(df, threshold_pct=0.76/100):
 
     grouped = df.groupby("longp")["h_possible"].mean() * 100
 
-    plt.figure(figsize=(9,5))
-    plt.plot(grouped.index, grouped.values, marker="o")
+    angles = grouped.index.values
+    values = grouped.values
 
-    plt.axhline(threshold_pct * 100, linestyle="--")
+    # close the loop for polar plot
+    angles = np.append(angles, angles[0])
+    values = np.append(values, values[0])
 
-    plt.xlabel("Parking longitude (rad)")
-    plt.ylabel("Reachable ISOs (%)")
-    plt.title("Reachability vs longitude")
-    plt.grid(True, alpha=0.3)
+    fig = plt.figure(figsize=(7,7))
+    ax = fig.add_subplot(111, projection="polar")
+
+    ax.plot(angles, values, marker="o")
+    ax.fill(angles, values, alpha=0.2)
+
+    ax.axhline(threshold_pct * 100, linestyle="--")
+
+    ax.set_title("Reachability vs Parking Longitude")
     plt.show()
 def run_in_background():
     '''run forever generating new datapoints'''
@@ -183,11 +228,12 @@ def _test_check_if_possible():
     ISO,detect_t ,_ = get_ISO()[0]
     longp = 0.0
 
-    dv_budget = (3.0, 3.0, 3.0)
+    dv_budget = (3.0, 3.0, 3.0) #
+    jk.add_solar_system()
+    jk.plot(get_parking(longp))
+    plt.show()
 
-
-
-    check_if_possible(
+    possible, res = check_if_possible(
         dv_budget[0],
         dv_budget[1],
         dv_budget[2],
@@ -196,13 +242,23 @@ def _test_check_if_possible():
         ISO.tp + MAX_MISSION_TIME * YEAR,
         detect_t
     )
+    # print(possible)
+    # print(res)
 if __name__ == "__main__":
 
-    _test_check_if_possible()
+    # _test_check_if_possible()
 
-    # df = get_data(extra_batches=1)
-    # print(df)
-    # dfpos = df[df['h_possible']]
-    # print(dfpos)
-    # plot_reachability_vs_longitude(df)
-    # run_in_background()
+    df = get_data(extra_batches=1)
+    print()
+    print("Full data frame: ")
+    print()
+    print(df)
+    print()
+    dfpos = df[df['h_possible']]
+    print()
+    print("Possible data frame: ")
+    print()
+    print(dfpos)
+    print()
+    plot_reachability_vs_longitude(df)
+    run_in_background()

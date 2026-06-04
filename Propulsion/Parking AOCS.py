@@ -1,33 +1,3 @@
-"""
-HESTIA  -  Heliocentric parking-orbit attitude & ADCS sizing simulation
-========================================================================
-Models the 2x2x2 m spacecraft cube in its highly-eccentric heliocentric
-parking orbit (rp = 10 Rsun, ra = 1166 Rsun, e = 0.983).
-
-Attitude law:
-    * During the long cruise the +X face (heat-shield side) is kept pointed
-      at the Sun  ->  Sun-tracking attitude.
-    * At perihelion an Oberth burn is performed: the spacecraft slews so the
-      thruster (-X / aft) fires along the tangential (prograde) velocity
-      direction.
-
-Disturbance torques modelled (relevant in deep space / near-Sun):
-    1. Solar radiation pressure (SRP) torque   -> dominant
-    2. Gravity-gradient torque (about the Sun)  -> dominant near perihelion
-    3. Solar-wind / dynamic pressure torque     -> small
-    4. Thruster misalignment torque (burn only) -> sizes RCS, transient
-    (Magnetic torque is ~0: no planetary field in a heliocentric orbit.)
-
-Outputs:
-    * Live animation of the cube orbiting the Sun with the Sun-vector
-      and velocity-vector drawn.
-    * Disturbance-torque magnitudes vs true anomaly (orbit angle).
-    * Printed report and an automatic ADCS hardware selection.
-
-Run:  python3 hestia_adcs_sim.py
-Author: generated for DSE-04 / HESTIA midterm follow-up
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -396,7 +366,7 @@ def run_animation(n_orbits=2.0, n_frames=360, do_oberth=True, peri_slow=6.0):
     r = radius_at_true_anomaly(nu)
     pos = np.column_stack([r * np.cos(nu), r * np.sin(nu)])
 
-    vdir = np.column_stack([-np.sin(nu), E + np.cos(nu)])
+    vdir = -np.column_stack([-np.sin(nu), E + np.cos(nu)])
     vdir /= np.linalg.norm(vdir, axis=1, keepdims=True)
 
     burn = np.zeros(n_frames, dtype=bool)

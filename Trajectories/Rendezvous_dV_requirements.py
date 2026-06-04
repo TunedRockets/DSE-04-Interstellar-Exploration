@@ -29,7 +29,7 @@ USER_NAME = os.getlogin()
 
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 4
-LONGP_NUM = 45
+LONGP_NUM = 0
 
 
 # ap = 5.45 AU
@@ -248,21 +248,7 @@ def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
 
 def _fix_data():
     '''Debug function to fix issues with the data'''
-    data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
-
-    # ==== change here ====
-    # # get the heliocentric values
-    # np.seterr(all="ignore")
-    # try:
-    #     for i,row in tqdm(data.iterrows(), desc="study helio",total=len(data)):
-    #         # if 'h_max_boost' in row: continue
-    #         ISO, detect_t,g_type = recreate_ISO(row)
-    #         out = study_helio(ISO,detect_t,g_type)
-    #         for key, val in out.items():
-    #             if key.startswith('h'):
-    #                 data.loc[i, key] = val
-    # finally: data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
-
+    pass
     # =====================
 
     
@@ -569,11 +555,11 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-    df = get_data(1)
+    df = get_data(0)
     # prob_needed = 0.0152 # N = 150
     prob_needed = 0.0076 # N = 300
 
-    longp_graph(df,prob_needed, LONGP_NUM)
+    # longp_graph(df,prob_needed, LONGP_NUM)
 
     # plots_for_probability_map()
     print(df)
@@ -585,7 +571,7 @@ if __name__ == "__main__":
 
     n_needed = int(np.floor(len(df) * prob_needed)) # 0.76% from N =300
     assert (n_needed + 1) / prob_needed > len(df)
-    print(f'dv needed (rough): {df.iloc[n_needed]['h_idv']} --- {df.iloc[n_needed+1]['h_idv']} km/s')
+    print(f'dv needed (rough): {df.iloc[n_needed]['h_mass']} --- {df.iloc[n_needed+1]['h_mass']} kg')
     
     bins = max(len(df)//50,10)
 

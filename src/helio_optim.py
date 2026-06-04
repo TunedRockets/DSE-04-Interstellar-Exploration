@@ -12,7 +12,7 @@ interp = M.interp
 
 def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
     '''wrapper to ensure it works'''
-    return interp(np.array([dv0,dv2,dv1]))
+    return interp(np.array([dv0,dv2,dv1]))[0]
 
 
 def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float):

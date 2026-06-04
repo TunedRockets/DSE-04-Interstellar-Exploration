@@ -15,6 +15,7 @@ from tqdm import tqdm
 # from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing import Pool
 import os
+from pathlib import Path
 
 
 # import psutil
@@ -403,13 +404,13 @@ def generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost):
         "dV_boost": dVs_boost,
         "mass": masses,
     }
-
-    with open("mass_database.pkl", "wb") as f:
+    path = Path(__file__).parent / "mass_database.pkl"
+    with open(path, "wb") as f:
         pickle.dump(data, f)
 
     return data
 
-import plotly.graph_objects as go
+#import plotly.graph_objects as go
 
 def plot_mass_database(data):
 
@@ -518,10 +519,10 @@ def load_mass_database(filename="mass_database.pkl"):
         )
 
     return data
-
+path = Path(__file__).parent / "mass_database.pkl"
 class MassInterpolator:
 
-    def __init__(self, filename="mass_database.pkl"):
+    def __init__(self, filename=path):
 
         with open(filename, "rb") as f:
             data = pickle.load(f)

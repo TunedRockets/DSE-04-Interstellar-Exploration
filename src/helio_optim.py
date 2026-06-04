@@ -6,11 +6,18 @@ from typing import Callable
 import math as m
 import numpy as np
 
-interpolator = MassInterpolator()
+M = MassInterpolator()
+interp = M.interp
+
+
+def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
+    '''wrapper to ensure it works'''
+    return interp(np.array([dv0,dv2,dv1]))
 
 
 def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float):
     '''find the optimal trajectory for the heliocentric Orberth manoeuvre'''
+    # interpolator = MassInterpolator()
 
     peri = park.tp # find periapsis after ISO tp
     while peri < ISO.tp: peri += park.T
@@ -58,14 +65,15 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float
     def w(t):
         try:
             res = F(t)
-            # return (res['dv2'] + res['dv0']) + (0 if res['dv1'] < boost_max else res['dv1']*10_000) # heavily discourage dv1
-            return interpolator.mass(res['dv0'], res['dv2'], res['dv1'])
+            # return res['dv0']
+            return interpolator_wrapper(res['dv0'],res['dv1'],res['dv2'])
         except (ValueError, ArithmeticError, AssertionError): return m.inf
     
     
     t_opt = minimizer_1d(w,peri, max_time)
 
     res = F(t_opt)
+    res['mass'] = interpolator_wrapper(res['dv0'],res['dv1'],res['dv2']) # add mass
     return res
 
 

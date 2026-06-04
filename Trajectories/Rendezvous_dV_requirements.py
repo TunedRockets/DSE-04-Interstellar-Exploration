@@ -6,6 +6,7 @@ missing is a proper distribution of N, which requires more research in the liter
 
 from pathlib import Path
 import sys
+import os
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
 import jkat
@@ -23,11 +24,12 @@ from functools import partial
 # SETTINGS:
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data" 
-PICKLE_NAME = "ISOdata.pic"
+PICKLE_NAME = "ISOdata"
+USER_NAME = os.getlogin()
 
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 4
-LONGP_NUM = 20
+LONGP_NUM = 45
 
 
 # ap = 5.45 AU
@@ -126,7 +128,7 @@ col_names = ["detection_r", "periapsis", "magnitude_generation_method", 'time_un
              "h_turn",'h_rot', "h_idv", "h_rdv", "h_r", "h_t_launch", "h_t_arrival", 'park_longp'
              ]
 
-def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float, gen_type:str)->dict:
+def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
     '''study an ISO orbit and return data as a row to be added to a pandas table
 
     :param ISO: the generated ISO in question
@@ -139,17 +141,14 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float, gen_type:str)->di
     :return: dict corresponding to pandas row to be added to the database
     :rtype: dict
     '''
-    # initial data
-    
-    # check detection distance/time
     out = {}
-
     try:
         res = helio_optim(park, ISO, ISO.tp + MAX_MISSION_TIME*YEAR,MAX_BOOST_DV)
         out = ({
             'h_tdv': res['dv0'],
             'h_idv': res['dv1'],
             'h_rdv': res['dv2'],
+            'h_mass': res['mass'],
             'h_ts' : (res['ts']-detect_t)/DAY,
             'h_te' : (res['te']-detect_t)/DAY,
             'h_r' : res['r']/AU,
@@ -162,46 +161,48 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float, gen_type:str)->di
 
     return out
 
-def job(longp, ISO, detect_t, g_type)->dict:
-            np.seterr(all="ignore")
-            out1 = study_ISO(ISO,get_parking(longp),detect_t, g_type)
-            if out1 == {}: return {}
-            name = f"{longp:3.1f}"
-            return {
-                f'h_tdv_{name}' : out1['h_tdv'],
-                f'h_idv_{name}' : out1['h_idv'],
-                f'h_rdv_{name}' : out1['h_rdv'], 
-            }
+def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int)->dict:
 
-def study_batch(gen_type:str='', longp_num:int = 45)->pd.DataFrame:
-    '''generate a batch of ISOs, then study each for several ranges of detect_r
-    and then return the resulting dataframe
+    np.seterr(all="ignore")
+    ISO, detect_t, g_type = ISOtuple
 
-    :return: dataframe with the results of the study
-    :rtype: pd.DataFrame
-    '''
+    detect_r = ISO.r(ISO.f(detect_t))/AU
+    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": g_type,
+        'time_until_periapsis':(ISO.tp - detect_t)/DAY,
+            "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
+            "ISO_excess_velocity":ISO.vinf}
+    longps = np.linspace(-m.pi, m.pi, longp_num)
+    for longp in longps:
+        name = f"{m.degrees(longp):3.1f}"
+        out1 = study_ISO(ISO,get_parking(longp),detect_t)
+        if out1 == {}: continue
+        out.update({
+            f'h_tdv_{name}' : out1['h_tdv'],
+            f'h_idv_{name}' : out1['h_idv'],
+            f'h_rdv_{name}' : out1['h_rdv'], 
+            f'h_mass_{name}' : out1['h_mass'],
+        })
+    # make default:
+    try:
+        out.update(study_ISO(ISO,parking_orbit, detect_t))
+    except (ArithmeticError, ValueError, AssertionError): pass
+    return out
 
-    np.seterr(all='ignore') # since we don't care about the errors
+
+def study_batch_multi(gen_type:str='', longp_num:int=0)->pd.DataFrame:
+    '''multithreaded analysis'''
+    
     ISOs = get_ISO(gen_type=gen_type)
-    # shuffle timings so that does not influence study:
-    res_list= []
+    F = partial(job, longp_num=longp_num)
+    #for each ISO get row:
     with mp.Pool() as p:
-        for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
-            detect_r = ISO.r(ISO.f(detect_t))/AU
-            out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
-                'time_until_periapsis':(ISO.tp - detect_t)/DAY,
-                    "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
-                    "ISO_excess_velocity":ISO.vinf}
-            
-            longps = np.linspace(0,2*np.pi, longp_num)
-            pjob = partial(job, ISO=ISO, detect_t=detect_t, g_type=g_type)
-            outs = p.map(pjob,longps)
-            for o in outs:
-                out.update(o)
+        res = tqdm(p.imap_unordered(F, ISOs), desc=f"Studying ISOs, (longp_num = {longp_num})", total=len(ISOs))
+        resl = list(res)
+    print("Pool closed")
+    return pd.DataFrame(resl)
+    
 
-            out.update(study_ISO(ISO,parking_orbit,detect_t,g_type))
-            res_list.append(out)
-    return pd.DataFrame(res_list)
+
 
 def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
     '''Get the gathered data on ISOs, 
@@ -215,25 +216,35 @@ def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
     :return: dataframe with the results of the study
     :rtype: pd.DataFrame
     '''
-    # load if applicable
-    try:
-        data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
-    except:
-        data = pd.DataFrame()
     
+
     # generate new if applicable:
     if extra_batches > 0:
+
+        # load my data:
+        try:
+            data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / (PICKLE_NAME + USER_NAME))
+        except (FileNotFoundError):
+            data = pd.DataFrame()
         new = [data]
         for i in range(extra_batches):
             print('============================================')
             print(f"Generating batch {i+1} of {extra_batches}:")
             print('============================================')
-            new.append(study_batch(gen_type, LONGP_NUM))
+            new.append(study_batch_multi(gen_type, LONGP_NUM))
         data = pd.concat(new,ignore_index=True)
-        # save result:
-        data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
-    # return result:
-    return data
+        # save result to my data:
+        data.to_pickle(PATH_TO_DATA / (PICKLE_NAME + USER_NAME))
+
+    # load all data
+    datas = os.listdir(PATH_TO_DATA)
+    ldat = []
+    for dat in datas:
+        if dat.startswith(PICKLE_NAME):
+            ldat.append(pd.read_pickle(PATH_TO_DATA / dat))
+    mdata = pd.concat(ldat) if len(ldat) > 0 else pd.DataFrame()
+
+    return mdata
 
 def _fix_data():
     '''Debug function to fix issues with the data'''
@@ -514,26 +525,28 @@ def plots_for_probability_map():
 
     plt.show()
 
-def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 45):
-
-    
+def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 0):
 
     pp = []
     vv = []
     ww = []
 
-    for longp in np.linspace(0,2*np.pi, longp_num):
+    for longp in np.linspace(-m.pi,m.pi, longp_num):
         pp.append(longp)
-        name = f"{longp:3.1f}"
-        v = df[f'h_idv_{name}']
-        v = v.sort_values(ignore_index=True)
-        n = m.ceil(len(v)*fraction)
-        vreq = v[n]
-        wreq = v[n-1]
-        vv.append(vreq)
-        ww.append(wreq)
-        print(f" for {name}: number required is: {n} out of {len(v)}, corresponding to: {vreq:3.2f} km/s")
-
+        name = f"{m.degrees(longp):3.1f}"
+        try:
+            v = df[f'h_idv_{name}']
+            v = v.sort_values(ignore_index=True)
+            n = m.ceil(len(v)*fraction)
+            vreq = v[n]
+            wreq = v[n-1]
+            vv.append(vreq)
+            ww.append(wreq)
+            print(f" for {name}: number required is: {n} out of {len(v)}, corresponding to: {wreq:3.2f} --- {vreq:3.2f} km/s")
+        except:
+            vv.append(m.nan)
+            ww.append(m.nan)
+            print("missing column")
     plt.polar(pp,vv, label='upper bound')
     plt.polar(pp,ww, label='lower bound')
     plt.title('oberth dv required per longitude of periapsis')
@@ -556,7 +569,7 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-    df = get_data()
+    df = get_data(1)
     # prob_needed = 0.0152 # N = 150
     prob_needed = 0.0076 # N = 300
 
@@ -566,7 +579,7 @@ if __name__ == "__main__":
     print(df)
     # df = df[pd.notna(df['h_tdv'])]
     df = df.sort_values('h_idv', ignore_index=True)
-    print(df[["h_tdv", "h_idv","h_rdv", "h_r", "h_ts", "h_te", 'h_rad_angle','h_rad_dv',"periapsis"]])
+    print(df[["h_tdv", "h_idv","h_rdv",'h_mass', "h_r", "h_ts", "h_te", 'h_rad_angle','h_rad_dv',"periapsis"]])
 
     
 
@@ -574,7 +587,10 @@ if __name__ == "__main__":
     assert (n_needed + 1) / prob_needed > len(df)
     print(f'dv needed (rough): {df.iloc[n_needed]['h_idv']} --- {df.iloc[n_needed+1]['h_idv']} km/s')
     
-    plt.hist(df['h_idv'],bins=len(df)//50)
+    bins = max(len(df)//50,10)
+
+
+    plt.hist(df['h_idv'],bins=bins)
     plt.show()
     # plot_from_row(df.iloc[1], 10*AU)
 

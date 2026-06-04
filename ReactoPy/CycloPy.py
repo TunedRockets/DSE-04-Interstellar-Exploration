@@ -989,7 +989,7 @@ if __name__ == "__main__":
             P1=low_pressure * BAR,
             T3=max_reactor_temp,
             max_T1=max_radiator_temp,
-            plot=False,
+            # plot=False,
             # plot_mode="3d",
             # mass_budget=300
         )

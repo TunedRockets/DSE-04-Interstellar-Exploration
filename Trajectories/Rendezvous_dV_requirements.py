@@ -29,7 +29,6 @@ PICKLE_NAME = "ISOdata"
 USER_NAME = os.getlogin()
 
 MAX_MISSION_TIME = 10 # [years]
-MAX_BOOST_DV = 4
 LONGP_NUM = 0
 
 
@@ -119,7 +118,7 @@ def _under(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->int:
 
 INTERPOLATOR:None|RegularGridInterpolator = None
 CONTINUOUS_NUM = 0
-AREA_OF_INTEREST = (6,6,19)
+AREA_OF_INTEREST = (4,7,20)
 INTERP_RESOLUTION = 20
 def _interp_setup(dfi:pd.DataFrame, N:int|None = None):
     global CONTINUOUS_NUM, INTERPOLATOR
@@ -133,33 +132,41 @@ def _interp_setup(dfi:pd.DataFrame, N:int|None = None):
 
     val = np.vectorize(F)(xx1,xx2,xx3)
     
-    INTERPOLATOR = RegularGridInterpolator((x1,x2,x3), val, method='cubic')
+    INTERPOLATOR = RegularGridInterpolator((x1,x2,x3), val, method='linear', bounds_error=False, fill_value=None) #type:ignore
 
 
 
-def continuous_success(dv0:float, dv1:float, dv2:float)->tuple[float,float]:
+def continuous_success(dv0:float, dv1:float, dv2:float, df:pd.DataFrame)->tuple[float,float]:
     '''success chance using a more continuous method'''
     if INTERPOLATOR is None: raise ValueError("interpolator not yet set up")
     working = INTERPOLATOR((dv0,dv1,dv2))
     m = interpolator_wrapper(dv0,dv1,dv2)
     return working/CONTINUOUS_NUM, m
 
+def discrete_success(dv0:float, dv1:float, dv2:float, df:pd.DataFrame)->tuple[float,float]:
+    return _under(df,dv0,dv1,dv2)/len(df), interpolator_wrapper(dv0,dv1,dv2)
 
-def dv_optimizer(N:int)->tuple[float,float,float]:
+def dv_optimizer(df:pd.DataFrame, N:int)->tuple[float,float,float]:
     '''get the optimal dv budget distribution for the given number'''
     Pi = 1 - (1-0.9)**(1/N) # needed individual probability
 
     def F(x:np.ndarray)->float:
         try:
-            P, m = continuous_success(x[0], x[1], x[2])
-            if P < Pi: return (1-P)*10_000 + 10_000
-            else: return m
+            P, m = discrete_success(x[0], x[1], x[2], df)
+            return m
         except: return np.inf
-
+    def C(x:np.ndarray)->float:
+        return discrete_success(x[0], x[1], x[2], df)[0] - Pi
     x0 = np.array((3,4,15))
 
-    opt = minimize(F,x0)
-    Popt, mopt = continuous_success(opt[0], opt[1], opt[2])
+    opt = minimize(F,x0, 
+                   bounds=((0,AREA_OF_INTEREST[0]), (0,AREA_OF_INTEREST[1]), (0,AREA_OF_INTEREST[2])),
+                   method="COBYLA",
+                   constraints=[{"fun": C, 'type':"ineq"}])
+    if not opt.success: raise ValueError(f"minimizer failed: {opt.message}")
+    else: opt = opt.x
+    
+    Popt, mopt = discrete_success(opt[0], opt[1], opt[2], df)
     print(f"Solution found with Pi={100*Popt:1.3f}%")
     print(f"Pu={100*(1-(1-Popt)**N):2.3f}%")
     print(f"mass of: {mopt} kg")
@@ -170,21 +177,21 @@ def dv_optimizer(N:int)->tuple[float,float,float]:
 
     return opt[0], opt[1], opt[2]
 
-def mass_view(df:pd.DataFrame, res:int=20, plot:bool=True, num:int|None=None):
+def mass_view(df:pd.DataFrame, N:int, res:int=20, plot:bool=True):
     '''plot heatmap of mass for successful schematics'''
 
     
-    dv0 = np.linspace(3,4,res)
-    dv1 = np.linspace(2,5, res)
-    dv2 = np.linspace(5,15,res)
+    dv0 = np.linspace(0,4,res)
+    dv1 = np.linspace(0,5, res)
+    dv2 = np.linspace(0,15,res)
     dv0,dv1,dv2 = np.meshgrid(dv0,dv1,dv2)
     dv0 = dv0.flatten(); dv1 = dv1.flatten(); dv2 = dv2.flatten()
     mm = []
     pp = []
-    Pi = 1 - (1-0.9)**(1/300) # needed individual probability
+    Pi = 1 - (1-0.9)**(1/N) # needed individual probability
 
     for i in tqdm(range(len(dv0)), desc="mass view"):
-        p,m = continuous_success(dv0[i],dv1[i],dv2[i])
+        p,m = discrete_success(dv0[i],dv1[i],dv2[i], df)
         if p < Pi:
             dv0[i] = 0; dv1[i] = 0; dv2[i] = 0
         mm.append(m)
@@ -257,8 +264,7 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
             'h_te' : (res['te']-detect_t)/DAY,
             'h_r' : res['r']/AU,
             'h_rad_angle' : m.degrees(res['radial']),
-            'h_rad_dv': res['rad_burn'],
-            'h_max_boost' : MAX_BOOST_DV
+            'h_rad_dv': res['rad_burn']
         })
     except(ArithmeticError, ValueError, AssertionError): pass # no intercept :(
 
@@ -460,30 +466,42 @@ def run_in_background():
 if __name__ == "__main__":
 
 
-    
+    # run_in_background()  
 
-    df = get_data()
+    df = get_data(1)
+    print(len(df))
+    dfi = df[df['h_tdv'] < 4]
+    print(f"cut tdv > 4: {len(dfi)}")
+    dfi = dfi[dfi['h_idv'] < 5]
+    print(f"cut idv > 5: {len(dfi)}")
+    dfi = dfi[dfi['h_rdv']<15]
+    print(f"cut rdv > 15: {len(dfi)}")
+    plt.hist(df['h_tdv'])
+    plt.show()
 
-    dfi = df[df['h_tdv'] < 10]
-    dfi = dfi[dfi['h_idv'] < 10]
-    dfi = dfi[dfi['h_rdv']<20]
-    _interp_setup(dfi,len(df))
-    print(f"{len(df)=}\t {len(dfi)=}\t frac: {len(dfi)/len(df)}")
+
+    # _interp_setup(df)
+    print(f"{len(df)=}\t {len(dfi)=}\t frac: {len(dfi)/len(df)}, \n nans: {len(df[np.isnan(df['h_mass'])])}")
     # input()
-    dv_optimizer(300)
+    dfs = df.sort_values('h_mass', ignore_index=True)
+    print(dfs[['h_mass', "h_tdv", "h_idv", "h_rdv", "h_te"]])
+    mass_view(df,350, res=20)
+    print('\n\n')
+    dv_optimizer(df, 350)
 
     # longp_graph(df,prob_needed, LONGP_NUM)
 
     # plots_for_probability_map() 
 
-    print(dfi)
+
+    input()
     
-    mass_view(dfi,res=40, num=len(df), plot=False)
+    
     
     # input()
 
-
     run_in_background()
+    
     
 
 

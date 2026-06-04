@@ -5,6 +5,7 @@ from typing import Callable
 
 import math as m
 import numpy as np
+from scipy.optimize import minimize_scalar
 
 M = MassInterpolator()
 interp = M.interp
@@ -12,18 +13,22 @@ interp = M.interp
 
 def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
     '''wrapper to ensure it works, INPUT IS IN KM/S'''
-    return interp(np.array([dv0*1000,dv2*1000,dv1*1000]))[0]
-
+    try:
+        return interp(np.array([dv0*1000,dv2*1000,dv1*1000]))[0]
+    except: return 99_000
 
 def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float):
     '''find the optimal trajectory for the heliocentric Orberth manoeuvre'''
     # interpolator = MassInterpolator()
 
-    # find apoapsis after detection:
+    # # find apoapsis after detection:
     apo = park.t(m.pi)
+    while apo > detect_t: apo -= park.T
     while apo < detect_t: apo += park.T
+    
 
-    # find periapsis after that:
+
+    # # find periapsis after that:
     peri = park.tp # find periapsis after ISO tp
     while peri < apo: peri += park.T
 
@@ -74,8 +79,8 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float)
         except (ValueError, ArithmeticError, AssertionError): return m.inf
     
     
-    t_opt = minimizer_1d(w,peri, max_time)
-
+    t_opt = minimize_scalar(w,bounds=(peri, max_time)).x # type:ignore
+    res = w(t_opt)
     res = F(t_opt)
     res['mass'] = interpolator_wrapper(res['dv0'],res['dv1'],res['dv2']) # add mass
     return res
@@ -102,21 +107,7 @@ def rotate_to_match(ob:jkat.Orbit, target:jkat.Orbit)->tuple[float, np.ndarray, 
 
 
 
-def minimizer_1d(f:Callable, a:float, b:float, tol:float = 1e-4)->float:
 
-    invphi = (m.sqrt(5) - 1) / 2  #
-
-    # golden section search:
-    while b - a > tol:
-        c = b - (b - a) * invphi
-        d = a + (b - a) * invphi
-        fc = f(c); fd = f(d)
-        if fc < fd:
-            b = d
-        else:  # f(c) > f(d) to find the maximum
-            a = c
-
-    return (b + a) / 2
     
     
 

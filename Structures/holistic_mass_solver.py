@@ -412,7 +412,7 @@ def generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost):
 
     return data
 
-import plotly.graph_objects as go
+# import plotly.graph_objects as go
 
 def plot_mass_database(data):
 

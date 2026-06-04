@@ -465,18 +465,17 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-
     # run_in_background()  
 
-    df = get_data(1)
+    df = get_data(15)
     print(len(df))
     dfi = df[df['h_tdv'] < 5]
     print(f"cut tdv > 4: {len(dfi)}")
-    dfi = dfi[dfi['h_idv'] < 5]
+    dfi = dfi[dfi['h_idv'] < 7]
     print(f"cut idv > 7: {len(dfi)}")
-    dfi = dfi[dfi['h_rdv']<15]
-    print(f"cut rdv > 15: {len(dfi)}")
-    plt.hist(df['h_tdv'])
+    dfi = dfi[dfi['h_rdv']<20]
+    print(f"cut rdv > 20: {len(dfi)}")
+    plt.hist(df['h_rdv'])
     plt.show()
 
 
@@ -485,7 +484,9 @@ if __name__ == "__main__":
     # input()
     dfs = df.sort_values('h_mass', ignore_index=True)
     print(dfs[['h_mass', "h_tdv", "h_idv", "h_rdv", "h_te"]])
-    mass_view(df,350, res=20)
+    try:
+        mass_view(df,350, res=20)
+    except ValueError: pass
     print('\n\n')
     dv_optimizer(df, 350)
 
@@ -494,7 +495,6 @@ if __name__ == "__main__":
     # plots_for_probability_map() 
 
 
-    input()
     
     
     

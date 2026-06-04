@@ -478,8 +478,8 @@ def plot_mass_database(data):
 from scipy.interpolate import RegularGridInterpolator
 import pickle
 
-
-def load_mass_database(filename="mass_database.pkl"):
+path = Path(__file__).parent / "mass_database.pkl"
+def load_mass_database(filename=path):
     """
     Load a precomputed Hestia mass database.
 
@@ -521,7 +521,7 @@ def load_mass_database(filename="mass_database.pkl"):
         )
 
     return data
-path = Path(__file__).parent / "mass_database.pkl"
+
 class MassInterpolator:
 
     def __init__(self, filename=path):

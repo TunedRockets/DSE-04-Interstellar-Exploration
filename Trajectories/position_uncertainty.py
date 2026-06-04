@@ -4,8 +4,7 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
-from src.orbit import Orbit
-from src.utilities import AU, root_finder_bisection
+import jkat
 import numpy as np
 import math as m
 from Rendezvous_dV_requirements import get_data, recreate_ISO
@@ -23,18 +22,18 @@ tp_arr = [5.0807e-5, 2.6424e-4, 1.4206e-4] #[s]
 
 # turn into sigmas:
 e_sigma = np.average(e_arr)
-a_sigma = np.average(a_arr) * AU
+a_sigma = np.average(a_arr) * jkat.AU
 i_sigma = np.average(i_arr) * np.pi/180
 raan_sigma = np.average(raan_arr) * np.pi/180
 argp_sigma = np.average(argp_arr) * np.pi/180
 tp_sigma = np.average(tp_arr)
 
 
-undetection_distance = 6 * AU # not relevant for now (can be releavant if turned to rv)
+undetection_distance = 6 * jkat.AU # not relevant for now (can be releavant if turned to rv)
 
 
 
-def orbit_shuffle(ob:Orbit)->None:
+def orbit_shuffle(ob:jkat.Orbit)->None:
     '''shuffle orbit based on the uncertainty values,
     changes in place(!)'''
     de = np.random.randn() * e_sigma
@@ -46,9 +45,9 @@ def orbit_shuffle(ob:Orbit)->None:
     ob.e += de
     ob.a += da
     ob.i += di
-    ob.RAAN += draan
-    ob.arg_p += dargp
-    ob.t_p += dtp
+    ob.raan += draan
+    ob.argp += dargp
+    ob.tp += dtp
 
 def error_distance():
     df = get_data()
@@ -59,9 +58,9 @@ def error_distance():
         for i, row in df.iterrows():
             ob,_,_ = recreate_ISO(row)
             t_end = row['rdvz_t_arrival'] - row['time_until_periapsis'] + row['t_p'] # time of arrival
-            r = ob.time_to_rv(t_end)[0]
+            r = ob.t2rvec(t_end)
             orbit_shuffle(ob)
-            r_err = ob.time_to_rv(t_end)[0]
+            r_err = ob.t2rvec(t_end)
             errors.append(r_err - r)
 
     errors = np.array(errors)

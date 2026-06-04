@@ -189,7 +189,7 @@ def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int)->dict:
     return out
 
 
-def study_batch_multi(gen_type:str='', longp_num:int=45)->pd.DataFrame:
+def study_batch_multi(gen_type:str='', longp_num:int=0)->pd.DataFrame:
     '''multithreaded analysis'''
     
     ISOs = get_ISO(gen_type=gen_type)
@@ -525,7 +525,7 @@ def plots_for_probability_map():
 
     plt.show()
 
-def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 45):
+def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 0):
 
     pp = []
     vv = []

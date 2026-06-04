@@ -81,11 +81,16 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float)
     res['mass'] = interpolator_wrapper(res['dv0'],res['dv1'],res['dv2']) # add mass
     return res
 
-def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park:jkat.Orbit, ISO:jkat.Orbit, max_time:float):
-    '''Finds if the ISO is reachable within the available delta V budgets'''
+def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float):
+    '''Finds if the ISO is reachable within the available delta V budgets (km/s)'''
 
+    # find apoapsis after detection:
+    apo = park.t(m.pi)
+    while apo < detect_t: apo += park.T
+
+    # find periapsis after that:
     peri = park.tp  # find periapsis after ISO tp
-    while peri < ISO.tp: peri += park.T
+    while peri < apo: peri += park.T
 
     rp, vp = park.vectors(0)  # parking orbit periapsis
 
@@ -140,8 +145,8 @@ def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park
             return m.inf
 
     t_solution = minimizer_1d(w,peri, max_time)
-
-    return (w(t_solution)==0)
+    res = F(t_solution)
+    return (w(t_solution)==0), res
 
 
 
@@ -180,7 +185,7 @@ def minimizer_1d(f:Callable, a:float, b:float, tol:float = 1e-4, escape_value:fl
         fc = f(c); fd = f(d)
         if escape_value is not None:
             if fc<escape_value: break
-        if fc < fd:
+        if fc < fd or fd==np.inf:
             b = d
         else:  # f(c) > f(d) to find the maximum
             a = c

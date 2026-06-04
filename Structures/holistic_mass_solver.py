@@ -353,7 +353,7 @@ def _single_run(args):
     )
     try:
         sc._converge()
-        total_mass = sc.lo
+        total_mass = sc.lower_stage_wet_mass
     except:
         total_mass = np.nan
     # print()
@@ -663,16 +663,76 @@ def _test_mass_database(
     else:
         print(f"PASSED: {n_tests}/{n_tests}")
 
-if __name__ == "__main__":
-    SC = Hestia(
-        dV_inclination=5000,
-        dV_rdvz=20000,
-        dV_boost=5000,
-        verbose=True,
-        convergence_tolerance=0.001
-    )
+def _test_interpolator_no_nans(
+    data,
+    n_tests=100_000,
+    seed=42,
+):
+    rng = np.random.default_rng(seed)
 
-    SC._converge()
+    interp = MassInterpolator()
+
+    inc_min, inc_max = data["dV_inclination"][0], data["dV_inclination"][-1]
+    rdv_min, rdv_max = data["dV_rdvz"][0], data["dV_rdvz"][-1]
+    boo_min, boo_max = data["dV_boost"][0], data["dV_boost"][-1]
+
+    # First make sure the database itself is clean
+    n_grid_nans = np.isnan(data["mass"]).sum()
+
+    print(f"NaNs in source grid: {n_grid_nans}")
+
+    if n_grid_nans:
+        raise AssertionError(
+            f"Source grid contains {n_grid_nans} NaNs"
+        )
+
+    for i in range(n_tests):
+
+        point = np.array([
+            rng.uniform(inc_min, inc_max),
+            rng.uniform(rdv_min, rdv_max),
+            rng.uniform(boo_min, boo_max),
+        ])
+
+        val = interp.interp(point)
+
+        if np.isnan(val).any():
+            raise AssertionError(
+                f"NaN returned at point {point}"
+            )
+
+    print(f"PASSED: {n_tests} random in-range points")
+
+def _test_all_grid_points(data):
+
+    interp = MassInterpolator()
+
+    for inc in data["dV_inclination"]:
+        for rdvz in data["dV_rdvz"]:
+            for boost in data["dV_boost"]:
+
+                val = interp.interp([inc, rdvz, boost])
+
+                if np.isnan(val).any():
+                    raise AssertionError(
+                        f"NaN at exact grid point "
+                        f"({inc}, {rdvz}, {boost})"
+                    )
+
+    print("PASSED: all grid points")
+
+
+
+if __name__ == "__main__":
+    # SC = Hestia(
+    #     dV_inclination=5000,
+    #     dV_rdvz=20000,
+    #     dV_boost=5000,
+    #     verbose=True,
+    #     convergence_tolerance=0.001
+    # )
+    #
+    # SC._converge()
 
     resolution = 10
     dVs_incl = np.linspace(0, 4000, resolution)
@@ -680,6 +740,8 @@ if __name__ == "__main__":
     dVs_boost = np.linspace(0, 5000, resolution)
     # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
-    # plot_mass_database(data)
+    plot_mass_database(data)
 
     _test_mass_database(data, n_tests=10, tolerance=1e-2)
+    _test_interpolator_no_nans(data)
+    _test_all_grid_points(data)

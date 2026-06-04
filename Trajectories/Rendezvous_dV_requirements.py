@@ -11,8 +11,9 @@ sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
 import jkat
 from jkat import AU, YEAR, DAY
+from jkat.utils.optimizers import minimizer
 from src.get_ISO import get_ISO
-from src.helio_optim import helio_optim
+from src.helio_optim import helio_optim, interpolator_wrapper
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m
@@ -29,7 +30,7 @@ USER_NAME = os.getlogin()
 
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 4
-LONGP_NUM = 45
+LONGP_NUM = 0
 
 
 # ap = 5.45 AU
@@ -52,62 +53,100 @@ def get_parking(longp:float)->jkat.Orbit:
 
 # === probability functions =====
 
-def mission_success_probability(dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
-    '''Generates total mission probability for the given scenario.
+# def mission_success_probability(dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
+#     '''Generates total mission probability for the given scenario.
 
-    :param dV_budget: Delta V budget of the mission
-    :type dV_budget: int
-    :param N: number of ISOs detected during the mission
-    :type N: int
-    :param rdvz: Whether to consider rendezvous or flyby
-    :type rdvz: bool
-    :param df: dataframe with the ISO data to consider, defaults to None
-    :type df: pd.DataFrame | None, optional
-    :return: success probability
-    :rtype: float
-    '''
-    p_ISO = ISO_probability(dV_budget, rdvz, df)
-    p_least_one = 1-(1-p_ISO)**N
-    return p_least_one
+#     :param dV_budget: Delta V budget of the mission
+#     :type dV_budget: int
+#     :param N: number of ISOs detected during the mission
+#     :type N: int
+#     :param rdvz: Whether to consider rendezvous or flyby
+#     :type rdvz: bool
+#     :param df: dataframe with the ISO data to consider, defaults to None
+#     :type df: pd.DataFrame | None, optional
+#     :return: success probability
+#     :rtype: float
+#     '''
+#     p_ISO = ISO_probability(dV_budget, rdvz, df)
+#     p_least_one = 1-(1-p_ISO)**N
+#     return p_least_one
 
-def ISO_probability(dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
-    '''calculate individual chance of success for given dv budget and detection distance,
-    currently only works with integer dV budgets
+# def ISO_probability(dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
+#     '''calculate individual chance of success for given dv budget and detection distance,
+#     currently only works with integer dV budgets
 
-    :param dV_budget: Delta V budget of the mission
-    :type dV_budget: int
-    :param rdvz: Whether to consider rendezvous or flyby
-    :type rdvz: bool
-    :param df: dataframe with the ISO data to consider, defaults to None
-    :type df: pd.DataFrame | None, optional
-    :return: probability of intercepting/rendezvousing with one ISO
-    :rtype: float
-    '''
-    # hist = get_dv_hist(rm,weight)
-    # return np.sum(hist[:m.floor(dV_budget)+1])
+#     :param dV_budget: Delta V budget of the mission
+#     :type dV_budget: int
+#     :param rdvz: Whether to consider rendezvous or flyby
+#     :type rdvz: bool
+#     :param df: dataframe with the ISO data to consider, defaults to None
+#     :type df: pd.DataFrame | None, optional
+#     :return: probability of intercepting/rendezvousing with one ISO
+#     :rtype: float
+#     '''
+#     # hist = get_dv_hist(rm,weight)
+#     # return np.sum(hist[:m.floor(dV_budget)+1])
 
-    p = dv_below_budget(dV_budget,rdvz, df)
-    return p
+#     p = dv_below_budget(dV_budget,rdvz, df)
+#     return p
 
-def dv_below_budget(dv_budget:float, rdvz:bool,df:pd.DataFrame|None=None)->float:
-    '''get fraction of orbits that are at or below a dv_budget
+# def dv_below_budget(dv_budget:float, rdvz:bool,df:pd.DataFrame|None=None)->float:
+#     '''get fraction of orbits that are at or below a dv_budget
 
-    :param dv_budget: Delta V budget of the mission
-    :type dv_budget: float
-    :param rdvz: Whether to consider rendezvous or flyby
-    :type rdvz: bool
-    :param df: dataframe with the ISO data to consider, defaults to None
-    :type df: pd.DataFrame | None, optional
-    :return: fraction of ISOs in dataframe that are reachable with the given dv budget
-    :rtype: float
-    '''
-    if df is None: df = get_data()
-    if not rdvz:
-        dv = df['icpt_idv']
-    else:
-        dv = df['rdvz_idv'] + df['rdvz_rdv']
-    dv = dv[dv <= dv_budget]
-    return len(dv)/len(df)
+#     :param dv_budget: Delta V budget of the mission
+#     :type dv_budget: float
+#     :param rdvz: Whether to consider rendezvous or flyby
+#     :type rdvz: bool
+#     :param df: dataframe with the ISO data to consider, defaults to None
+#     :type df: pd.DataFrame | None, optional
+#     :return: fraction of ISOs in dataframe that are reachable with the given dv budget
+#     :rtype: float
+#     '''
+#     if df is None: df = get_data()
+#     if not rdvz:
+#         dv = df['icpt_idv']
+#     else:
+#         dv = df['rdvz_idv'] + df['rdvz_rdv']
+#     dv = dv[dv <= dv_budget]
+#     return len(dv)/len(df)
+
+
+def success_chance(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->tuple[float,float]:
+    '''get success chance and mass for given dv budgets'''
+    count = len(df)
+    frac = df[df['h_tdv'] <= dv0]
+    frac = frac[frac['h_idv'] <= dv1]
+    frac =frac[frac['h_rdv'] <= dv2]
+    working = len(frac)
+    m = interpolator_wrapper(dv0,dv1,dv2)
+    return working/count, m
+
+def dv_optimizer(df:pd.DataFrame, N:int)->tuple[float,float,float]:
+    '''get the optimal dv budget distribution for the given number'''
+    Pi = 1 - (1-0.9)**(1/N) # needed individual probability
+
+    def F(x:np.ndarray)->float:
+        P, m = success_chance(df, x[0], x[1], x[2])
+        if P < Pi: return np.inf
+        else: return m
+
+    x0 = np.array((3,4,15))
+    step = np.array((0.2,0.2,0.2))
+
+    opt = minimizer(F,x0, step, max_iter=1000)
+    Popt, mopt = success_chance(df, opt[0], opt[1], opt[2])
+    print(f"Solution found with Pi={100*Popt:1.3f}%")
+    print(f"Pu={100*(1-(1-Popt)**N):2.3f}%")
+    print(f"mass of: {mopt} kg")
+    print(f"turn DV: {opt[0]:2.3f} km/s")
+    print(f"boost DV: {opt[1]:2.3f} km/s")
+    print(f"rendezvous DV: {opt[2]:2.3f} km/s")
+
+
+    return opt[0], opt[1], opt[2]
+
+
+
 
 
 # ========== improved storage and study =============
@@ -248,110 +287,8 @@ def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
 
 def _fix_data():
     '''Debug function to fix issues with the data'''
-    data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
-
-    # ==== change here ====
-    # # get the heliocentric values
-    # np.seterr(all="ignore")
-    # try:
-    #     for i,row in tqdm(data.iterrows(), desc="study helio",total=len(data)):
-    #         # if 'h_max_boost' in row: continue
-    #         ISO, detect_t,g_type = recreate_ISO(row)
-    #         out = study_helio(ISO,detect_t,g_type)
-    #         for key, val in out.items():
-    #             if key.startswith('h'):
-    #                 data.loc[i, key] = val
-    # finally: data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
-
+    pass
     # =====================
-
-    
-def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kwargs):
-    '''generate a probability density histogram of the delta v requirements
-
-    :param rdvz: Whether to consider rendezvous or flyby
-    :type rdvz: bool
-    :param printing: whether to print out CDF values for several dv values, defaults to False
-    :type printing: bool, optional
-    :param df: dataframe with the ISO data to consider, defaults to None
-    :type df: pd.DataFrame | None, optional
-    '''
-    # get right cols
-    if df is None: df = get_data()
-    if not rdvz:
-        dv = df['icpt_idv']
-    else:
-        dv = df['rdvz_idv'] + df['rdvz_rdv']
-    plt.hist(dv,bins=50, range=(0,100), density=True, edgecolor='k', alpha=0.65, histtype="stepfilled", **kwargs)
-    plt.xlabel(r"$\Delta V$ requirement")
-    plt.ylabel("Probability Density")
-    # plt.title(f"Normalized Histogram of the Delta V requirements for ISO {"rendezvous" if rdvz else "intercept"}\n(Normalization includes unreachable ISOs)")
-    if printing:
-        func = lambda x: (dv_below_budget(x,rdvz,df))*100
-        print("Portion below:")
-        print(f"5 km/s: {func(5):.2f}%")
-        print(f"10 km/s: {func(10):.2f}%")
-        print(f"15 km/s: {func(15):.2f}%")
-        print(f"20 km/s: {func(20):.2f}%")
-        print(f"40 km/s: {func(40):.2f}%")
-
-def distance_histogram(df:pd.DataFrame, **kwargs):
-    '''USE as reference for histograms
-
-    :param df: _description_
-    :type df: pd.DataFrame
-    '''
-    plt.hist(df['detection_r'], bins=20, density=True, **kwargs)
-    plt.title("Heliocentric altitude at time of detection probability distribution")
-    plt.xlabel("Heliocentric altitude (AU)")
-    plt.ylabel("probability density")
-
-def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
-    '''Generate a probability make of dv_budget against number of detected ISOs
-
-    :param df: dataframe with the ISO data to consider, defaults to None
-    :type df: pd.DataFrame
-    :param rdvz: Whether to consider rendezvous or flyby
-    :type rdvz: bool
-    :param guesses: whether to plot guesses on N from the literature, defaults to True
-    :type guesses: bool, optional
-    '''
-
-    Ezell_Loeb_avg_per_annum = 5
-    Hoover_seligman_payne_per_annum = 14
-    Marceta_seligman_per_annum = 35
-    years = 10 
-
-    EL_N = Ezell_Loeb_avg_per_annum * years
-    HSP_N = Hoover_seligman_payne_per_annum * years
-    MS_N = Marceta_seligman_per_annum * years
-    
-
-    N_range = np.arange(10,MS_N + 30,5)
-    V_range =np.arange(1,25, 0.2)
-    NN, VV = np.meshgrid(N_range,V_range)
-    F = lambda v,n: mission_success_probability(v,n,rdvz,df)
-    PP = np.vectorize(F)(VV,NN)
-    plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
-    if num != 1:
-        plt.colorbar(location="right", label=r"$P_s$")
-    CS = plt.contour(PP,levels=[0.5,0.9,0.99],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]), colors='k')
-    plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
-    if num > 1:
-        plt.xlabel(r'$N$')
-    plt.ylabel(r'$\Delta V$ budget [km/s]')
-    
-    # plt.title(f"Probability map for {"rendezvous" if rdvz else "intercept"}\nAnd estimated ISO detections during {years} year mission")
-    if guesses:
-        plt.axvline(EL_N,ls='--', color="gray")
-        plt.text(EL_N+1, np.average(V_range)+3, "Ezell, Loeb mean", color="gray")
-        plt.axvline(HSP_N,ls='--', color="gray")
-        plt.text(HSP_N+1, np.average(V_range), "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
-        plt.axvline(MS_N,ls='--', color="gray")
-        plt.text(MS_N-1, np.average(V_range)-3, "Marčeta, Seligman mean", ha="right", color="gray")
-
-    plt.gca().set_aspect(N_range[-1]/V_range[-1])
-    return PP, N_range, V_range
 
 def plot_from_row(row:pd.Series, max_r:float=m.inf):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
@@ -392,7 +329,6 @@ def plot_from_row(row:pd.Series, max_r:float=m.inf):
     plt.legend()
     plt.show()
 
-
 def recreate_ISO(row:pd.Series)->tuple[jkat.Orbit,float,str]:
     '''recreate the ISO orbit, detection time, and gen_type from row
 
@@ -416,114 +352,6 @@ def recreate_ISO(row:pd.Series)->tuple[jkat.Orbit,float,str]:
     detect_r = row['detection_r']
     t_detect = ISO.t(-ISO.cross_radius(detect_r*AU)) # type:ignore
     return ISO, t_detect, row['magnitude_generation_method']
-
-
-def plots_for_iso_detection():
-    '''function to generate the plots and numbers for the iso detection chapter in the LaTeX'''
-
-    # want:
-    # detection distance, detection time, distribution of them, for both omuamua-like and borisov like
-    # ratio detected
-    df = get_data()
-    dfb = df[df['magnitude_generation_method']=='atlas-borisov']
-    dfo = df[df['magnitude_generation_method']=='omuamua']
-    print('DATA:\n')
-    print(f'fraction omuamua: {len(dfo)/len(df)*100:.3f}%, number omuamua: {len(dfo)}')
-    print(f'fraction borisov: {len(dfb)/len(df)*100:.3f}%, number borisov: {len(dfb)}')
-    print()
-
-
-
-    # distance:
-    plt.subplot(1,2,1)
-    plt.title('Cometary')
-    br = dfb['detection_r']
-    plt.hist(br, bins=20, density=True, color='b', edgecolor='k', alpha=0.65, histtype="stepfilled")
-    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
-    plt.xlabel("Heliocentric distance at time of detection [AU]")
-    plt.ylabel("Probability density")
-    
-    print(f'borisov average: {np.average(br)}')
-    # plt.show()
-    plt.subplot(1,2,2)
-    plt.title('Asteroidal')
-
-    # distance:
-    br = dfo['detection_r']
-    plt.hist(br, bins=20, density=True, color='y', edgecolor='k', alpha=0.65, histtype="stepfilled")
-    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
-    plt.xlabel("Heliocentric distance at time of detection [AU]")
-    plt.ylabel("Probability density")
-    
-    print(f'omuamua average: {np.average(br)}')
-    plt.show()
-
-    # time:
-    plt.subplot(1,2,1)
-    plt.title('Cometary')
-    br = dfb['time_until_periapsis']
-    plt.hist(br, bins=20, density=True, color='b', edgecolor='k', alpha=0.65, histtype="stepfilled")
-    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
-    plt.xlabel("Time until perihelion after detection [days]")
-    plt.ylabel("Probability density")
-    
-    print(f'borisov average: {np.average(br)}')
-    plt.subplot(1,2,2)
-    plt.title('Asteroidal')
-
-    # time:
-    br = dfo['time_until_periapsis']
-    plt.hist(br, bins=20, density=True, color='y', edgecolor='k', alpha=0.65, histtype="stepfilled")
-    plt.axvline(np.average(br),color='k', linestyle='dashed', linewidth=1)
-    plt.xlabel("Time until perihelion after detection [days]")
-    plt.ylabel("Probability density")
-    
-    print(f'omuamua average: {np.average(br)}')
-    plt.show()
-
-def plots_for_dv_histogram():
-
-
-    df = get_data()
-    dvi = df['h_idv']
-    dvr = df['h_ion_total']
-    plt.hist(dvi, bins=40, range=(0,100), density=True, color=('r'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="boost dv")
-    plt.hist(dvr, bins=40, range=(0,100), density=True, color=('orange'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="ion dv")
-    plt.xlabel(r"$\Delta V$ requirement")
-    plt.ylabel("Probability Density")
-    plt.legend()
-    plt.show()
-   
-def plots_for_probability_map():
-    df = get_data()
-    plt.subplot(2,1,1)
-    plt.title("Flyby")
-    PPi, N_range, V_range = probability_map(df,False,False,1)
-    plt.subplot(2,1,2)
-    plt.title("Rendezvous")
-    PPr, _, _ = probability_map(df,True,False,2)
-
-    # Chosen N:
-    N = 150
-    idx_n = 0
-    while N_range[idx_n] < N: idx_n +=1
-
-    #flyby:
-    P_range = PPi[:,idx_n]
-    idx_v = 0
-    while P_range[idx_v] < 0.9: idx_v += 1
-    Vi = V_range[idx_v]
-
-    #rendezvous:
-    P_range = PPr[:,idx_n]
-    idx_v = 0
-    while P_range[idx_v] < 0.9: idx_v += 1
-    Vr = V_range[idx_v]
-    print(f"for 90%, intercept needs: {Vi:.4f} km/s dV and rendezvous needs: {Vr:.4f} km/s dV")
-    
-
-
-    plt.show()
 
 def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 0):
 
@@ -553,9 +381,6 @@ def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 0):
     plt.legend()
     plt.show()
         
-
-
-
 def run_in_background():
     '''run forever generating new datapoints'''
     while True: 
@@ -573,26 +398,16 @@ if __name__ == "__main__":
     # prob_needed = 0.0152 # N = 150
     prob_needed = 0.0076 # N = 300
 
-    longp_graph(df,prob_needed, LONGP_NUM)
+    # longp_graph(df,prob_needed, LONGP_NUM)
 
-    # plots_for_probability_map()
+    # plots_for_probability_map() 
+
     print(df)
-    # df = df[pd.notna(df['h_tdv'])]
-    df = df.sort_values('h_idv', ignore_index=True)
-    print(df[["h_tdv", "h_idv","h_rdv",'h_mass', "h_r", "h_ts", "h_te", 'h_rad_angle','h_rad_dv',"periapsis"]])
-
     
 
-    n_needed = int(np.floor(len(df) * prob_needed)) # 0.76% from N =300
-    assert (n_needed + 1) / prob_needed > len(df)
-    print(f'dv needed (rough): {df.iloc[n_needed]['h_idv']} --- {df.iloc[n_needed+1]['h_idv']} km/s')
-    
-    bins = max(len(df)//50,10)
+    dv_optimizer(df, 300)
+    input()
 
-
-    plt.hist(df['h_idv'],bins=bins)
-    plt.show()
-    # plot_from_row(df.iloc[1], 10*AU)
 
     run_in_background()
     

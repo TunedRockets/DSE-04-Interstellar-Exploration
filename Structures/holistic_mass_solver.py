@@ -177,16 +177,18 @@ class Hestia():
 
     def _converge(self, max_iter:int=1000):
         '''run the convergence'''
+        try:
+            for _ in range(max_iter):
 
-        for _ in range(max_iter):
+                if self._iterate():
+                    if self.verbose:
+                        print('\n!!! conversion finished !!!\n\n\n\n')
+                        print(self)
+                    return
+            else:
+                raise TimeoutError("Did not converge in time")
+        except(ValueError,ArithmeticError,TypeError): raise ValueError("Error in divergence!")  
 
-            if self._iterate():
-                if self.verbose:
-                    print('\n!!! conversion finished !!!\n\n\n\n')
-                    print(self)
-                return
-        else:
-            raise TimeoutError("Did not converge in time")
 
     def _iterate(self)->bool:
         '''runs through all iteration methods'''

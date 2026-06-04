@@ -13,6 +13,7 @@ L_SUN    = 3.828e26               # solar luminosity [W]
 c        = 2.99792458e8           # speed of light [m/s]
 SOLAR_CONST_1AU = 1361.0          # solar flux at 1 AU [W/m^2]
 YEAR     = 3.15576e7              # seconds in a Julian year
+G0       = 9.80665                # standard gravity [m/s^2]
 
 # ----------------------------------------------------------------------
 # 2. SPACECRAFT DEFINITION  (from HESTIA / RVLj midterm report)
@@ -34,6 +35,15 @@ THRUST_MISALIGN    = np.deg2rad(0.5)   # thrust-vector misalignment [rad]
 THRUST_LEVER       = HALF        # moment arm to CoM [m]
 
 SC_DIPOLE = 1.0                   # residual magnetic dipole [A m^2]
+
+# ----------------------------------------------------------------------
+# 2b. RCS / DESATURATION THRUSTER DEFINITION  (for propellant sizing)
+# ----------------------------------------------------------------------
+RCS_LEVER     = HALF              # [m] thruster moment arm to CoM (cube half-edge)
+RCS_ISP       = 30.0              # [s] specific impulse (cold-gas GN2; ~220 s if monoprop)
+RCS_COUPLE    = True              # True: opposed thruster pair (pure couple, 2 thrusters fire)
+N_DUMP_ORBITS = 3                # number of orbits over which RW momentum is dumped via RCS
+RCS_MARGIN    = 1.5               # propellant sizing margin
 
 # ----------------------------------------------------------------------
 # 3. ORBIT DEFINITION
@@ -155,6 +165,60 @@ H_slew    = I_CUBE * omega_max           # peak momentum during slew [N m s]
 slew_angle = np.deg2rad(90.0)
 slew_time  = 600.0                       # 10 minutes available [s]
 M_oberth_slew = 4.0 * slew_angle * I_CUBE / slew_time**2   # bang-bang [N m]
+
+# ----------------------------------------------------------------------
+# 6b. RCS PROPELLANT FOR MOMENTUM DUMPING (DESATURATION)
+# ----------------------------------------------------------------------
+def rcs_propellant():
+    """Cold-gas / RCS propellant to dump accumulated reaction-wheel momentum.
+
+    Momentum is removed by firing thrusters as a torque couple about the CoM.
+    For a stored angular momentum H, the linear impulse the thrusters must
+    deliver is  J = H / L  (L = moment arm). If an opposed pair fires to make
+    a pure couple, both thrusters expend propellant, so the impulse that
+    actually burns propellant is 2*J for that couple (each thruster delivers J).
+    Propellant mass follows the rocket impulse relation  m = J_total/(Isp*g0).
+
+    Two sizing cases are reported:
+      * per perihelion pass  -> H_peri_pass  (the RW sizing case)
+      * worst-case per orbit -> H_orbit      (secular, if never dumped mid-orbit)
+    plus a full-mission estimate over N_DUMP_ORBITS with margin.
+    """
+    couple_factor = 2.0 if RCS_COUPLE else 1.0   # thrusters expending propellant
+
+    def prop_for_H(H):
+        J_single = H / RCS_LEVER                  # impulse one thruster must give [N s]
+        J_total  = couple_factor * J_single       # total impulse expended [N s]
+        m        = J_total / (RCS_ISP * G0)        # propellant mass [kg]
+        return J_single, J_total, m
+
+    J1_pass, Jtot_pass, m_pass   = prop_for_H(H_peri_pass)
+    J1_orb,  Jtot_orb,  m_orbit  = prop_for_H(abs(H_orbit))
+
+    m_mission        = m_orbit * N_DUMP_ORBITS
+    m_mission_margin = m_mission * RCS_MARGIN
+
+    return {
+        "couple_factor": couple_factor,
+        "lever_m": RCS_LEVER,
+        "isp_s": RCS_ISP,
+        # per perihelion pass
+        "H_pass_Nms": H_peri_pass,
+        "impulse_per_thruster_pass_Ns": J1_pass,
+        "impulse_total_pass_Ns": Jtot_pass,
+        "prop_per_pass_kg": m_pass,
+        # per orbit (worst-case secular)
+        "H_orbit_Nms": abs(H_orbit),
+        "impulse_per_thruster_orbit_Ns": J1_orb,
+        "impulse_total_orbit_Ns": Jtot_orb,
+        "prop_per_orbit_kg": m_orbit,
+        # full mission
+        "n_dump_orbits": N_DUMP_ORBITS,
+        "prop_mission_kg": m_mission,
+        "margin": RCS_MARGIN,
+        "prop_mission_margin_kg": m_mission_margin,
+    }
+
 
 # ----------------------------------------------------------------------
 # 7. ADCS HARDWARE SELECTION LOGIC
@@ -284,6 +348,31 @@ def print_report(sel):
     for k, v in sel["pointing_budget_deg"].items():
         print(f"     {k:22s}: {v:.3f} deg")
     print(f"     {'TOTAL (RSS)':22s}: {sel['total_pointing_error_deg']:.3f} deg")
+    print(line)
+
+
+def print_rcs_report(rcs):
+    line = "=" * 70
+    print("\n[ RCS PROPELLANT FOR MOMENTUM DUMPING ]")
+    config = ("opposed pair / pure couple (2 thrusters fire)"
+              if rcs["couple_factor"] == 2.0 else "single thruster")
+    print(f"  Thruster configuration  : {config}")
+    print(f"  Moment arm (lever)      : {rcs['lever_m']:.3f} m")
+    print(f"  Specific impulse Isp    : {rcs['isp_s']:.1f} s  (cold-gas GN2)")
+    print(f"  --- per perihelion pass (RW sizing case) ---")
+    print(f"  Stored momentum H       : {rcs['H_pass_Nms']:.3e}  N m s")
+    print(f"  Impulse per thruster    : {rcs['impulse_per_thruster_pass_Ns']:.3e}  N s")
+    print(f"  Total impulse expended  : {rcs['impulse_total_pass_Ns']:.3e}  N s")
+    print(f"  Propellant per pass     : {rcs['prop_per_pass_kg']:.4f}  kg")
+    print(f"  --- per orbit (worst-case secular accumulation) ---")
+    print(f"  Stored momentum H       : {rcs['H_orbit_Nms']:.3e}  N m s")
+    print(f"  Impulse per thruster    : {rcs['impulse_per_thruster_orbit_Ns']:.3e}  N s")
+    print(f"  Total impulse expended  : {rcs['impulse_total_orbit_Ns']:.3e}  N s")
+    print(f"  Propellant per orbit    : {rcs['prop_per_orbit_kg']:.4f}  kg")
+    print(f"  --- full mission ---")
+    print(f"  Dump cycles (orbits)    : {rcs['n_dump_orbits']}")
+    print(f"  Propellant (no margin)  : {rcs['prop_mission_kg']:.3f}  kg")
+    print(f"  Propellant (x{rcs['margin']:.0f} margin) : {rcs['prop_mission_margin_kg']:.3f}  kg")
     print(line)
 
 
@@ -443,6 +532,8 @@ def run_animation(n_orbits=2.0, n_frames=360, do_oberth=True, peri_slow=6.0):
 if __name__ == "__main__":
     sel = select_adcs()
     print_report(sel)
+    rcs = rcs_propellant()
+    print_rcs_report(rcs)
     plot_disturbances()
     # Keep a reference to the animation so it isn't garbage-collected
     # while the live window is open.

@@ -11,7 +11,7 @@ from tqdm import tqdm
 import matplotlib as mpl
 # mpl.use('TkAgg')
 import matplotlib.pyplot as plt
-from Power.powerinsizeout import reactor
+from Power.powerinsizeout import reactor, reactor_energyver
 
 # ============================================================
 #                         CONSTANTS
@@ -493,7 +493,6 @@ def run_configuration(
             rendezvous_power
         )
 
-
         required_thruster_count = math.ceil(
             max(
                 plane_change_thrust,
@@ -501,7 +500,6 @@ def run_configuration(
             )
             / ion_thruster_thrust
         )
-
 
         # --------------------------------------------------------
         # Reactor / radiator
@@ -536,8 +534,33 @@ def run_configuration(
             1 + feed_system_fraction
         )
 
-        anhong_reactor_mass, anhong_reactor_mass_fuel, _  = reactor(reactor_electric_power)
+        print("power requirement:", reactor_electric_power)
 
+        payload_power = 180
+
+        comms_power = 10000
+
+        house_comms_power = 200
+
+        adcs_power = 1600
+
+        thermal_power = 573.6
+
+        transfer_duration = 8 * YEAR
+
+        waiting_duration = 10 * YEAR
+
+        observation_duration = 4 * 31 * DAY
+
+        sendback_duration = 6 * 31 * DAY
+
+        mission_duration = transfer_duration + waiting_duration + rendezvous_burn_time + observation_duration + sendback_duration
+
+        reactor_energy = rendezvous_burn_time * rendezvous_power + plane_change_power * plane_change_burn_time + (payload_power + adcs_power) * mission_duration + house_comms_power * (mission_duration-sendback_duration) + comms_power * sendback_duration 
+        
+        anhong_reactor_mass, anhong_reactor_mass_fuel  = reactor_energyver(reactor_electric_power, reactor_energy)
+
+        print("reactor bulk:", anhong_reactor_mass, "reactor fuel mass:", anhong_reactor_mass_fuel)
 
 
         # reactor_mass = max((
@@ -631,9 +654,6 @@ def run_configuration(
         + kickstage_dry_mass
     )
 
-    # print("Required power: ", reactor_electric_power / 1000, "kW")
-    # print("Required thrusters: ", required_thruster_count)
-
     if print_results:
 
         print("\n" + "=" * 80)
@@ -700,7 +720,7 @@ def run_configuration(
 
 if __name__ == "__main__":
 
-    dry_masses = np.linspace(0, 2000, 10000)
+    dry_masses = np.array([1030.1 + 528.6 + 492]) # np.linspace(0, 2000, 10000)
 
     launch_masses_thermal = []
     remaining_masses_thermal = []
@@ -778,7 +798,7 @@ if __name__ == "__main__":
                 f"Scientific Payload (Rendezvous + margin): {m_payload:10.2f} kg   ({m_payload / m_wet_actual_spacecraft * 100:.1f}%)")
 
             print(
-                f"Propulsion (incl. tanks + EP)    : {0.12*spacecraft_prop_hypergolic:10.2f} kg   ({0.12*spacecraft_prop_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")
+                f"Propulsion (incl. tanks + EP + kick)    : {spacecraft_prop_hypergolic:10.2f} kg   ({spacecraft_prop_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")
 
             print(
                 f"Power System (Reactor)                  : {reactor_hypergolic:10.2f} kg   ({reactor_hypergolic / m_wet_actual_spacecraft * 100:.1f}%)")

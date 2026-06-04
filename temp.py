@@ -1,13 +1,47 @@
-import pandas as pd
+import multiprocessing
 import numpy as np
-from src.orbit import Orbit, orbit_from_keplerian
-from src.get_ISO import get_ISO
-from src.utilities import vector_elazr, SGP_SUN, time_2_true, true_2_time, mean_2_true, true_2_mean, EQ_RAD_EARTH, SGP_EARTH
-import matplotlib.pyplot as plt
-from Trajectories.Rendezvous_dV_requirements import get_data
-import math as m
-import numpy as np
-from src.test_orbits import *
+import random
+from multiprocessing import Pool
 
-t = Borisov.time_after_periapsis_to_theta(9*31*DAY)
-print(Borisov.polar_equation(t)/AU)
+
+
+def sto()->bool:
+    x = random.random()*2 - 1
+    y = random.random()*2 - 1
+
+    return x*x + y*y < 1
+
+
+
+
+def get_frac(n:int)->float:
+    res:list[bool] = []
+    print('start')
+    for _ in range(n):
+        res.append(sto())
+    print('end')
+    return res.count(True)/len(res)
+
+def worker(queue):
+
+    n = 1000
+    frac = get_frac(n)
+    queue.put((n,frac))
+
+
+
+
+if __name__ == "__main__":
+
+
+    with Pool() as pool:
+
+        r = pool.apply_async(sto)
+
+
+        res = pool.map(get_frac, [10000 for _ in range(1000000)],chunksize=1000)
+        avg = np.average(res)
+        print(avg*4)
+
+
+    print('pool-closed')

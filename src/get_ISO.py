@@ -5,9 +5,9 @@ for further analysis, interface is the get_ISO function, rest is supporting func
 '''
 
 from lib.Synthetic_population_of_Interstellar_Objects.synthetic_population import synthetic_population
-from .orbit import Orbit
-from .utilities import SGP_SUN, AU, YEAR, root_finder_bisection
-from .examples import Earth
+from jkat import Orbit
+from jkat.utils import SUN_MU, AU, YEAR, root_finder_bisection
+from jkat import Earth
 import numpy as np
 import math as m
 from tqdm import tqdm
@@ -55,9 +55,9 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
     p = q*(1+e) * AU
     oobb = []
     for i in tqdm(range(len(q)), desc="Converting Marčeta ISOs to Keplerian orbits and determining detection time"):
-        ob = Orbit(p[i],e[i],inc[i],RAAN[i],arg_p[i],0,SGP_SUN)
+        ob = Orbit(p[i],e[i],inc[i],RAAN[i],arg_p[i],0,SUN_MU)
         # shuffle times:
-        ob.t_p = np.random.rand()*YEAR
+        ob.tp = np.random.rand()*YEAR
         # figure out detection:
         try:
             if gen_type == 'sun': # debug, always let through
@@ -125,8 +125,8 @@ def _HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     B2 = 1.218
     G = 0.15
 
-    r_e = Earth.time_to_rv(time)[0]
-    r_ob = ob.time_to_rv(time)[0]
+    r_e = Earth.t2rvec(time)
+    r_ob = ob.t2rvec(time)
     r_delta = r_ob - r_e
     au_delta = np.linalg.norm(r_delta)/AU
     au_ob = np.linalg.norm(r_ob)/AU
@@ -153,12 +153,12 @@ def _detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensit
     '''
 
     # excess magnitude (negative means detected)
-    F = lambda t: _HG_magnitude(ob,t,absolute_magnitude(ob.polar_equation(ob.time_to_theta(t)))) - sensitivity
+    F = lambda t: _HG_magnitude(ob,t,absolute_magnitude(ob.r(ob.f(t)))) - sensitivity
 
-    enter_system = ob.crosses_altitude(5*AU)
-    if enter_system is None: raise ArithmeticError("does not enter inner system")
-    e_time = ob.theta_to_time(-enter_system)
-    p_time = ob.time_to_theta(0)
+    enter_system = ob.cross_radius(5*AU)
+    if m.isnan(enter_system): raise ArithmeticError("does not enter inner system")
+    e_time = ob.t(-enter_system)
+    p_time = ob.f(0)
     
     # already detected?
     if F(e_time) < 0:
@@ -167,9 +167,9 @@ def _detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensit
         return root_finder_bisection(F,e2_time, e_time, tolerance=1) # look in outer system
     # else find detection time:
     F_low = F(p_time)
-    if not (cross_earth:=ob.crosses_altitude(AU)) is None: # check when it crosses earth
-        x1_time = ob.theta_to_time(-cross_earth)
-        x2_time = ob.time_to_theta(cross_earth)
+    if not (cross_earth:=ob.cross_radius(AU)) is None: # check when it crosses earth
+        x1_time = ob.t(-cross_earth)
+        x2_time = ob.t(cross_earth)
         x1F = F(x1_time)
         x2F = F(x2_time)
         if F_low > 0 and x1F < 0:

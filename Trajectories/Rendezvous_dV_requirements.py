@@ -8,23 +8,45 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
-from src.orbit import Orbit, trajectory_optimizer, orbit_from_lambert_transfer, plot_orbit, get_solar_system_ax
+import jkat
+from jkat import AU, YEAR, DAY
 from src.get_ISO import get_ISO
-from src.examples import Earth, Jupiter
-from src.utilities import AU, YEAR, SGP_SUN, DAY
+from src.helio_optim import helio_optim
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m
 from tqdm import tqdm
 import pandas as pd
+import multiprocessing as mp
+from functools import partial
 
 # SETTINGS:
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data" 
 PICKLE_NAME = "ISOdata.pic"
-icpt_weights = {"w_insertion":1, "w_relv": 0, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
-rdvz_weights = {"w_insertion":1, "w_relv": 1, "w_travel_time":0, "w_intercept_distance":0, "w_intercept_time":0}
+
 MAX_MISSION_TIME = 10 # [years]
+MAX_BOOST_DV = 4
+LONGP_NUM = 20
+
+
+# ap = 5.45 AU
+# pe = 10 sun radii
+# longp = 124.14 *
+# raan = 100.4 *
+# i = 1.3 *
+from jkat.utils.elements import apse2ae
+a,e = apse2ae(5.45*jkat.AU, 10*jkat.SUN_RADIUS)
+parking_orbit = jkat.orbit_from_ephemeris(
+    a, e, m.radians(1.3), 0, m.radians(124.14), m.radians(100.4), jkat.SUN_MU
+)
+
+def get_parking(longp:float)->jkat.Orbit:
+    return jkat.orbit_from_ephemeris(
+    a, e, m.radians(1.3), 0, longp, m.radians(100.4), jkat.SUN_MU
+)
+
+
 
 # === probability functions =====
 
@@ -85,6 +107,7 @@ def dv_below_budget(dv_budget:float, rdvz:bool,df:pd.DataFrame|None=None)->float
     dv = dv[dv <= dv_budget]
     return len(dv)/len(df)
 
+
 # ========== improved storage and study =============
 '''
 Instead of only storing the end result, store the generated ISO orbit and data about it, that way data can be reanalyzed, and reinterpreted
@@ -100,9 +123,10 @@ col_names = ["detection_r", "periapsis", "magnitude_generation_method", 'time_un
              "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
              "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
              "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
+             "h_turn",'h_rot', "h_idv", "h_rdv", "h_r", "h_t_launch", "h_t_arrival", 'park_longp'
              ]
 
-def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
+def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float, gen_type:str)->dict:
     '''study an ISO orbit and return data as a row to be added to a pandas table
 
     :param ISO: the generated ISO in question
@@ -116,42 +140,40 @@ def study_ISO(ISO:Orbit, detect_t:float, gen_type:str)->dict:
     :rtype: dict
     '''
     # initial data
-    detect_r = ISO.polar_equation(ISO.time_to_theta(detect_t))/AU
-    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
-           'time_until_periapsis':(ISO.t_p - detect_t)/DAY,
-             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.RAAN, "arg_p":ISO.arg_p, "t_p":ISO.t_p, 
-             "ISO_excess_velocity":ISO.excess_velocity}
-    # check detection distance/time
     
-    # intercept:
+    # check detection distance/time
+    out = {}
+
     try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), **icpt_weights)
-        out.update({
-            "icpt_idv":insert_dv, 
-            "icpt_rdv": rdvz_dv, 
-            "icpt_r": er/AU, 
-            "icpt_t_launch":(st - detect_t)/DAY, 
-            "icpt_t_arrival":(et - detect_t)/DAY
+        res = helio_optim(park, ISO, ISO.tp + MAX_MISSION_TIME*YEAR,MAX_BOOST_DV)
+        out = ({
+            'h_tdv': res['dv0'],
+            'h_idv': res['dv1'],
+            'h_rdv': res['dv2'],
+            'h_ts' : (res['ts']-detect_t)/DAY,
+            'h_te' : (res['te']-detect_t)/DAY,
+            'h_r' : res['r']/AU,
+            'h_rad_angle' : m.degrees(res['radial']),
+            'h_rad_dv': res['rad_burn'],
+            'h_max_boost' : MAX_BOOST_DV
         })
-    except (ArithmeticError,ValueError):
-        pass # no intercept :(
-    # rendezvous:
-    try:
-        insert_dv, rdvz_dv,st,et,er = trajectory_optimizer(Earth,ISO,(detect_t,detect_t+MAX_MISSION_TIME*YEAR,detect_t,detect_t+MAX_MISSION_TIME*YEAR), **rdvz_weights)
-        out.update({
-            "rdvz_idv":insert_dv, 
-            "rdvz_rdv": rdvz_dv, 
-            "rdvz_total": insert_dv + rdvz_dv,
-            "rdvz_r": er/AU, 
-            "rdvz_t_launch":(st - detect_t)/DAY, 
-            "rdvz_t_arrival":(et - detect_t)/DAY
-        })
-    except (ArithmeticError,ValueError):
-        pass # no rendezvous :(
+    except(ArithmeticError, ValueError, AssertionError): pass # no intercept :(
+
 
     return out
 
-def study_batch(gen_type:str='')->pd.DataFrame:
+def job(longp, ISO, detect_t, g_type)->dict:
+            np.seterr(all="ignore")
+            out1 = study_ISO(ISO,get_parking(longp),detect_t, g_type)
+            if out1 == {}: return {}
+            name = f"{longp:3.1f}"
+            return {
+                f'h_tdv_{name}' : out1['h_tdv'],
+                f'h_idv_{name}' : out1['h_idv'],
+                f'h_rdv_{name}' : out1['h_rdv'], 
+            }
+
+def study_batch(gen_type:str='', longp_num:int = 45)->pd.DataFrame:
     '''generate a batch of ISOs, then study each for several ranges of detect_r
     and then return the resulting dataframe
 
@@ -163,8 +185,22 @@ def study_batch(gen_type:str='')->pd.DataFrame:
     ISOs = get_ISO(gen_type=gen_type)
     # shuffle timings so that does not influence study:
     res_list= []
-    for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
-        res_list.append(study_ISO(ISO,detect_t,g_type))
+    with mp.Pool() as p:
+        for (ISO, detect_t,g_type) in tqdm(ISOs, desc=f"Studying ISOs"):
+            detect_r = ISO.r(ISO.f(detect_t))/AU
+            out = {"detection_r":detect_r, "periapsis":ISO.periapsis/AU, "magnitude_generation_method": gen_type,
+                'time_until_periapsis':(ISO.tp - detect_t)/DAY,
+                    "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
+                    "ISO_excess_velocity":ISO.vinf}
+            
+            longps = np.linspace(0,2*np.pi, longp_num)
+            pjob = partial(job, ISO=ISO, detect_t=detect_t, g_type=g_type)
+            outs = p.map(pjob,longps)
+            for o in outs:
+                out.update(o)
+
+            out.update(study_ISO(ISO,parking_orbit,detect_t,g_type))
+            res_list.append(out)
     return pd.DataFrame(res_list)
 
 def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
@@ -192,7 +228,7 @@ def get_data(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
             print('============================================')
             print(f"Generating batch {i+1} of {extra_batches}:")
             print('============================================')
-            new.append(study_batch(gen_type))
+            new.append(study_batch(gen_type, LONGP_NUM))
         data = pd.concat(new,ignore_index=True)
         # save result:
         data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
@@ -204,18 +240,21 @@ def _fix_data():
     data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # ==== change here ====
-    np.seterr(all="ignore")
-    for i,row in tqdm(data.iterrows(), desc="fixing Excess Velocity",total=len(data)):
-        # if not (row['rdvz_total'] <= 20): continue
-        ISO, _,_ = recreate_ISO(row)
-
-        data.loc[i, 'ISO_excess_velocity'] =  ISO.excess_velocity 
-
+    # # get the heliocentric values
+    # np.seterr(all="ignore")
+    # try:
+    #     for i,row in tqdm(data.iterrows(), desc="study helio",total=len(data)):
+    #         # if 'h_max_boost' in row: continue
+    #         ISO, detect_t,g_type = recreate_ISO(row)
+    #         out = study_helio(ISO,detect_t,g_type)
+    #         for key, val in out.items():
+    #             if key.startswith('h'):
+    #                 data.loc[i, key] = val
+    # finally: data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
 
     # =====================
 
-    data.to_pickle(PATH_TO_DATA / PICKLE_NAME)
-
+    
 def dv_histogram(rdvz:bool,printing:bool = False,df:pd.DataFrame|None=None, **kwargs):
     '''generate a probability density histogram of the delta v requirements
 
@@ -287,9 +326,10 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
         plt.colorbar(location="right", label=r"$P_s$")
     CS = plt.contour(PP,levels=[0.5,0.9,0.99],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]), colors='k')
     plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
-    if num < 2:
-        plt.ylabel(r'$\Delta V$ budget [km/s]')
-    plt.xlabel(r'$N$')
+    if num > 1:
+        plt.xlabel(r'$N$')
+    plt.ylabel(r'$\Delta V$ budget [km/s]')
+    
     # plt.title(f"Probability map for {"rendezvous" if rdvz else "intercept"}\nAnd estimated ISO detections during {years} year mission")
     if guesses:
         plt.axvline(EL_N,ls='--', color="gray")
@@ -302,8 +342,9 @@ def probability_map(df:pd.DataFrame, rdvz:bool, guesses:bool = True, num:int=0):
     plt.gca().set_aspect(N_range[-1]/V_range[-1])
     return PP, N_range, V_range
 
-def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
+def plot_from_row(row:pd.Series, max_r:float=m.inf):
     '''Plot a 3d representation of the values of a row, plots both rendezvous and intercept trajectories
+    get row via: df.iloc[<num>]
 
     :param ax: matplotlib axes to plot in, needs to be 3d
     :type ax: _type_
@@ -313,37 +354,35 @@ def plot_from_row(ax, row:pd.Series, max_r:float=m.inf):
     :type max_r: float, optional
     '''
 
-
-    max_r = min(max_r,max(row["icpt_r"], row["rdvz_r"]))
-
     ISO, t_detect, _ = recreate_ISO(row)
-    icpt_s = t_detect + row["icpt_t_launch"]*DAY
-    icpt_e = t_detect + row["icpt_t_arrival"]*DAY
-    rdvz_s = t_detect + row["rdvz_t_launch"]*DAY
-    rdvz_e = t_detect + row["rdvz_t_arrival"]*DAY
-    max_t = max(rdvz_e, icpt_e)
 
-    # get the intercept:
-    ICPT = orbit_from_lambert_transfer(Earth,ISO,icpt_s,icpt_e)
-    plot_orbit(ax, ICPT, (icpt_s,icpt_e), max_alt=AU*max_r + 100, label="Flyby trajectory") # slight margin on max alt
 
-    # get the rendezvouz:
-    RDVZ = orbit_from_lambert_transfer(Earth,ISO,rdvz_s,rdvz_e)
-    plot_orbit(ax, RDVZ, (rdvz_s,rdvz_e), max_alt=AU*max_r + 100, label="Rendezvous trajectory")
+    # recreate parking and helicentric
+    res = helio_optim(parking_orbit,ISO, ISO.tp + MAX_MISSION_TIME*YEAR, MAX_BOOST_DV)
+    ROT:jkat.Orbit = res['ob']
+    HELIO = jkat.orbit_from_lambert(ROT.rvec(0), ISO.t2rvec(res['te']),res['ts'],res['te'], ISO.mu)
+
+
+
 
     # plot earth, jupiter and iso:
-    plot_orbit(ax,Earth, max_t, label="Earth", color="Blue")
-    plot_orbit(ax,ISO,(t_detect, max_t), max_alt=AU*max_r + 100, label="ISO")
-    plot_orbit(ax,Jupiter, max_t, label="Jupiter", color="orange")
+    jkat.plot(ISO,t_bounds=(t_detect, res['te']), max_distance=max_r, label="ISO", color='pink')
+    jkat.add_solar_system()
+
+    # get the parking orbit:
+    jkat.plot(parking_orbit,label="parking orbit", color='gray')
+    jkat.plot(ROT,label="turned parking orbit", color='lightgray')
+    jkat.plot(HELIO, t_bounds=(res['ts'], res['te']), label="Heliocentric intercept", max_distance=max_r, color="purple")
 
     # printing:
-    print(f'intercept:\nlaunches: {row["icpt_t_launch"]:.2f} days after detection, arrives {row["icpt_t_arrival"]:.2f} days after detection at a distance of {row["icpt_r"]} AU')
-    print(f"initial delta v cost is: {row["icpt_idv"]:.2f} km/s, and relative velocity at intercept is {row['icpt_rdv']} km/s\n")
 
-    print(f'Rendezvous:\nlaunches: {row["rdvz_t_launch"]:.2f} days after detection, arrives {row["rdvz_t_arrival"]:.2f} days after detection at a distance of {row["rdvz_r"]} AU')
-    print(f"initial delta v cost is: {row["rdvz_idv"]:.2f} km/s, and relative velocity at intercept is {row['rdvz_rdv']} km/s, for a total delta v of {row["rdvz_total"]:.2f} km/s")
+    print(f'Helio:\nlaunches: {row["h_ts"]:.2f} days after detection, arrives {row["h_te"]:.2f} days after detection at a distance of {row["h_r"]} AU')
+    print(f"ion delta v cost is: {row["h_tdv"] + row['h_rdv']:.2f} km/s, and relative velocity at intercept is {row['h_rdv']:.2f} km/s, with a boost of {row['h_idv']} km/s, and turn of {row['h_tdv']} km/s")
+    plt.legend()
+    plt.show()
 
-def recreate_ISO(row:pd.Series)->tuple[Orbit,float,str]:
+
+def recreate_ISO(row:pd.Series)->tuple[jkat.Orbit,float,str]:
     '''recreate the ISO orbit, detection time, and gen_type from row
 
     :param row: _description_
@@ -354,17 +393,17 @@ def recreate_ISO(row:pd.Series)->tuple[Orbit,float,str]:
     :rtype: tuple[Orbit,float,str]
     '''
     # extract orbit:
-    ISO = Orbit(
+    ISO = jkat.Orbit(
         row['parameter'],
         row['e'],
         row['i'],
         row['RAAN'],
         row['arg_p'],
         row['t_p'],
-        SGP_SUN
+        jkat.SUN_MU
     )
     detect_r = row['detection_r']
-    t_detect = ISO.theta_to_time(-ISO.crosses_altitude(detect_r*AU)) # type:ignore
+    t_detect = ISO.t(-ISO.cross_radius(detect_r*AU)) # type:ignore
     return ISO, t_detect, row['magnitude_generation_method']
 
 
@@ -435,10 +474,10 @@ def plots_for_dv_histogram():
 
 
     df = get_data()
-    dvi = df['icpt_idv']
-    dvr = df['rdvz_total']
-    plt.hist(dvi, bins=40, range=(0,100), density=True, color=('r'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="Flyby")
-    plt.hist(dvr, bins=40, range=(0,100), density=True, color=('orange'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="Rendezvous")
+    dvi = df['h_idv']
+    dvr = df['h_ion_total']
+    plt.hist(dvi, bins=40, range=(0,100), density=True, color=('r'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="boost dv")
+    plt.hist(dvr, bins=40, range=(0,100), density=True, color=('orange'), alpha=0.65, histtype="stepfilled", edgecolor='k', label="ion dv")
     plt.xlabel(r"$\Delta V$ requirement")
     plt.ylabel("Probability Density")
     plt.legend()
@@ -446,10 +485,10 @@ def plots_for_dv_histogram():
    
 def plots_for_probability_map():
     df = get_data()
-    plt.subplot(1,2,1)
+    plt.subplot(2,1,1)
     plt.title("Flyby")
     PPi, N_range, V_range = probability_map(df,False,False,1)
-    plt.subplot(1,2,2)
+    plt.subplot(2,1,2)
     plt.title("Rendezvous")
     PPr, _, _ = probability_map(df,True,False,2)
 
@@ -475,6 +514,33 @@ def plots_for_probability_map():
 
     plt.show()
 
+def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 45):
+
+    
+
+    pp = []
+    vv = []
+    ww = []
+
+    for longp in np.linspace(0,2*np.pi, longp_num):
+        pp.append(longp)
+        name = f"{longp:3.1f}"
+        v = df[f'h_idv_{name}']
+        v = v.sort_values(ignore_index=True)
+        n = m.ceil(len(v)*fraction)
+        vreq = v[n]
+        wreq = v[n-1]
+        vv.append(vreq)
+        ww.append(wreq)
+        print(f" for {name}: number required is: {n} out of {len(v)}, corresponding to: {wreq:3.2f} --- {vreq:3.2f} km/s")
+
+    plt.polar(pp,vv, label='upper bound')
+    plt.polar(pp,ww, label='lower bound')
+    plt.title('oberth dv required per longitude of periapsis')
+    plt.legend()
+    plt.show()
+        
+
 
 
 def run_in_background():
@@ -485,32 +551,58 @@ def run_in_background():
         print(len(df))
         print('---------\n')
 
+
 # ======= plotting and analysis ========
 
 if __name__ == "__main__":
 
+    df = get_data(1)
+    # prob_needed = 0.0152 # N = 150
+    prob_needed = 0.0076 # N = 300
 
-    df = get_data()
+    longp_graph(df,prob_needed, LONGP_NUM)
 
+    # plots_for_probability_map()
+    print(df)
+    # df = df[pd.notna(df['h_tdv'])]
+    df = df.sort_values('h_idv', ignore_index=True)
+    print(df[["h_tdv", "h_idv","h_rdv", "h_r", "h_ts", "h_te", 'h_rad_angle','h_rad_dv',"periapsis"]])
 
-
-    # df = df[df["rdvz_total"] < 19.3]
-    df = df[df['icpt_idv'] < 4]
-
-    data = df['icpt_rdv']
-    plt.hist(data, density=True, bins=40)
-    print(f'average: {np.average(data):.3f}\t std: {np.std(data):.3f}\t max: {np.max(data):.3f}')
-    plt.show()
-
-
-
-
-    plots_for_iso_detection()
-    plots_for_dv_histogram()
-    plots_for_probability_map()
     
 
+    n_needed = int(np.floor(len(df) * prob_needed)) # 0.76% from N =300
+    assert (n_needed + 1) / prob_needed > len(df)
+    print(f'dv needed (rough): {df.iloc[n_needed]['h_idv']} --- {df.iloc[n_needed+1]['h_idv']} km/s')
+    
+    bins = max(len(df)//50,10)
+
+
+    plt.hist(df['h_idv'],bins=bins)
+    plt.show()
+    # plot_from_row(df.iloc[1], 10*AU)
+
     run_in_background()
+    
+
+
+
+
+
+    # # df = df[df["rdvz_total"] < 19.3]
+    # df = df[df['magnitude_generation_method'] == "Omuamua"]
+    # # df = df[df['magnitude_generation_method'] == "atlas-borisov"]
+
+
+    # data = df['detection_r']
+    # print(f'detection r: {np.average(data):.3f}')
+    # data = df['periapsis']
+    # print(f'periapsis: {np.average(data):.3f}')
+    # data = df['time_until_periapsis']
+    # print(f'time_until_periapsis: {np.average(data):.3f}')
+    # print(f'count: {len(df)}')
+
+
+
 
 
     # example of using the functions:
@@ -530,4 +622,5 @@ if __name__ == "__main__":
 
 
 
-    run_in_background()
+    # run_in_background()
+    pass

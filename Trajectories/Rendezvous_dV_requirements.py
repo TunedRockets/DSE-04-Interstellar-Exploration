@@ -146,7 +146,7 @@ def continuous_success(dv0:float, dv1:float, dv2:float, df:pd.DataFrame)->tuple[
 def discrete_success(dv0:float, dv1:float, dv2:float, df:pd.DataFrame)->tuple[float,float]:
     return _under(df,dv0,dv1,dv2)/len(df), interpolator_wrapper(dv0,dv1,dv2)
 
-def dv_optimizer(df:pd.DataFrame, N:int)->tuple[float,float,float]:
+def dv_optimizer(df:pd.DataFrame, N:int, x0:np.ndarray|None=None)->tuple[float,float,float]:
     '''get the optimal dv budget distribution for the given number'''
     Pi = 1 - (1-0.9)**(1/N) # needed individual probability
 
@@ -157,7 +157,7 @@ def dv_optimizer(df:pd.DataFrame, N:int)->tuple[float,float,float]:
         except: return np.inf
     def C(x:np.ndarray)->float:
         return discrete_success(x[0], x[1], x[2], df)[0] - Pi
-    x0 = np.array((3,4,15))
+    x0 = np.array((3,4,15)) if x0 is None else x0
 
     opt = minimize(F,x0, 
                    bounds=((0,AREA_OF_INTEREST[0]), (0,AREA_OF_INTEREST[1]), (0,AREA_OF_INTEREST[2])),
@@ -219,7 +219,7 @@ def mass_view(df:pd.DataFrame, N:int, res:int=20, plot:bool=True):
     print(f'dv0: {dv0[idx]}')
     print(f'dv1: {dv1[idx]}')
     print(f'dv2: {dv2[idx]}')
-    return;
+    return dv0[idx], dv1[idx], dv2[idx]
 
 # ========== improved storage and study =============
 '''
@@ -378,7 +378,7 @@ def plot_from_row(row:pd.Series, max_r:float=m.inf):
 
     # recreate parking and helicentric
     res = helio_optim(parking_orbit,ISO, ISO.tp + MAX_MISSION_TIME*YEAR, t_detect)
-    ROT:jkat.Orbit = res['ob']
+    ROT:jkat.Orbit = res['ob'] # type: ignore
     HELIO = jkat.orbit_from_lambert(ROT.rvec(0), ISO.t2rvec(res['te']),res['ts'],res['te'], ISO.mu)
 
 
@@ -461,10 +461,52 @@ def run_in_background():
         print('---------\n')
 
 
+def i_am_going_insane():
+    '''Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy'''
+    N = 350
+    df = study_batch_multi()
+    # df2 = study_batch_multi()
+    # df = pd.concat((df,df2),ignore_index=True)
+    try:
+        v0,v1,v2 = mass_view(df,N, plot=False)
+        v0,v1,v2 = dv_optimizer(df, N, np.array([v0,v1,v2]))
+    except:
+        try:
+            v0,v1,v2 = dv_optimizer(df, N)
+        except: v0=v1=v2=np.nan
+    try:
+        P, m = discrete_success(v0,v1,v2,df)
+    except(ValueError,ArithmeticError,AssertionError): P = 0; m = np.nan
+    P = (1-(1-P)**N)
+
+    num_oberth = len(df['type'] == 'oberth')
+    num_low = len(df['type'] == "low burn")
+    num_high = len(df['type'] == "high burn")
+
+
+    s = (f"best mass: {m:6.0f} kg, " +
+        f"success chance: {P*100:04.2f}%, " +
+        f"delta vees: {v0:04.3f}, {v1:04.3f}, {v2:04.3f} km/s," +
+        f"ISOs generated: {len(df):4}," +
+        f'oberths: {num_oberth:4}, low burns: {num_low:4}, high burns: {num_high:4},'
+        '\n'  
+    )
+    path = Path(__file__).parent / 'runs.txt'
+    with open(path, 'a') as file:
+        file.write(s)
+        print(s)
+    return
+
+
+
+
 # ======= plotting and analysis ========
 
 if __name__ == "__main__":
 
+
+    while True:
+        i_am_going_insane()
     # run_in_background()  
 
     df = get_data(15)

@@ -31,6 +31,8 @@ class IdealGas:
 # Example gasses
 
 Helium = IdealGas(2077, 5/3)
+Xenon = IdealGas(63.3, 5/3)
+Nitrogen = IdealGas(296.8, 1.4)
 
 # Constants
 

@@ -470,10 +470,10 @@ if __name__ == "__main__":
 
     df = get_data(1)
     print(len(df))
-    dfi = df[df['h_tdv'] < 4]
+    dfi = df[df['h_tdv'] < 5]
     print(f"cut tdv > 4: {len(dfi)}")
     dfi = dfi[dfi['h_idv'] < 5]
-    print(f"cut idv > 5: {len(dfi)}")
+    print(f"cut idv > 7: {len(dfi)}")
     dfi = dfi[dfi['h_rdv']<15]
     print(f"cut rdv > 15: {len(dfi)}")
     plt.hist(df['h_tdv'])

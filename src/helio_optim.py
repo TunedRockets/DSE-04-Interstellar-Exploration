@@ -15,12 +15,17 @@ def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
     return interp(np.array([dv0*1000,dv2*1000,dv1*1000]))[0]
 
 
-def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float):
+def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float):
     '''find the optimal trajectory for the heliocentric Orberth manoeuvre'''
     # interpolator = MassInterpolator()
 
+    # find apoapsis after detection:
+    apo = park.t(m.pi)
+    while apo < detect_t: apo += park.T
+
+    # find periapsis after that:
     peri = park.tp # find periapsis after ISO tp
-    while peri < ISO.tp: peri += park.T
+    while peri < apo: peri += park.T
 
     rp, vp = park.vectors(0) # parking orbit periapsis
     def F(t):
@@ -29,7 +34,6 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float
         dv2 = np.linalg.norm(vl2-vi)
 
         # construct rotation:
-        
         z = vl1.dot(rp)/rp.dot(rp) * rp
         vproj = vl1 - z
         vt = np.linalg.norm(vp) * vproj/np.linalg.norm(vproj) # same magnitude as vp

@@ -11,7 +11,6 @@ sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
 import jkat
 from jkat import AU, YEAR, DAY
-from jkat.utils.optimizers import minimizer
 from src.get_ISO import get_ISO
 from src.helio_optim import helio_optim, interpolator_wrapper
 import matplotlib.pyplot as plt
@@ -21,7 +20,8 @@ from tqdm import tqdm
 import pandas as pd
 import multiprocessing as mp
 from functools import partial
-
+from scipy.interpolate import RegularGridInterpolator
+from scipy.optimize import minimize
 # SETTINGS:
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data" 
@@ -111,30 +111,55 @@ def get_parking(longp:float)->jkat.Orbit:
 #     return len(dv)/len(df)
 
 
-def success_chance(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->tuple[float,float]:
-    '''get success chance and mass for given dv budgets'''
-    count = len(df)
+def _under(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->int:
     frac = df[df['h_tdv'] <= dv0]
     frac = frac[frac['h_idv'] <= dv1]
-    frac =frac[frac['h_rdv'] <= dv2]
-    working = len(frac)
-    m = interpolator_wrapper(dv0,dv1,dv2)
-    return working/count, m
+    frac = frac[frac['h_rdv'] <= dv2]
+    return len(frac)
 
-def dv_optimizer(df:pd.DataFrame, N:int)->tuple[float,float,float]:
+INTERPOLATOR:None|RegularGridInterpolator = None
+CONTINUOUS_NUM = 0
+AREA_OF_INTEREST = (6,6,19)
+INTERP_RESOLUTION = 20
+def _interp_setup(dfi:pd.DataFrame, N:int|None = None):
+    global CONTINUOUS_NUM, INTERPOLATOR
+    CONTINUOUS_NUM = len(dfi) if N is None else N
+    x1 = np.linspace(0,AREA_OF_INTEREST[0], INTERP_RESOLUTION)
+    x2 = np.linspace(0,AREA_OF_INTEREST[1], INTERP_RESOLUTION)
+    x3 = np.linspace(0,AREA_OF_INTEREST[2], INTERP_RESOLUTION)
+    xx1,xx2,xx3 = np.meshgrid(x1,x2,x3)
+
+    F = lambda x, y, z:  _under(dfi, x,y,z)
+
+    val = np.vectorize(F)(xx1,xx2,xx3)
+    
+    INTERPOLATOR = RegularGridInterpolator((x1,x2,x3), val, method='cubic')
+
+
+
+def continuous_success(dv0:float, dv1:float, dv2:float)->tuple[float,float]:
+    '''success chance using a more continuous method'''
+    if INTERPOLATOR is None: raise ValueError("interpolator not yet set up")
+    working = INTERPOLATOR((dv0,dv1,dv2))
+    m = interpolator_wrapper(dv0,dv1,dv2)
+    return working/CONTINUOUS_NUM, m
+
+
+def dv_optimizer(N:int)->tuple[float,float,float]:
     '''get the optimal dv budget distribution for the given number'''
     Pi = 1 - (1-0.9)**(1/N) # needed individual probability
 
     def F(x:np.ndarray)->float:
-        P, m = success_chance(df, x[0], x[1], x[2])
-        if P < Pi: return np.inf
-        else: return m
+        try:
+            P, m = continuous_success(x[0], x[1], x[2])
+            if P < Pi: return (1-P)*10_000 + 10_000
+            else: return m
+        except: return np.inf
 
     x0 = np.array((3,4,15))
-    step = np.array((0.2,0.2,0.2))
 
-    opt = minimizer(F,x0, step, max_iter=1000)
-    Popt, mopt = success_chance(df, opt[0], opt[1], opt[2])
+    opt = minimize(F,x0)
+    Popt, mopt = continuous_success(opt[0], opt[1], opt[2])
     print(f"Solution found with Pi={100*Popt:1.3f}%")
     print(f"Pu={100*(1-(1-Popt)**N):2.3f}%")
     print(f"mass of: {mopt} kg")
@@ -145,9 +170,49 @@ def dv_optimizer(df:pd.DataFrame, N:int)->tuple[float,float,float]:
 
     return opt[0], opt[1], opt[2]
 
+def mass_view(df:pd.DataFrame, res:int=20, plot:bool=True, num:int|None=None):
+    '''plot heatmap of mass for successful schematics'''
 
+    
+    dv0 = np.linspace(3,4,res)
+    dv1 = np.linspace(2,5, res)
+    dv2 = np.linspace(5,15,res)
+    dv0,dv1,dv2 = np.meshgrid(dv0,dv1,dv2)
+    dv0 = dv0.flatten(); dv1 = dv1.flatten(); dv2 = dv2.flatten()
+    mm = []
+    pp = []
+    Pi = 1 - (1-0.9)**(1/300) # needed individual probability
 
-
+    for i in tqdm(range(len(dv0)), desc="mass view"):
+        p,m = continuous_success(dv0[i],dv1[i],dv2[i])
+        if p < Pi:
+            dv0[i] = 0; dv1[i] = 0; dv2[i] = 0
+        mm.append(m)
+        pp.append(p)
+    
+    arg = dv0 > 0
+    dv0 = dv0[arg]
+    dv1 = dv1[arg]
+    dv2 = dv2[arg]
+    mm = np.array(mm)[arg]
+    pp = np.array(pp)[arg]
+    if plot:
+        print("plotting")
+        fig = plt.figure()
+        ax = fig.add_subplot(111,projection='3d')
+        scatter = ax.scatter(dv0,dv1,dv2, c=mm, cmap='PRGn') #type:ignore
+        fig.colorbar(scatter, ax=ax)
+        plt.show()
+    
+    idx = np.argmin(mm)
+    print(("rough:" if plot else "fine:"))
+    print("-------")
+    print(f'M: {mm[idx]}')
+    print(f'P: {pp[idx]}')
+    print(f'dv0: {dv0[idx]}')
+    print(f'dv1: {dv1[idx]}')
+    print(f'dv2: {dv2[idx]}')
+    return;
 
 # ========== improved storage and study =============
 '''
@@ -182,7 +247,7 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
     '''
     out = {}
     try:
-        res = helio_optim(park, ISO, ISO.tp + MAX_MISSION_TIME*YEAR,MAX_BOOST_DV)
+        res = helio_optim(park, ISO, (ISO.tp + MAX_MISSION_TIME*YEAR), detect_t)
         out = ({
             'h_tdv': res['dv0'],
             'h_idv': res['dv1'],
@@ -306,7 +371,7 @@ def plot_from_row(row:pd.Series, max_r:float=m.inf):
 
 
     # recreate parking and helicentric
-    res = helio_optim(parking_orbit,ISO, ISO.tp + MAX_MISSION_TIME*YEAR, MAX_BOOST_DV)
+    res = helio_optim(parking_orbit,ISO, ISO.tp + MAX_MISSION_TIME*YEAR, t_detect)
     ROT:jkat.Orbit = res['ob']
     HELIO = jkat.orbit_from_lambert(ROT.rvec(0), ISO.t2rvec(res['te']),res['ts'],res['te'], ISO.mu)
 
@@ -394,19 +459,28 @@ def run_in_background():
 
 if __name__ == "__main__":
 
-    df = get_data(1)
-    # prob_needed = 0.0152 # N = 150
-    prob_needed = 0.0076 # N = 300
+
+    
+
+    df = get_data()
+
+    dfi = df[df['h_tdv'] < 10]
+    dfi = dfi[dfi['h_idv'] < 10]
+    dfi = dfi[dfi['h_rdv']<20]
+    _interp_setup(dfi,len(df))
+    print(f"{len(df)=}\t {len(dfi)=}\t frac: {len(dfi)/len(df)}")
+    # input()
+    dv_optimizer(300)
 
     # longp_graph(df,prob_needed, LONGP_NUM)
 
     # plots_for_probability_map() 
 
-    print(df)
+    print(dfi)
     
-
-    dv_optimizer(df, 300)
-    input()
+    mass_view(dfi,res=40, num=len(df), plot=False)
+    
+    # input()
 
 
     run_in_background()

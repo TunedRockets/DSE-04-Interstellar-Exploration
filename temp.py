@@ -2,7 +2,7 @@ import multiprocessing
 import numpy as np
 import random
 from multiprocessing import Pool
-
+from tqdm import tqdm
 
 
 def sto()->bool:
@@ -16,10 +16,8 @@ def sto()->bool:
 
 def get_frac(n:int)->float:
     res:list[bool] = []
-    print('start')
     for _ in range(n):
         res.append(sto())
-    print('end')
     return res.count(True)/len(res)
 
 def worker(queue):
@@ -39,8 +37,13 @@ if __name__ == "__main__":
         r = pool.apply_async(sto)
 
 
-        res = pool.map(get_frac, [10000 for _ in range(1000000)],chunksize=1000)
-        avg = np.average(res)
+        res = pool.imap_unordered(get_frac, tqdm([10000 for _ in range(100000)], desc='finding pi'),chunksize=100)
+        sum = 0
+        count = 0
+        for r in res:
+            sum += r
+            count += 1
+        avg = sum/count
         print(avg*4)
 
 

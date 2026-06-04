@@ -351,14 +351,21 @@ def _single_run(args):
     )
     try:
         sc._converge()
-        total_mass = sc.total_mass
+        total_mass = sc.lo
     except:
         total_mass = np.nan
+    # print()
+    # print("Result completed!")
+    # print("i", i)
+    # print("j", j)
+    # print("k", k)
+    # print()
     print()
     print("Result completed!")
-    print("i", i)
-    print("j", j)
-    print("k", k)
+    print("dV Inclination: ", dv_inc)
+    print("dV Rendezvous: ", dv_rdvz)
+    print("dV Boost", dv_boost)
+    print("Total mass: ", total_mass)
     print()
 
     return i, j, k, total_mass
@@ -379,7 +386,7 @@ def generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost):
     # pbar = tqdm(total=len(jobs), desc="Mass DB")
 
     with Pool() as p:
-        results = p.map(_single_run, jobs,5)
+        results = tqdm(p.imap_unordered(_single_run, jobs,5), desc="Jobs completed: ", total=len(jobs))
 
         for result in results:
             i, j, k, mass = result
@@ -540,15 +547,136 @@ class MassInterpolator:
         return float(self.interp(point))
 
 
+import random
+
+
+
+def _test_mass_database(
+        data,
+        n_tests=20,
+        tolerance=1e-4
+):
+    """
+    Randomly sample grid points and verify:
+
+    1. Stored database value
+       == fresh Hestia convergence
+
+    2. Interpolator value
+       == fresh Hestia convergence
+
+    Parameters
+    ----------
+    data : loaded mass database
+    n_tests : int
+        Number of random points to test
+    tolerance : float
+        Maximum allowed mass difference [kg]
+    """
+
+    interp = MassInterpolator()
+
+    n_incl = len(data["dV_inclination"])
+    n_rdvz = len(data["dV_rdvz"])
+    n_boost = len(data["dV_boost"])
+
+    failures = []
+
+    for test_no in range(n_tests):
+
+        i = random.randrange(n_incl)
+        j = random.randrange(n_rdvz)
+        k = random.randrange(n_boost)
+
+        dv_inc = data["dV_inclination"][i]
+        dv_rdvz = data["dV_rdvz"][j]
+        dv_boost = data["dV_boost"][k]
+
+        stored = data["mass"][i, j, k]
+
+        sc = Hestia(
+            dV_inclination=dv_inc,
+            dV_rdvz=dv_rdvz,
+            dV_boost=dv_boost,
+            convergence_tolerance=1e-6
+        )
+
+        sc._converge()
+
+        rerun = sc.lower_stage_wet_mass
+
+        interpolated = interp.mass(
+            dv_inc,
+            dv_rdvz,
+            dv_boost
+        )
+
+        db_error = abs(stored - rerun)
+        interp_error = abs(interpolated - rerun)
+
+        print(
+            f"Test {test_no+1:02d} | "
+            f"(i,j,k)=({i},{j},{k}) | "
+            f"(inc, rdvz, boost)=({round(dv_inc)},{round(dv_rdvz)},{round(dv_boost)}) | "
+            f"Mass={rerun:.3f} | "
+            f"DB err={db_error:.3e} kg | "
+            f"Interp err={interp_error:.3e} kg"
+        )
+
+        if (
+            db_error > tolerance
+            or interp_error > tolerance
+        ):
+            failures.append(
+                {
+                    "ijk": (i, j, k),
+                    "stored": stored,
+                    "rerun": rerun,
+                    "interpolated": interpolated,
+                    "db_error": db_error,
+                    "interp_error": interp_error
+                }
+            )
+
+    print()
+    print("=" * 60)
+
+    if failures:
+        print(f"FAILED: {len(failures)} / {n_tests}")
+
+        for f in failures:
+            print()
+            print(f["ijk"])
+            print("stored      :", f["stored"])
+            print("rerun       :", f["rerun"])
+            print("interpolated:", f["interpolated"])
+            print("db_error    :", f["db_error"])
+            print("interp_error:", f["interp_error"])
+
+        raise AssertionError(
+            f"{len(failures)} tests exceeded tolerance"
+        )
+
+    else:
+        print(f"PASSED: {n_tests}/{n_tests}")
 
 if __name__ == "__main__":
-    SC = Hestia()
-
+    # SC = Hestia(
+    #     dV_inclination=3000,
+    #     dV_rdvz=1000,
+    #     dV_boost=5000,
+    #     verbose=True,
+    #     convergence_tolerance=0.001
+    # )
+    #
     # SC._converge()
+
     resolution = 10
     dVs_incl = np.linspace(0, 4000, resolution)
     dVs_rdvz = np.linspace(0, 17000, resolution)
     dVs_boost = np.linspace(0, 5000, resolution)
-    data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
+    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
-    plot_mass_database(data)
+    # plot_mass_database(data)
+
+    _test_mass_database(data, n_tests=10, tolerance=1e-2)

@@ -31,6 +31,8 @@ class IdealGas:
 # Example gasses
 
 Helium = IdealGas(2077, 5/3)
+Xenon = IdealGas(63.3, 5/3)
+Nitrogen = IdealGas(296.8, 1.4)
 
 # Constants
 
@@ -987,7 +989,7 @@ if __name__ == "__main__":
             P1=low_pressure * BAR,
             T3=max_reactor_temp,
             max_T1=max_radiator_temp,
-            plot=False,
+            # plot=False,
             # plot_mode="3d",
             # mass_budget=300
         )

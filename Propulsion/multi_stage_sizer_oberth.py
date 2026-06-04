@@ -1348,35 +1348,35 @@ def plot_vinf_comparison(
 if __name__ == "__main__":
     launchers = [
 
-        (VegaC_Launcher, "Vega C"),
+        # (VegaC_Launcher, "Vega C"),
 
-        (Ariane62_Launcher, "Ariane 62"),
+        # (Ariane62_Launcher, "Ariane 62"),
 
-        (Falcon9,
-         "Falcon 9"),
+        # (Falcon9,
+        #  "Falcon 9"),
 
         (Ariane64_Launcher, "Ariane 64"),
 
-        (Starship_SuperHeavy,
-         "Starship + Super Heavy"),
+        # (Starship_SuperHeavy,
+        #  "Starship + Super Heavy"),
+        #
+        # (FalconHeavy_Reusable,
+        #  "Falcon Heavy (Reusable)"),
 
-        (FalconHeavy_Reusable,
-         "Falcon Heavy (Reusable)"),
-
-        (Vulcan,
-         "Vulcan Centaur"),
-
-        (NewGlennLauncher,
-         "New Glenn"),
-
-        (FalconHeavy_Expendable,
-         "Falcon Heavy (Expendable)"),
-
-        (SLS_Block1_ICPS,
-         "SLS Block 1 (ICPS)"),
-
-        (SLS_CentaurV,
-         "SLS + Centaur V"),
+        # (Vulcan,
+        #  "Vulcan Centaur"),
+        #
+        # (NewGlennLauncher,
+        #  "New Glenn"),
+        #
+        # (FalconHeavy_Expendable,
+        #  "Falcon Heavy (Expendable)"),
+        #
+        # (SLS_Block1_ICPS,
+        #  "SLS Block 1 (ICPS)"),
+        #
+        # (SLS_CentaurV,
+        #  "SLS + Centaur V"),
     ]
 
     kickstages = [

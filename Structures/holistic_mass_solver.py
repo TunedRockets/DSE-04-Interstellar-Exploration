@@ -412,7 +412,7 @@ def generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost):
 
     return data
 
-#import plotly.graph_objects as go
+import plotly.graph_objects as go
 
 def plot_mass_database(data):
 
@@ -546,7 +546,8 @@ class MassInterpolator:
             dV_boost
         ])
 
-        return float(self.interp(point))
+        val = self.interp(point)
+        return float(np.asarray(val).squeeze())
 
 
 import random
@@ -663,15 +664,15 @@ def _test_mass_database(
         print(f"PASSED: {n_tests}/{n_tests}")
 
 if __name__ == "__main__":
-    # SC = Hestia(
-    #     dV_inclination=3000,
-    #     dV_rdvz=1000,
-    #     dV_boost=5000,
-    #     verbose=True,
-    #     convergence_tolerance=0.001
-    # )
-    #
-    # SC._converge()
+    SC = Hestia(
+        dV_inclination=5000,
+        dV_rdvz=20000,
+        dV_boost=5000,
+        verbose=True,
+        convergence_tolerance=0.001
+    )
+
+    SC._converge()
 
     resolution = 10
     dVs_incl = np.linspace(0, 4000, resolution)

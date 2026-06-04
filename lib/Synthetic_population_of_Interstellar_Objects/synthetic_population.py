@@ -274,7 +274,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
 #        new_sizes=[size]
         
     p_r=np.zeros(len(r_arr))   
-    for i in tqdm(range(len(new_sizes)), desc="1/5: Heliocentric distance"):
+    for i in range(len(new_sizes)):
     
         # p6 marginal with respect to B and phi
         p_rvlb=np.zeros([new_sizes[i], np.shape(v)[0], np.shape(v)[1], np.shape(v)[2]])
@@ -365,7 +365,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
             new_size=total_number
       
         p__rs__vs=np.zeros(total_number) # marginal w.r.t l,b,B, conditional w.r.t. rs, vs
-        for i in tqdm(range(len(new_sizes)), desc="2/5: Interstellar velocity"):
+        for i in range(len(new_sizes)):
             
             p_v_cdf=np.zeros([new_sizes[i], speed_resolution]) 
             v_vec=np.ones([new_sizes[i], speed_resolution]) 
@@ -438,7 +438,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
             new_sizes=[total_number]
             new_size=total_number
         
-        for i in tqdm(range(len(new_sizes)), desc="3/5: Longitude of interstellar velocity vector"):
+        for i in range(len(new_sizes)):
             
             vec=np.ones([new_sizes[i],  int(angle_resolution/2), angle_resolution]) 
             vs_vec=np.transpose(np.multiply(vs[indices[i]:indices[i+1]], np.transpose(vec))) 
@@ -491,7 +491,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
             new_sizes=[total_number]
             new_size=total_number
                
-        for i in tqdm(range(len(new_sizes)), desc="4/5: Latitude of interstellar velocity vector"):
+        for i in range(len(new_sizes)):
         
             ls_vec=np.transpose(np.broadcast_to(ls[indices[i]:indices[i+1]], (int(angle_resolution/2), new_sizes[i])))
             vs_vec=np.transpose(np.broadcast_to(vs[indices[i]:indices[i+1]], (int(angle_resolution/2), new_sizes[i])))
@@ -525,7 +525,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
 # =============================================================================
     
         # orthogonal base (uu, vv) in a plane normal to interstellar velocity vector
-        for i in tqdm(range(total_number), desc='5/5: Conversion to orbital elements'):
+        for i in range(total_number):
             xx=np.cos(bs[i])*np.cos(ls[i])
             yy=np.cos(bs[i])*np.sin(ls[i])
             zz=np.sin(bs[i])
@@ -599,7 +599,7 @@ def synthetic_population(T, rm, n0, v_min, v_max,
             argument_add = np.zeros(len(bs))
             
             # orthogonal base (uu, vv) in a plane normal to interstellar velocity vector
-            for i in tqdm(range(len(v_sample)), desc='6/6: Conversion to orbital elements dodatnih'):
+            for i in range(len(v_sample)):
                 xx=np.cos(bs[i])*np.cos(ls[i])
                 yy=np.cos(bs[i])*np.sin(ls[i])
                 zz=np.sin(bs[i])

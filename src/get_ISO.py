@@ -74,12 +74,21 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
     F = partial(job, gen_type=gen_type, lsst=LSST_sensitivity_magnitude)
 
     # q (periapsis) is in AU, rest is radians
-    q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
-    rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
-
-    obtuples = zip(q,e,inc,RAAN,arg_p)
-    
+    get = partial(synthetic_population, rm=rm, n0=n0, v_min=v_min, v_max=v_max, u_Sun=u_sun, v_Sun=v_sun, w_Sun=w_sun,
+                  sigma_vx=sigma_vx,sigma_vy=sigma_vy,sigma_vz=sigma_vz, vd=vd, va=va, R_reff=R_reff)
+    # q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
+    # rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
+    N = 20
     with Pool() as p:
+        q=[];e=[];inc=[];RAAN=[];arg_p=[]
+        isores = tqdm(p.imap_unordered(get, np.zeros(N)),total=N, desc='Generating Marčeta ISOs')
+        for i in isores:
+            q.extend(i[0]);e.extend(i[1]) # theta.extend(i[2])
+            inc.extend(i[3]);RAAN.extend(i[4]);arg_p.extend(i[5])
+
+        obtuples = zip(q,e,inc,RAAN,arg_p)
+    
+    
         res = filter(None,tqdm(p.imap_unordered(F, obtuples), desc="Detecting ISOs from Marčeta", total=len(q)))
         oobb = list(res)
     

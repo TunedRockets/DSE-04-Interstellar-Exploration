@@ -73,6 +73,7 @@ def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, boost_max:float
     t_opt = minimizer_1d(w,peri, max_time)
 
     res = F(t_opt)
+    res['mass'] = interpolator_wrapper(res['dv0'],res['dv1'],res['dv2']) # add mass
     return res
 
 

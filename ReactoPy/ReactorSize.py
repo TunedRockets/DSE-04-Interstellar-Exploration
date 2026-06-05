@@ -41,7 +41,7 @@ class Reactor:
         self.control_rods      = 0.0   # fraction of core volume
         self.fuel_kg           = 0.0   # kg of total fuel (pebbles)
         self.u235_kg           = 0.0   # kg of fissile U235
-        self.coolant_flow      = 0.0   # kg/s helium mass flow rate
+        # self.coolant_flow      = 0.0   # kg/s helium mass flow rate
         self.fuel_specific_energy = 0.0  # J/kg of U235
         self.core_geometry = {
                 "cylinder_radius_m": 0.0, # m Core radius
@@ -51,10 +51,11 @@ class Reactor:
         self.reflector_thickness = 0.0, # Thickness of reflector blades
         self.barrel_thickness = 0.0 # kg of barrel
         self.core_barrel_gap = 0.0 # gas gap between core (reflector) and barrel
+        self.total_mass = 0.0
 
 
 
-        self._cp_interp, self._rho_interp = self._build_interpolators(helium_data_path)
+        # self._cp_interp, self._rho_interp = self._build_interpolators(helium_data_path)
 
     # ------------------------------------------------------------------
     def _u235_specific_energy(self):
@@ -64,44 +65,44 @@ class Reactor:
         return e_per_mol / self.M_U235                              # J per kg U235
     
 
-    def _build_interpolators(self, path):
-        """
-        Load Arp table data and build 2D (T, P) interpolators for Cp and rho.
+    # def _build_interpolators(self, path):
+    #     """
+    #     Load Arp table data and build 2D (T, P) interpolators for Cp and rho.
 
-        Expected CSV format (columns):
-            temperature_K, pressure_MPa, cp_J_per_gK, rho_kg_per_m3
+    #     Expected CSV format (columns):
+    #         temperature_K, pressure_MPa, cp_J_per_gK, rho_kg_per_m3
 
-        The grid must be regular: every combination of the unique T and P
-        values must have a row (i.e. a full grid, not scattered points).
-        """
+    #     The grid must be regular: every combination of the unique T and P
+    #     values must have a row (i.e. a full grid, not scattered points).
+    #     """
 
-        df = pd.read_csv(path)
+    #     df = pd.read_csv(path)
 
-        # Extract the unique axis values (must be sorted)
-        T_vals = np.sort(df["temperature_K"].unique())     # shape (n_T,)
-        P_vals = np.sort(df["pressure_MPa"].unique())      # shape (n_P,)
+    #     # Extract the unique axis values (must be sorted)
+    #     T_vals = np.sort(df["temperature_K"].unique())     # shape (n_T,)
+    #     P_vals = np.sort(df["pressure_MPa"].unique())      # shape (n_P,)
 
-        # Pivot into 2D arrays shaped (n_T, n_P)
-        cp_grid  = (df.pivot(index="temperature_K", columns="pressure_MPa",
-                             values="cp_J_per_gK")
-                      .loc[T_vals, P_vals].values)
+    #     # Pivot into 2D arrays shaped (n_T, n_P)
+    #     cp_grid  = (df.pivot(index="temperature_K", columns="pressure_MPa",
+    #                          values="cp_J_per_gK")
+    #                   .loc[T_vals, P_vals].values)
 
-        rho_grid = (df.pivot(index="temperature_K", columns="pressure_MPa",
-                             values="rho_kg_per_m3")
-                      .loc[T_vals, P_vals].values)
+    #     rho_grid = (df.pivot(index="temperature_K", columns="pressure_MPa",
+    #                          values="rho_kg_per_m3")
+    #                   .loc[T_vals, P_vals].values)
 
-        cp_interp  = RegularGridInterpolator(
-            (T_vals, P_vals), cp_grid,
-            method="linear",
-            bounds_error=True,
-        )
-        rho_interp = RegularGridInterpolator(
-            (T_vals, P_vals), rho_grid,
-            method="linear",
-            bounds_error=True,
-        )
+    #     cp_interp  = RegularGridInterpolator(
+    #         (T_vals, P_vals), cp_grid,
+    #         method="linear",
+    #         bounds_error=True,
+    #     )
+    #     rho_interp = RegularGridInterpolator(
+    #         (T_vals, P_vals), rho_grid,
+    #         method="linear",
+    #         bounds_error=True,
+    #     )
 
-        return cp_interp, rho_interp
+    #     return cp_interp, rho_interp
 
 
     # ------------------------------------------------------------------
@@ -179,36 +180,36 @@ class Reactor:
         }
 
     # ------------------------------------------------------------------
-    def size_coolant(self):
-        """
-        He mass-flow rate from Q = mdot Cp delta_T.
-        ΔT is the rise from inlet to the required core outlet temperature.
+    # def size_coolant(self):
+    #     """
+    #     He mass-flow rate from Q = mdot Cp delta_T.
+    #     ΔT is the rise from inlet to the required core outlet temperature.
 
-        cp_helium : J/g/K from https://nvlpubs.nist.gov/nistpubs/Legacy/TN/nbstechnicalnote1334.pdf
-        rho_helium: kg/m^3 from same source
+    #     cp_helium : J/g/K from https://nvlpubs.nist.gov/nistpubs/Legacy/TN/nbstechnicalnote1334.pdf
+    #     rho_helium: kg/m^3 from same source
 
-        """
-        delta_T           = self.core_temp - self.coolant_inlet_temp
-        if delta_T <= 0:
-            raise ValueError("core_temp must exceed coolant_inlet_temp")
+    #     """
+    #     delta_T           = self.core_temp - self.coolant_inlet_temp
+    #     if delta_T <= 0:
+    #         raise ValueError("core_temp must exceed coolant_inlet_temp")
 
-        T_bulk = (self.core_temp + self.coolant_inlet_temp)/2
-        P_to_MPa     = self.operating_pressure / 1e6   # convert Pa --> MPa to match table
+    #     T_bulk = (self.core_temp + self.coolant_inlet_temp)/2
+    #     P_to_MPa     = self.operating_pressure / 1e6   # convert Pa --> MPa to match table
 
-        query     = np.array([[T_bulk, P_to_MPa]])     # shape (1, 2) as required
-        cp_helium  = float(self._cp_interp(query).item())*1000
-        rho_helium = float(self._rho_interp(query).item())
+    #     query     = np.array([[T_bulk, P_to_MPa]])     # shape (1, 2) as required
+    #     cp_helium  = float(self._cp_interp(query).item())*1000
+    #     rho_helium = float(self._rho_interp(query).item())
 
-        self.coolant_flow = self.heat_out / (cp_helium * delta_T)
+    #     self.coolant_flow = self.heat_out / (cp_helium * delta_T)
 
-        # Volumetric flow at operating density
-        vol_flow = self.coolant_flow / rho_helium
+    #     # Volumetric flow at operating density
+    #     vol_flow = self.coolant_flow / rho_helium
 
-        return {
-            "delta_T_K":            delta_T,
-            "mass_flow_kg_per_s":   self.coolant_flow,
-            "volume_flow_m3_per_s": vol_flow,
-        }
+    #     return {
+    #         "delta_T_K":            delta_T,
+    #         "mass_flow_kg_per_s":   self.coolant_flow,
+    #         "volume_flow_m3_per_s": vol_flow,
+    #     }
 
     # ------------------------------------------------------------------
     def size_control_rods(self, rod_volume_fraction=0.30):
@@ -317,18 +318,28 @@ class Reactor:
 
         return {"wall_thickness_m": t, "vessel_mass_kg": m_vessel}
 
+    # -----------------------------------------------------------------------------------------------------------------
+    def size_shield(self):
+        """
+        CONES
+        """
+
+        rho_shield = 0
+        return None
+
     # ------------------------------------------------------------------
-    def size_all(self, print_true=True):
+    def size_all(self, print_true=False):
         """Run the full sizing chain and print a summary."""
         fuel    = self.size_fuel()
         core    = self.size_core()
-        coolant = self.size_coolant()
+        # coolant = self.size_coolant()
         rods    = self.size_control_rods()
         reflector = self.size_reflector()
         barrel = self.size_core_barrel()
         vessel = self.size_pressure_vessel()
         total_mass = fuel["total_fuel_kg"] + reflector["reflector_mass_kg"] + barrel["barrel_mass_kg"] + vessel["vessel_mass_kg"]
         total_mass *= 1.1 # Margin for the stuff I missed rn
+        self.total_mass = total_mass
 
         if print_true:
             print("=" * 55)
@@ -346,11 +357,11 @@ class Reactor:
             print(f"  Core volume           : {core['core_volume_m3']:.2f} m^3")
             print(f"  Cylinder radius       : {core['cylinder_radius_m']:.2f} m")
             print(f"  Cylinder height       : {core['cylinder_height_m']:.2f} m")
-            print()
-            print(f"  -- Helium coolant --")
-            print(f"  Inlet --> outlet Delta_T     : {coolant['delta_T_K']:.0f} K")
-            print(f"  He mass flow          : {coolant['mass_flow_kg_per_s']:.4f} kg/s")
-            print(f"  He volumetric flow    : {coolant['volume_flow_m3_per_s']:.4f} m^3/s")
+            # print()
+            # print(f"  -- Helium coolant --")
+            # print(f"  Inlet --> outlet Delta_T     : {coolant['delta_T_K']:.0f} K")
+            # print(f"  He mass flow          : {coolant['mass_flow_kg_per_s']:.4f} kg/s")
+            # print(f"  He volumetric flow    : {coolant['volume_flow_m3_per_s']:.4f} m^3/s")
             print()
             print(f"  -- Control rods --")
             print(f"  Rod volume fraction   : {rods['control_rod_fraction']*100:.0f}%")
@@ -388,7 +399,8 @@ def main():
     reactorquestionmark = Reactor(1050, 1273, 190000)
     reactorquestionmark.size_all()
     haleu = Reactor(1050, 1273, 190000, enrichment=0.2, power_density=5.8e6)
-    haleu.size_all()
+    haleu.size_all(print_true=True)
+    print(haleu.total_mass)
 
 
 if __name__ == "__main__":

@@ -416,29 +416,52 @@ def generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost):
 import plotly.graph_objects as go
 
 def plot_mass_database(data):
+    """
+    Slice on inclination.
+    Axes:
+        X = rendezvous ΔV
+        Y = boost ΔV
+        Z = mass
+    Slider:
+        inclination ΔV
+    """
 
     X, Y = np.meshgrid(
         data["dV_rdvz"],
-        data["dV_boost"]
+        data["dV_boost"],
+        indexing="ij"
     )
 
     frames = []
 
     for i in range(len(data["dV_inclination"])):
-        Z = data["mass"][i, :, :]
 
-        frames.append(go.Frame(
-            data=[go.Surface(z=Z, x=X, y=Y)],
-            name=str(i)
-        ))
+        Z = data["mass"][i, :, :]   # (rdvz, boost)
 
-    # initial surface
+        frames.append(
+            go.Frame(
+                data=[
+                    go.Surface(
+                        x=X,
+                        y=Y,
+                        z=Z
+                    )
+                ],
+                name=str(i)
+            )
+        )
+
     fig = go.Figure(
-        data=[go.Surface(z=data["mass"][0], x=X, y=Y)],
+        data=[
+            go.Surface(
+                x=X,
+                y=Y,
+                z=data["mass"][0, :, :]
+            )
+        ],
         frames=frames
     )
 
-    # build slider steps
     steps = [
         dict(
             method="animate",
@@ -455,87 +478,108 @@ def plot_mass_database(data):
         for i in range(len(data["dV_inclination"]))
     ]
 
-    sliders = [
-        dict(
-            active=0,
-            currentvalue={"prefix": "Inclination ΔV: "},
-            pad={"t": 50},
-            steps=steps
-        )
-    ]
-
     fig.update_layout(
-        title="Mass vs ΔV (interactive inclination slice)",
+        title="Mass vs ΔV (inclination slice)",
         scene=dict(
-            xaxis_title="Rendezvous ΔV",
-            yaxis_title="Boost ΔV",
-            zaxis_title="Mass"
+            xaxis_title="Rendezvous ΔV [m/s]",
+            yaxis_title="Boost ΔV [m/s]",
+            zaxis_title="Mass [kg]"
         ),
-        sliders=sliders
+        sliders=[
+            dict(
+                active=0,
+                currentvalue={"prefix": "Inclination ΔV: "},
+                pad={"t": 50},
+                steps=steps
+            )
+        ]
     )
 
     fig.show()
 
 def plot_mass_database_2(data):
+    """
+    Slice on rendezvous ΔV.
+    Axes:
+        X = inclination ΔV
+        Y = boost ΔV
+        Z = mass
+    Slider:
+        rendezvous ΔV
+    """
 
     X, Y = np.meshgrid(
         data["dV_inclination"],
-        data["dV_boost"]
+        data["dV_boost"],
+        indexing="ij"
     )
 
     frames = []
 
-    for i in range(len(data["dV_rdvz"])):
-        Z = data["mass"][:, i, :]
+    for j in range(len(data["dV_rdvz"])):
 
-        frames.append(go.Frame(
-            data=[go.Surface(z=Z, x=X, y=Y)],
-            name=str(i)
-        ))
+        Z = data["mass"][:, j, :]   # (inclination, boost)
 
-    # initial surface
+        frames.append(
+            go.Frame(
+                data=[
+                    go.Surface(
+                        x=X,
+                        y=Y,
+                        z=Z
+                    )
+                ],
+                name=str(j)
+            )
+        )
+
     fig = go.Figure(
-        data=[go.Surface(z=data["mass"][0], x=X, y=Y)],
+        data=[
+            go.Surface(
+                x=X,
+                y=Y,
+                z=data["mass"][:, 0, :]
+            )
+        ],
         frames=frames
     )
 
-    # build slider steps
     steps = [
         dict(
             method="animate",
             args=[
-                [str(i)],
+                [str(j)],
                 dict(
                     mode="immediate",
                     frame=dict(duration=0, redraw=True),
                     transition=dict(duration=0)
                 )
             ],
-            label=f"{data['dV_rdvz'][i]:.0f} m/s"
+            label=f"{data['dV_rdvz'][j]:.0f} m/s"
         )
-        for i in range(len(data["dV_rdvz"]))
-    ]
-
-    sliders = [
-        dict(
-            active=0,
-            currentvalue={"prefix": "rdvz ΔV: "},
-            pad={"t": 50},
-            steps=steps
-        )
+        for j in range(len(data["dV_rdvz"]))
     ]
 
     fig.update_layout(
-        title="Mass vs ΔV (interactive rdvz slice)",
+        title="Mass vs ΔV (rendezvous slice)",
         scene=dict(
-            xaxis_title="Inclination ΔV",
-            yaxis_title="Boost ΔV",
-            zaxis_title="Mass"
+            xaxis_title="Inclination ΔV [m/s]",
+            yaxis_title="Boost ΔV [m/s]",
+            zaxis_title="Mass [kg]"
         ),
-        sliders=sliders
+        sliders=[
+            dict(
+                active=0,
+                currentvalue={"prefix": "Rendezvous ΔV: "},
+                pad={"t": 50},
+                steps=steps
+            )
+        ]
     )
 
     fig.show()
+
+
 
 from scipy.interpolate import RegularGridInterpolator
 import pickle
@@ -785,6 +829,128 @@ def _test_all_grid_points(data):
 
 
 
+def plot_interp_heatmap(
+    fixed_axis,
+    fixed_value,
+    resolution=200,
+):
+    """
+    Plot interpolated mass heatmap while fixing one DV.
+
+    fixed_axis:
+        "inclination"
+        "rdvz"
+        "boost"
+
+    fixed_value:
+        value of fixed DV [m/s]
+    """
+
+    interp = MassInterpolator()
+
+    data = load_mass_database()
+
+    inc_min = data["dV_inclination"][0]
+    inc_max = data["dV_inclination"][-1]
+
+    rdvz_min = data["dV_rdvz"][0]
+    rdvz_max = data["dV_rdvz"][-1]
+
+    boost_min = data["dV_boost"][0]
+    boost_max = data["dV_boost"][-1]
+
+    if fixed_axis == "inclination":
+
+        x = np.linspace(rdvz_min, rdvz_max, resolution)
+        y = np.linspace(boost_min, boost_max, resolution)
+
+        X, Y = np.meshgrid(x, y)
+
+        Z = np.empty_like(X)
+
+        for i in range(resolution):
+            for j in range(resolution):
+
+                Z[i, j] = interp.mass(
+                    fixed_value,
+                    X[i, j],
+                    Y[i, j]
+                )
+
+        xlabel = "Rendezvous ΔV [m/s]"
+        ylabel = "Boost ΔV [m/s]"
+        title = f"Inclination ΔV fixed = {fixed_value:.0f} m/s"
+
+    elif fixed_axis == "rdvz":
+
+        x = np.linspace(inc_min, inc_max, resolution)
+        y = np.linspace(boost_min, boost_max, resolution)
+
+        X, Y = np.meshgrid(x, y)
+
+        Z = np.empty_like(X)
+
+        for i in range(resolution):
+            for j in range(resolution):
+
+                Z[i, j] = interp.mass(
+                    X[i, j],
+                    fixed_value,
+                    Y[i, j]
+                )
+
+        xlabel = "Inclination ΔV [m/s]"
+        ylabel = "Boost ΔV [m/s]"
+        title = f"Rendezvous ΔV fixed = {fixed_value:.0f} m/s"
+
+    elif fixed_axis == "boost":
+
+        x = np.linspace(inc_min, inc_max, resolution)
+        y = np.linspace(rdvz_min, rdvz_max, resolution)
+
+        X, Y = np.meshgrid(x, y)
+
+        Z = np.empty_like(X)
+
+        for i in range(resolution):
+            for j in range(resolution):
+
+                Z[i, j] = interp.mass(
+                    X[i, j],
+                    Y[i, j],
+                    fixed_value
+                )
+
+        xlabel = "Inclination ΔV [m/s]"
+        ylabel = "Rendezvous ΔV [m/s]"
+        title = f"Boost ΔV fixed = {fixed_value:.0f} m/s"
+
+    else:
+        raise ValueError(
+            "fixed_axis must be "
+            "'inclination', 'rdvz', or 'boost'"
+        )
+
+    plt.figure(figsize=(10, 8))
+
+    pcm = plt.pcolormesh(
+        X,
+        Y,
+        Z,
+        shading="auto"
+    )
+
+    plt.colorbar(pcm, label="Mass [kg]")
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 if __name__ == "__main__":
     # SC = Hestia(
     #     dV_inclination=3000,
@@ -800,10 +966,13 @@ if __name__ == "__main__":
     dVs_incl = np.linspace(0, 3500, resolution)
     dVs_rdvz = np.linspace(0, 20000, resolution)
     dVs_boost = np.linspace(0, 7500, resolution)
-    data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
+    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
-    plot_mass_database(data)
-    plot_mass_database_2(data)
+    plot_interp_heatmap("inclination", 3000)
+    plot_interp_heatmap("rdvz", 15000)
+    plot_interp_heatmap("boost", 7500)
+    # plot_mass_database(data)
+    # plot_mass_database_2(data)
     #
     # _test_mass_database(data, n_tests=10, tolerance=1e-2)
     # _test_interpolator_no_nans(data)

@@ -250,7 +250,7 @@ if __name__ == "__main__":
 
     # _test_check_if_possible()
     longps = np.linspace(-np.pi, np.pi, longp_num)
-    df = get_data(longps, extra_batches=1)
+    df = get_data(longps, extra_batches=0)
     print()
     print("Full data frame: ")
     print()
@@ -263,4 +263,4 @@ if __name__ == "__main__":
     print(dfpos)
     print()
     plot_reachability_vs_longitude(df)
-    run_in_background()
+    # run_in_background()

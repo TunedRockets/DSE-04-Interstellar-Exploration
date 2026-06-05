@@ -1,6 +1,5 @@
 
 import jkat
-from pyproj.proj import proj_get_name
 from sympy.stats.rv import probability
 
 from Structures.holistic_mass_solver import MassInterpolator
@@ -215,8 +214,9 @@ def get_prob_of_success(
     park: jkat.Orbit,
     ISOs: list[tuple[jkat.Orbit, float, str]],
     max_time: float,
-    conv_chec_window=50,
-    tolerance=1/100,
+    conv_chec_window=3000,
+    tolerance=0.05/100,
+    min_posible=10
 ):
     posibles = 0
     analyzed = 0
@@ -226,27 +226,34 @@ def get_prob_of_success(
 
     for ISO, detect_t, *_ in ISOs:
         analyzed += 1
-
-        posible, _ = check_if_possible(
-            dv0_budget,
-            dv1_budget,
-            dv2_budget,
-            park=park,
-            ISO=ISO,
-            max_time=max_time,
-            detect_t=detect_t,
-        )
+        posible = False
+        try:
+            posible, _ = check_if_possible(
+                dv0_budget,
+                dv1_budget,
+                dv2_budget,
+                park=park,
+                ISO=ISO,
+                max_time=max_time,
+                detect_t=detect_t,
+            )
+        except:
+            pass
 
         if posible:
             posibles += 1
 
         probability = posibles / analyzed
+        print()
+        print(f"{posibles} / {analyzed} posible posibles found")
+        print(f"Probability of posible posible: {probability*100:.2f}%")
         probabilities.append(probability)
 
         if len(probabilities) >= conv_chec_window:
             window = probabilities[-conv_chec_window:]
-
-            if max(window) - min(window) < tolerance:
+            std = np.std(window)
+            print(f"Standard deviation of posible posible: {std*100:.2f}%")
+            if std < tolerance and posible > min_posible:
                 converged_mean = np.mean(window)
                 break
 

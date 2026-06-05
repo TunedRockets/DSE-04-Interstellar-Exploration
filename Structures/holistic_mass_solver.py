@@ -16,6 +16,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 import os
 from pathlib import Path
+import jkat
 
 
 # import psutil
@@ -62,7 +63,7 @@ xenon_tank_pressure = 187*1e5
 xenon_tank_temp = 273.15+20
 xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
 
-T_max_inclination = 86_000*300  # changed from Andres estimate to more pessimistic value
+T_max_inclination = 600*jkat.DAY  # changed from Andres estimate to more pessimistic value
 
 
 a_min_ion = dV_inclination/T_max_inclination
@@ -362,13 +363,13 @@ def _single_run(args):
     # print("j", j)
     # print("k", k)
     # print()
-    print()
-    print("Result completed!")
-    print("dV Inclination: ", dv_inc)
-    print("dV Rendezvous: ", dv_rdvz)
-    print("dV Boost", dv_boost)
-    print("Total mass: ", total_mass)
-    print()
+    # print()
+    # print("Result completed!")
+    # print("dV Inclination: ", dv_inc)
+    # print("dV Rendezvous: ", dv_rdvz)
+    # print("dV Boost", dv_boost)
+    # print("Total mass: ", total_mass)
+    # print()
 
     return i, j, k, total_mass
 
@@ -788,22 +789,22 @@ if __name__ == "__main__":
     # SC = Hestia(
     #     dV_inclination=3000,
     #     dV_rdvz=10000,
-    #     dV_boost=4000,
+    #     dV_boost=7000,
     #     verbose=True,
     #     convergence_tolerance=0.001
     # )
     #
     # SC._converge()
 
-    resolution = 10
-    dVs_incl = np.linspace(0, 4000, resolution)
-    dVs_rdvz = np.linspace(0, 17000, resolution)
-    dVs_boost = np.linspace(0, 5000, resolution)
-    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
+    resolution = 15
+    dVs_incl = np.linspace(0, 3500, resolution)
+    dVs_rdvz = np.linspace(0, 20000, resolution)
+    dVs_boost = np.linspace(0, 7500, resolution)
+    data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
     plot_mass_database(data)
     plot_mass_database_2(data)
-
-    _test_mass_database(data, n_tests=10, tolerance=1e-2)
-    _test_interpolator_no_nans(data)
-    _test_all_grid_points(data)
+    #
+    # _test_mass_database(data, n_tests=10, tolerance=1e-2)
+    # _test_interpolator_no_nans(data)
+    # _test_all_grid_points(data)

@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent.resolve()))
 import jkat
 from jkat import AU, YEAR, DAY
 from src.get_ISO import get_ISO, get_cached_ISOs
-from src.helio_optim import helio_optim, interpolator_wrapper, mad_optim
+from src.helio_optim import helio_optim, interpolator_wrapper, mad_optim, get_prob_of_success
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m
@@ -485,33 +485,47 @@ if __name__ == "__main__":
 
 
 
-    while True:
-        get_cached_ISOs(1)
+    # while True:
+    #     get_cached_ISOs(1)
         # i_am_going_insane()
-    # run_in_background()  
+    # run_in_background()
 
-    df = get_data(15)
-    print(len(df))
-    dfi = df[df['h_tdv'] < 5]
-    print(f"cut tdv > 4: {len(dfi)}")
-    dfi = dfi[dfi['h_idv'] < 7]
-    print(f"cut idv > 7: {len(dfi)}")
-    dfi = dfi[dfi['h_rdv']<20]
-    print(f"cut rdv > 20: {len(dfi)}")
-    plt.hist(df['h_rdv'])
-    plt.show()
+    ISOs = get_cached_ISOs(0)
+
+    dv0 = 4.5
+    dv1 = 5.0
+    dv2 = 20.0
+
+    mass = interpolator_wrapper(dv0, dv1, dv2)
 
 
-    # _interp_setup(df)
-    print(f"{len(df)=}\t {len(dfi)=}\t frac: {len(dfi)/len(df)}, \n nans: {len(df[np.isnan(df['h_mass'])])}")
-    # input()
-    dfs = df.sort_values('h_mass', ignore_index=True)
-    print(dfs[['h_mass', "h_tdv", "h_idv", "h_rdv", "h_te"]])
-    try:
-        mass_view(df,350, res=20)
-    except ValueError: pass
-    print('\n\n')
-    dv_optimizer(df, 350)
+
+    print("Found probability: ", get_prob_of_success(dv0, dv1, dv2, get_parking(np.radians(120)), ISOs, max_time=10*YEAR, min_posible=0, conv_chec_window=3000)*100, "%")
+    N=350
+    print("Needed probability: ",  (1 - (1-0.9)**(1/N))*100, "%")
+    print("Mass: ", mass)
+    # df = get_data(15)
+    # print(len(df))
+    # dfi = df[df['h_tdv'] < 5]
+    # print(f"cut tdv > 4: {len(dfi)}")
+    # dfi = dfi[dfi['h_idv'] < 7]
+    # print(f"cut idv > 7: {len(dfi)}")
+    # dfi = dfi[dfi['h_rdv']<20]
+    # print(f"cut rdv > 20: {len(dfi)}")
+    # plt.hist(df['h_rdv'])
+    # plt.show()
+    #
+    #
+    # # _interp_setup(df)
+    # print(f"{len(df)=}\t {len(dfi)=}\t frac: {len(dfi)/len(df)}, \n nans: {len(df[np.isnan(df['h_mass'])])}")
+    # # input()
+    # dfs = df.sort_values('h_mass', ignore_index=True)
+    # print(dfs[['h_mass', "h_tdv", "h_idv", "h_rdv", "h_te"]])
+    # try:
+    #     mass_view(df,350, res=20)
+    # except ValueError: pass
+    # print('\n\n')
+    # dv_optimizer(df, 350)
 
     # longp_graph(df,prob_needed, LONGP_NUM)
 
@@ -523,7 +537,7 @@ if __name__ == "__main__":
     
     # input()
 
-    run_in_background()
+    # run_in_background()
     
     
 

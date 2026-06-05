@@ -126,9 +126,9 @@ class Hestia():
 
     def __init__(
             self,
-            dV_inclination=dV_inclination,
-            dV_rdvz=dV_rdvz,
-            dV_boost=dV_boost,
+            dV_inclination:float=dV_inclination,
+            dV_rdvz:float=dV_rdvz,
+            dV_boost:float=dV_boost,
             verbose=False,
             convergence_tolerance=1e-8
     ):

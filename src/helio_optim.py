@@ -14,8 +14,10 @@ interp = M.interp
 def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
     '''wrapper to ensure it works, INPUT IS IN KM/S'''
     try:
-        return interp(np.array([dv0*1000,dv2*1000,dv1*1000]))[0]
-    except: return (dv1*5 + dv2 + dv0*7)*10_000 + 99_000
+        m = interp(np.array([dv0*1000,dv2*1000,dv1*1000]))[0]
+        if not np.isfinite(m): raise ValueError("bad interpolator result")
+        return m
+    except(ValueError): return (dv1*5 + dv2 + dv0*7)*10_000 + 170_000
 
 
 

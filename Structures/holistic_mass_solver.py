@@ -16,6 +16,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 import os
 from pathlib import Path
+import jkat
 
 
 # import psutil
@@ -62,7 +63,7 @@ xenon_tank_pressure = 187*1e5
 xenon_tank_temp = 273.15+20
 xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
 
-T_max_inclination = 86_000*300  # changed from Andres estimate to more pessimistic value
+T_max_inclination = 600*jkat.DAY  # changed from Andres estimate to more pessimistic value
 
 
 a_min_ion = dV_inclination/T_max_inclination
@@ -362,13 +363,13 @@ def _single_run(args):
     # print("j", j)
     # print("k", k)
     # print()
-    print()
-    print("Result completed!")
-    print("dV Inclination: ", dv_inc)
-    print("dV Rendezvous: ", dv_rdvz)
-    print("dV Boost", dv_boost)
-    print("Total mass: ", total_mass)
-    print()
+    # print()
+    # print("Result completed!")
+    # print("dV Inclination: ", dv_inc)
+    # print("dV Rendezvous: ", dv_rdvz)
+    # print("dV Boost", dv_boost)
+    # print("Total mass: ", total_mass)
+    # print()
 
     return i, j, k, total_mass
 
@@ -467,6 +468,67 @@ def plot_mass_database(data):
         title="Mass vs ΔV (interactive inclination slice)",
         scene=dict(
             xaxis_title="Rendezvous ΔV",
+            yaxis_title="Boost ΔV",
+            zaxis_title="Mass"
+        ),
+        sliders=sliders
+    )
+
+    fig.show()
+
+def plot_mass_database_2(data):
+
+    X, Y = np.meshgrid(
+        data["dV_inclination"],
+        data["dV_boost"]
+    )
+
+    frames = []
+
+    for i in range(len(data["dV_rdvz"])):
+        Z = data["mass"][:, i, :]
+
+        frames.append(go.Frame(
+            data=[go.Surface(z=Z, x=X, y=Y)],
+            name=str(i)
+        ))
+
+    # initial surface
+    fig = go.Figure(
+        data=[go.Surface(z=data["mass"][0], x=X, y=Y)],
+        frames=frames
+    )
+
+    # build slider steps
+    steps = [
+        dict(
+            method="animate",
+            args=[
+                [str(i)],
+                dict(
+                    mode="immediate",
+                    frame=dict(duration=0, redraw=True),
+                    transition=dict(duration=0)
+                )
+            ],
+            label=f"{data['dV_rdvz'][i]:.0f} m/s"
+        )
+        for i in range(len(data["dV_rdvz"]))
+    ]
+
+    sliders = [
+        dict(
+            active=0,
+            currentvalue={"prefix": "rdvz ΔV: "},
+            pad={"t": 50},
+            steps=steps
+        )
+    ]
+
+    fig.update_layout(
+        title="Mass vs ΔV (interactive rdvz slice)",
+        scene=dict(
+            xaxis_title="Inclination ΔV",
             yaxis_title="Boost ΔV",
             zaxis_title="Mass"
         ),
@@ -724,24 +786,25 @@ def _test_all_grid_points(data):
 
 
 if __name__ == "__main__":
-    SC = Hestia(
-        dV_inclination=3000,
-        dV_rdvz=10000,
-        dV_boost=4000,
-        verbose=True,
-        convergence_tolerance=0.001
-    )
+    # SC = Hestia(
+    #     dV_inclination=3000,
+    #     dV_rdvz=10000,
+    #     dV_boost=7000,
+    #     verbose=True,
+    #     convergence_tolerance=0.001
+    # )
+    #
+    # SC._converge()
 
-    SC._converge()
-
-    resolution = 10
-    dVs_incl = np.linspace(0, 4000, resolution)
-    dVs_rdvz = np.linspace(0, 17000, resolution)
-    dVs_boost = np.linspace(0, 5000, resolution)
-    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
+    resolution = 15
+    dVs_incl = np.linspace(0, 3500, resolution)
+    dVs_rdvz = np.linspace(0, 20000, resolution)
+    dVs_boost = np.linspace(0, 7500, resolution)
+    data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
     plot_mass_database(data)
-
-    _test_mass_database(data, n_tests=10, tolerance=1e-2)
-    _test_interpolator_no_nans(data)
-    _test_all_grid_points(data)
+    plot_mass_database_2(data)
+    #
+    # _test_mass_database(data, n_tests=10, tolerance=1e-2)
+    # _test_interpolator_no_nans(data)
+    # _test_all_grid_points(data)

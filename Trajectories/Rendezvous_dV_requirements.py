@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent.resolve()))
 import jkat
 from jkat import AU, YEAR, DAY
 from src.get_ISO import get_ISO, get_cached_ISOs
-from src.helio_optim import helio_optim, interpolator_wrapper, mad_optim
+from src.helio_optim import helio_optim, interpolator_wrapper, mad_optim, get_prob_of_success
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m
@@ -133,7 +133,7 @@ def find_best_point(df:pd.DataFrame, N:int):
     best_row = None
     best_mass = m.inf
     best_count = 0
-    
+
     for i, row in df.iterrows():
         dv0 = row['h_tdv']
         dv1 = row['h_idv']
@@ -480,8 +480,8 @@ def we_am_going_insane():
                 m = H.lower_stage_wet_mass
                 changed = True
             except: m = np.inf
-            
-        
+
+
         under = _under(df, v0,v1,v2)
         P = under/len(df)
         P = (1-(1-P)**N)

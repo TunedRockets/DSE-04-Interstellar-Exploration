@@ -1,5 +1,7 @@
 
 import jkat
+from sympy.stats.rv import probability
+
 from Structures.holistic_mass_solver import MassInterpolator
 from typing import Callable
 
@@ -204,12 +206,71 @@ def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park
         except:
             return m.inf
 
-    t_solution = minimizer_1d(w,peri, max_time)
+    t_solution = minimizer_1d(w,peri, max_time, escape_value=0.001)
     res = F(t_solution)
     # print((w(t_solution)==0))
     # print(w(t_solution))
     # print(res)
-    return (w(t_solution)==0), res
+    return (w(t_solution)<0.001), res
+
+
+def get_prob_of_success(
+    dv0_budget: float,
+    dv1_budget: float,
+    dv2_budget: float,
+    park: jkat.Orbit,
+    ISOs: list[tuple[jkat.Orbit, float, str]],
+    max_time: float,
+    conv_chec_window=3000,
+    tolerance=0.05/100,
+    min_posible=10
+):
+    posibles = 0
+    analyzed = 0
+    probabilities = []
+
+    converged_mean = None
+
+    for ISO, detect_t, *_ in ISOs:
+        analyzed += 1
+        posible = False
+        try:
+            posible, _ = check_if_possible(
+                dv0_budget,
+                dv1_budget,
+                dv2_budget,
+                park=park,
+                ISO=ISO,
+                max_time=max_time,
+                detect_t=detect_t,
+            )
+        except:
+            pass
+
+        if posible:
+            posibles += 1
+
+        probability = posibles / analyzed
+        print()
+        print(f"{posibles} / {analyzed} posible posibles found")
+        print(f"Probability of posible posible: {probability*100:.2f}%")
+        probabilities.append(probability)
+
+        if len(probabilities) >= conv_chec_window:
+            window = probabilities[-conv_chec_window:]
+            std = np.std(window)
+            print(f"Standard deviation of posible posible: {std*100:.2f}%")
+            if std < tolerance and posible > min_posible:
+                converged_mean = np.mean(window)
+                break
+
+    if converged_mean is None:
+        window = probabilities[-conv_chec_window:]
+        converged_mean = np.mean(window)
+
+    return converged_mean
+
+
 
 
 

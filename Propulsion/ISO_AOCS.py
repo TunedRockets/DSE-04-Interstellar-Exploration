@@ -25,7 +25,8 @@ Outputs
     - left  3D panel : vehicle flying around the non-uniform ISO, with the
                        LiDAR-scanned surface patches lighting up, and the final
                        descent / landing track.
-    - right panels   : live time histories of every disturbance-torque source.
+    - right panels   : live time histories of every disturbance-torque source,
+                       surface coverage / altitude, and vehicle speed.
 * Static summary figures: disturbance-torque magnitudes, surface-coverage curve,
   and the 3D survey + descent track.
 * A printed report of all valuable numbers and the resulting ADCS hardware
@@ -38,7 +39,7 @@ Run with:
 
 Requires: numpy, scipy, matplotlib  (run locally, not in a headless container).
 """
-
+import random
 import argparse
 import numpy as np
 import matplotlib
@@ -67,7 +68,7 @@ R_HELIO    = 100.0 * AU         # rendezvous heliocentric distance  [m]    (repo
 # --- Mother probe (HESTIA bus after kick-stage jettison) --------------------- #
 # Report Table 3.10: spacecraft wet mass ~2188.5 kg after the kick stage is
 # discarded; the bus is a 2 m cube (sec. 3.11.1). We use the on-station wet mass.
-PROBE_MASS   = 1500           # spacecraft wet mass at ISO        [kg]   (Table 3.10)
+PROBE_MASS   = 1500             # spacecraft wet mass at ISO        [kg]   (Table 3.10)
 PROBE_SIDE   = 2.0              # cube side length                  [m]    (sec. 3.11.1)
 PROBE_CD     = 1.4              # surface area coeff for SRP (cube faces, conservative)
 PROBE_REFL   = 0.6              # reflectivity (MLI / coatings, 0=black 1=mirror)
@@ -100,12 +101,25 @@ SK_DV_EACH    = 0.05           # delta-v per station-keeping pulse        [m/s]
 DESAT_DV_BUDGET = 0.10         # cumulative RCS delta-v for wheel desats   [m/s]
 ATT_DV_BUDGET   = 0.20         # cumulative delta-v-equivalent for attitude/RCS pulsing [m/s]
 LANDER_REL_DV   = 0.10         # probe retreat after lander release        [m/s]
-
+seed = random.randrange(100)
+seed2 = random.randrange(100)
+print(seed, seed2)
+tf = random.randrange(2)
+if tf == 0:
+    ISO_MASS = (1-(seed)/100)*ISO_MASS
+else:
+    ISO_MASS = (1+(seed)/100)*ISO_MASS
+tf2 = random.randrange(2)
+if tf2 == 0:
+    ISO_RMEAN = np.abs(1-seed2/seed)*ISO_RMEAN
+else:
+    ISO_RMEAN = np.abs(1+seed2/seed)*ISO_RMEAN
+print(ISO_MASS, ISO_RMEAN)
 
 # ============================================================================= #
 #  1.  NON-UNIFORM ISO SHAPE MODEL
 # ============================================================================= #
-def make_iso_shape(r_mean=ISO_RMEAN, n_lat=22, n_lon=44, seed=7):
+def make_iso_shape(r_mean=ISO_RMEAN, n_lat=22, n_lon=44, seed=seed):
     """
     Build a lumpy, non-uniform "potato" ISO by perturbing a sphere with a sum of
     low-order spherical-harmonic-like bumps. Returns a triangulated convex-ish
@@ -292,6 +306,10 @@ def build_probe_trajectory(iso, n_survey_orbits=3.0, survey_alt=1500.0,
     y = r_s * (np.cos(nu) * np.sin(prec) + np.sin(nu) * np.cos(incl) * np.cos(prec))
     z = r_s * (np.sin(nu) * np.sin(incl))
     survey = np.column_stack([x, y, z])
+    vx = v_s * (np.cos(nu) * np.cos(prec) - np.sin(nu) * np.cos(incl) * np.sin(prec))
+    vy = v_s * (np.cos(nu) * np.sin(prec) + np.sin(nu) * np.cos(incl) * np.cos(prec))
+    vz = v_s * (np.sin(nu) * np.sin(incl))
+    v_n = np.sqrt(vx**2 + vy**2 + vz**2)
 
     # ---- descent: spiral from survey radius to stand-off ------------------ #
     n_desc = n_pts - n_surv
@@ -314,7 +332,7 @@ def build_probe_trajectory(iso, n_survey_orbits=3.0, survey_alt=1500.0,
     pos = np.vstack([survey, descent])
     t = np.concatenate([t_surv, t_desc])
     phase = np.concatenate([np.zeros(n_surv), np.ones(n_desc)])
-    return t, pos, phase, site_dir
+    return t, pos, phase, site_dir, v_n
 
 
 def build_lander_trajectory(iso, site_dir, release_alt=200.0, n_pts=500):
@@ -433,6 +451,7 @@ RCS_THRUSTERS = [
     ("Cold-gas N2 micro (10 mN)",  0.010, 65,  "fine prox-ops, lander"),
     ("Cold-gas GN2 (0.1 N)",       0.10,  70,  "probe prox-ops / desat"),
     ("Cold-gas GN2 (1 N)",         1.0,   70,  "probe coarse / safe-mode"),
+    ("Cold-gas Xe ", 5, 30, " "),
 ]
 STAR_TRACKERS = [
     ("Sodern Auriga (multi-head)", 0.0008, "wide+narrow FOV, deep-space heritage"),
@@ -721,15 +740,17 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
     """
     Single live figure:
        - 3D panel: ISO + vehicle + scanned faces lighting up + trailing track
-       - top-right: live disturbance-torque magnitudes
-       - bottom-right: live surface coverage (probe) or altitude (lander)
+       - top-right   : live disturbance-torque magnitudes
+       - middle-right: live surface coverage (probe) or altitude (lander)
+       - bottom-right: live vehicle speed relative to the ISO
     """
     fig = plt.figure(figsize=(14, 7))
     fig.suptitle(f"HESTIA proximity operations - {vehicle_name}", fontsize=14)
 
     ax3d = fig.add_subplot(1, 2, 1, projection="3d")
-    axT = fig.add_subplot(2, 2, 2)
-    axC = fig.add_subplot(2, 2, 4)
+    axT = fig.add_subplot(3, 2, 2)
+    axC = fig.add_subplot(3, 2, 4)
+    axV = fig.add_subplot(3, 2, 6)          # NEW: velocity panel
 
     # ---- static ISO mesh -------------------------------------------------- #
     face_colors = np.tile(np.array([0.55, 0.5, 0.45, 0.9]), (len(iso.faces), 1))
@@ -779,6 +800,19 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
         axC.set_xlim(0, t[-1] / 60); axC.set_ylim(0, max(alt) * 1.05)
         (cov_line,) = axC.plot([], [], lw=2, color="tab:purple")
 
+    # ---- velocity panel (NEW) -------------------------------------------- #
+    # Speed history from the animated trajectory itself (central differences),
+    # so the curve always matches whatever the vehicle is actually doing.
+    speed = np.zeros(len(t))
+    if len(t) > 2:
+        speed[1:-1] = np.linalg.norm(pos[2:] - pos[:-2], axis=1) / (t[2:] - t[:-2])
+        speed[0], speed[-1] = speed[1], speed[-2]
+    axV.set_title("Vehicle speed (rel. to ISO)")
+    axV.set_xlabel("Time [min]"); axV.set_ylabel("Speed [m/s]")
+    axV.set_xlim(0, t[-1] / 60); axV.set_ylim(0, max(speed.max() * 1.1, 1e-3))
+    axV.grid(True, alpha=0.3)
+    (vel_line,) = axV.plot([], [], lw=2, color="tab:red")
+
     status = fig.text(0.5, 0.02, "", ha="center", fontsize=10)
 
     # animation step (subsample for speed)
@@ -792,6 +826,7 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
         for ln in dist_lines.values():
             ln.set_data([], [])
         cov_line.set_data([], [])
+        vel_line.set_data([], [])
         return ()
 
     def update(i):
@@ -822,14 +857,19 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
             cov_line.set_data(t[:i] / 60, np.array(cov_track[:i]) * 100)
             ph = "SURVEY" if phase[i] == 0 else "DESCENT (lander release)"
             status.set_text(f"t = {t[i]/60:6.1f} min   |   phase: {ph}   |   "
-                            f"coverage: {cov_track[i]*100:5.1f}%")
+                            f"coverage: {cov_track[i]*100:5.1f}%   |   "
+                            f"speed: {speed[i]:6.3f} m/s")
         else:
             ref = surface_ref if surface_ref is not None else iso.r_mean
             alt = np.linalg.norm(pos[:i], axis=1) - ref
             cov_line.set_data(t[:i] / 60, alt)
             cur_alt = np.linalg.norm(pos[i]) - ref
             status.set_text(f"t = {t[i]/60:6.1f} min   |   LANDER DESCENT   |   "
-                            f"altitude: {cur_alt:7.1f} m")
+                            f"altitude: {cur_alt:7.1f} m   |   "
+                            f"speed: {speed[i]:6.3f} m/s")
+
+        # velocity trace
+        vel_line.set_data(t[:i] / 60, speed[:i])
         return ()
 
     anim = FuncAnimation(fig, update, frames=frames, init_func=init,
@@ -870,8 +910,8 @@ def main():
     # ====================================================================== #
     #  PHASE A : MOTHER PROBE
     # ====================================================================== #
-    t_p, pos_p, phase_p, site_dir = build_probe_trajectory(iso_obj, n_pts=n_pts)
-
+    t_p, pos_p, phase_p, site_dir, v_dir = build_probe_trajectory(iso_obj, n_pts=n_pts)
+    print("---------", v_dir, "-----------")
     # LiDAR coverage over the survey
     lidar = LidarCoverage(iso_obj)
     lidar_track, cov_track = [], []

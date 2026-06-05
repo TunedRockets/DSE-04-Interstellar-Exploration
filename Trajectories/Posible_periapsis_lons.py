@@ -22,10 +22,11 @@ AU = jk.AU
 DAY = jk.DAY
 YEAR = jk.YEAR
 
-dV_inclination_b = 4.000
-dV_oberth_b = 6.000
-dV_rendezvous_b = 17.000
+dV_inclination_b = 3.500
+dV_oberth_b = 4.000
+dV_rendezvous_b = 13.000
 dv_budget = (dV_inclination_b, dV_oberth_b, dV_rendezvous_b)
+longp_num = 50
 
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data"
@@ -40,7 +41,7 @@ USER_NAME = os.getlogin()
 
 # TODO: MAKE IT TAKE A LIST OF LONG PS FOR THE WINDOW STUFF
 
-def job(ISOtuple, longp_num, dv_budget):
+def job(ISOtuple, longps, dv_budget):
 
     dv_inc, dv_oberth, dv_rendezvous = dv_budget
     ISO, detect_t, g_type = ISOtuple
@@ -51,7 +52,6 @@ def job(ISOtuple, longp_num, dv_budget):
 
     rows = []
 
-    longps = np.linspace(-np.pi, np.pi, longp_num)
 
     for longp in longps:
 
@@ -125,19 +125,19 @@ def job(ISOtuple, longp_num, dv_budget):
         return rows
 
 
-def study_batch_multi(dv_budget, gen_type='', longp_num=0):
+def study_batch_multi(dv_budget, longps, gen_type=''):
 
     ISOs = get_ISO()
-    F = partial(job, longp_num=longp_num, dv_budget=dv_budget)
+    F = partial(job, longps=longps, dv_budget=dv_budget)
 
     with mp.Pool() as p:
         res = tqdm(
             p.imap_unordered(F, ISOs),
-            desc=f"Studying ISOs, (longp_num = {longp_num})",
+            desc=f"Studying ISOs",
             total=len(ISOs)
         )
 
-        resl = list(res)   # <-- MUST be inside context
+        resl = list(res)
 
     print("Pool closed")
 
@@ -146,7 +146,7 @@ def study_batch_multi(dv_budget, gen_type='', longp_num=0):
     return pd.DataFrame(flat)
 
 
-def get_data(extra_batches: int = 0, gen_type: str = "") -> pd.DataFrame:
+def get_data(longps, extra_batches: int = 0, gen_type: str = "") -> pd.DataFrame:
     '''Get the gathered data on ISOs,
     also generate a set number of extra batches and add that to the data
 
@@ -176,7 +176,7 @@ def get_data(extra_batches: int = 0, gen_type: str = "") -> pd.DataFrame:
                 study_batch_multi(
                     dv_budget=dv_budget,
                     gen_type=gen_type,
-                    longp_num=50
+                    longps=longps
                 )
             )
         data = pd.concat(new, ignore_index=True)
@@ -249,8 +249,8 @@ def _test_check_if_possible():
 if __name__ == "__main__":
 
     # _test_check_if_possible()
-
-    df = get_data(extra_batches=1)
+    longps = np.linspace(-np.pi, np.pi, longp_num)
+    df = get_data(longps, extra_batches=1)
     print()
     print("Full data frame: ")
     print()

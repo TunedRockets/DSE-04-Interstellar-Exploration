@@ -1,5 +1,8 @@
 
 import jkat
+from pyproj.proj import proj_get_name
+from sympy.stats.rv import probability
+
 from Structures.holistic_mass_solver import MassInterpolator
 from typing import Callable
 
@@ -148,12 +151,63 @@ def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park
         except:
             return m.inf
 
-    t_solution = minimizer_1d(w,peri, max_time)
+    t_solution = minimizer_1d(w,peri, max_time, escape_value=0.001)
     res = F(t_solution)
     # print((w(t_solution)==0))
     # print(w(t_solution))
     # print(res)
-    return (w(t_solution)==0), res
+    return (w(t_solution)<0.001), res
+
+
+def get_prob_of_success(
+    dv0_budget: float,
+    dv1_budget: float,
+    dv2_budget: float,
+    park: jkat.Orbit,
+    ISOs: list[tuple[jkat.Orbit, float, str]],
+    max_time: float,
+    conv_chec_window=50,
+    tolerance=1/100,
+):
+    posibles = 0
+    analyzed = 0
+    probabilities = []
+
+    converged_mean = None
+
+    for ISO, detect_t, *_ in ISOs:
+        analyzed += 1
+
+        posible, _ = check_if_possible(
+            dv0_budget,
+            dv1_budget,
+            dv2_budget,
+            park=park,
+            ISO=ISO,
+            max_time=max_time,
+            detect_t=detect_t,
+        )
+
+        if posible:
+            posibles += 1
+
+        probability = posibles / analyzed
+        probabilities.append(probability)
+
+        if len(probabilities) >= conv_chec_window:
+            window = probabilities[-conv_chec_window:]
+
+            if max(window) - min(window) < tolerance:
+                converged_mean = np.mean(window)
+                break
+
+    if converged_mean is None:
+        window = probabilities[-conv_chec_window:]
+        converged_mean = np.mean(window)
+
+    return converged_mean
+
+
 
 
 

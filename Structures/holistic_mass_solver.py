@@ -475,6 +475,67 @@ def plot_mass_database(data):
 
     fig.show()
 
+def plot_mass_database_2(data):
+
+    X, Y = np.meshgrid(
+        data["dV_inclination"],
+        data["dV_boost"]
+    )
+
+    frames = []
+
+    for i in range(len(data["dV_rdvz"])):
+        Z = data["mass"][:, i, :]
+
+        frames.append(go.Frame(
+            data=[go.Surface(z=Z, x=X, y=Y)],
+            name=str(i)
+        ))
+
+    # initial surface
+    fig = go.Figure(
+        data=[go.Surface(z=data["mass"][0], x=X, y=Y)],
+        frames=frames
+    )
+
+    # build slider steps
+    steps = [
+        dict(
+            method="animate",
+            args=[
+                [str(i)],
+                dict(
+                    mode="immediate",
+                    frame=dict(duration=0, redraw=True),
+                    transition=dict(duration=0)
+                )
+            ],
+            label=f"{data['dV_rdvz'][i]:.0f} m/s"
+        )
+        for i in range(len(data["dV_rdvz"]))
+    ]
+
+    sliders = [
+        dict(
+            active=0,
+            currentvalue={"prefix": "rdvz ΔV: "},
+            pad={"t": 50},
+            steps=steps
+        )
+    ]
+
+    fig.update_layout(
+        title="Mass vs ΔV (interactive rdvz slice)",
+        scene=dict(
+            xaxis_title="Inclination ΔV",
+            yaxis_title="Boost ΔV",
+            zaxis_title="Mass"
+        ),
+        sliders=sliders
+    )
+
+    fig.show()
+
 from scipy.interpolate import RegularGridInterpolator
 import pickle
 
@@ -724,15 +785,15 @@ def _test_all_grid_points(data):
 
 
 if __name__ == "__main__":
-    SC = Hestia(
-        dV_inclination=3000,
-        dV_rdvz=10000,
-        dV_boost=4000,
-        verbose=True,
-        convergence_tolerance=0.001
-    )
-
-    SC._converge()
+    # SC = Hestia(
+    #     dV_inclination=3000,
+    #     dV_rdvz=10000,
+    #     dV_boost=4000,
+    #     verbose=True,
+    #     convergence_tolerance=0.001
+    # )
+    #
+    # SC._converge()
 
     resolution = 10
     dVs_incl = np.linspace(0, 4000, resolution)
@@ -741,6 +802,7 @@ if __name__ == "__main__":
     # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
     plot_mass_database(data)
+    plot_mass_database_2(data)
 
     _test_mass_database(data, n_tests=10, tolerance=1e-2)
     _test_interpolator_no_nans(data)

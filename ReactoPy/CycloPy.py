@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 from Power.powerinsizeout import reactor_thermal
 from matplotlib.patches import Patch
+from ReactorSize import Reactor
 
 # import matplotlib as mpl
 # mpl.use('tkagg')
@@ -630,9 +631,10 @@ def evaluate_system(
         sol["T1"]
     )
 
-    reactor_mass, fuel_mass = reactor_thermal(sol['q_in']*mdot)
+    reactor = Reactor(sol["T2"],sol["T3"], sol["q_in"]*mdot, operating_pressure=sol["P3"])
 
-    m_reactor = reactor_mass + fuel_mass
+    m_reactor = reactor.size_all(print_true=False)
+
 
     total = m_comp + m_turb + m_rad + m_alternator + m_reactor
 

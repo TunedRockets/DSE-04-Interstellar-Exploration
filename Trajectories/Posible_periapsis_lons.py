@@ -38,6 +38,8 @@ PICKLE_NAME = PICKLE_NAME + budget_suffix(dv_budget)
 
 USER_NAME = os.getlogin()
 
+# TODO: MAKE IT TAKE A LIST OF LONG PS FOR THE WINDOW STUFF
+
 def job(ISOtuple, longp_num, dv_budget):
 
     dv_inc, dv_oberth, dv_rendezvous = dv_budget

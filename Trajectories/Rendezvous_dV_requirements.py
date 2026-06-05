@@ -138,23 +138,25 @@ def find_best_point(df:pd.DataFrame, N:int):
         dv0 = row['h_tdv']
         dv1 = row['h_idv']
         dv2 = row['h_rdv']
-        slice = df[df["h_tdv"] <= dv0]
-        slice = slice[slice["h_idv"] <= dv1]
-        slice = slice[slice["h_rdv"] <= dv2]
+        slice = df.loc[
+            (df["h_tdv"] <= dv0) &
+            (df["h_idv"] <= dv1) &
+            (df["h_rdv"] <= dv2)
+        ]
         slice_count = len(slice)
-        if slice_count < needed and (not best_row is None): pass # better working model
-        elif slice_count < needed:
-            # best is none, compare counts then mass
-            if slice_count >= best_count:
-                # improve guess if mass is better:
-                if row['h_mass'] <= best_mass:
-                    best_mass = row['h_mass']
-                    best_row = row
-                    best_count = slice_count
-        else:
+
+        if slice_count > needed:
             if row['h_mass'] < best_mass:
-                best_mass = row['h_mass']
-                best_row = row
+                best_row = row; best_mass = row['h_mass']
+            continue
+        # else not enough:
+        if slice_count >= best_count:
+            best_count = slice_count
+            if row['h_mass'] < best_mass:
+                best_row = row; best_mass = row['h_mass']
+            continue
+        # else just bad:
+        continue
     return best_row
 
 
@@ -450,8 +452,10 @@ def we_am_going_insane():
     N = 350
     # df = get_data(1)
     df = study_batch_multi()
-    df2 = study_batch_multi()
-    df = pd.concat((df,df2), ignore_index=True)
+    for i in range(10):
+        print(f"batch: {i}")
+        df2 = study_batch_multi()
+        df = pd.concat((df,df2), ignore_index=True)
     print("interesting fraction:")
     dfi = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
     dfi = dfi[dfi["h_idv"] <= AREA_OF_INTEREST[1]]

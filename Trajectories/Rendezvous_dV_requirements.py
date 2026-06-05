@@ -118,7 +118,64 @@ def _under(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->int:
     frac = frac[frac['h_rdv'] <= dv2]
     return len(frac)
 
-def find_best_point(df:pd.DataFrame, N:int):
+
+def find_best_point(df:pd.DataFrame, N:int)->tuple[float,float,float,float]:
+
+    count = len(df)
+    Pi = 1 - (1-0.9)**(1/N) # needed individual probability
+    needed = np.floor(count*Pi) #TODO: change to ceil for more accuracy
+    
+
+    df = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
+    df = df[df["h_idv"] <= AREA_OF_INTEREST[1]]
+    df = df[df["h_rdv"] <= AREA_OF_INTEREST[2]]
+
+    
+
+    ISOdv0 = np.array(df['h_tdv'])
+    ISOdv1 = np.array(df['h_idv'])
+    ISOdv2 = np.array(df['h_rdv'])
+
+    actualISOs = np.column_stack((ISOdv0,ISOdv1,ISOdv2))
+
+
+    ISOdv0.sort(); ISOdv1.sort(); ISOdv2.sort()
+    max_possible = len(df)
+    if max_possible < needed:
+        print("NOT POSSIBLE WITH 90%!!!")
+        return ISOdv0[-1], ISOdv1[-1], ISOdv2[-1], interpolator_wrapper(ISOdv0[-1], ISOdv1[-1], ISOdv2[-1])
+
+    get_count = lambda v0,v1,v2: len(actualISOs[
+            (actualISOs[:,0] <= v0) &
+            (actualISOs[:,1] <= v1) &
+            (actualISOs[:,2] <= v2)
+    ])
+
+    point_list = []
+    for i in ISOdv2[::-1]:
+        for j in ISOdv1[::-1]:
+            for k in ISOdv0[::-1]:
+
+                if get_count(k,j,i) >= needed: point_list.append((i,j,k))
+                else: pass
+    
+    best_point = point_list[0]
+    best_mass = np.inf
+
+    for point in point_list:
+        m = interpolator_wrapper(point[0], point[1], point[2])
+        if m < best_mass:
+            best_point = point; best_mass = m
+    
+    return *best_point, best_mass
+
+
+    
+
+
+
+
+def find_best_point_old(df:pd.DataFrame, N:int):
 
     count = len(df)
     Pi = 1 - (1-0.9)**(1/N) # needed individual probability
@@ -136,8 +193,10 @@ def find_best_point(df:pd.DataFrame, N:int):
     vv2 = np.array(df['h_rdv'])
     vv0,vv1,vv2 = np.meshgrid(vv0,vv1,vv2)
     vv0 = vv0.flatten(); vv1 = vv1.flatten(); vv2 = vv2.flatten()
-
     points = np.column_stack((vv0,vv1,vv2))
+
+    # exclude points.
+    # all points with n < needed 
 
     best_point = None
     best_mass = np.inf
@@ -147,7 +206,7 @@ def find_best_point(df:pd.DataFrame, N:int):
         dv0 = point[0]
         dv1 = point[1]
         dv2 = point[2]
-        m = interpolator_wrapper(dv0,dv1,dv2)
+        
         slice = df.loc[
             (df["h_tdv"] <= dv0) &
             (df["h_idv"] <= dv1) &
@@ -156,13 +215,13 @@ def find_best_point(df:pd.DataFrame, N:int):
         slice_count = len(slice)
 
         if slice_count > needed:
-            if m < best_mass:
+            if (m := interpolator_wrapper(dv0,dv1,dv2)) < best_mass:
                 best_point = point; best_mass = m
             continue
         # else not enough:
         if slice_count >= best_count:
             best_count = slice_count
-            if m < best_mass:
+            if (m := interpolator_wrapper(dv0,dv1,dv2)) < best_mass:
                 best_point = point; best_mass = m
             continue
         # else just bad:
@@ -463,10 +522,10 @@ def we_am_going_insane():
     N = 350
     # df = get_data(1)
     df = study_batch_multi()
-    for i in range(1):
-        print(f"batch: {i}")
-        df2 = study_batch_multi()
-        df = pd.concat((df,df2), ignore_index=True)
+    # for i in range(10):
+    #     print(f"batch: {i}")
+    #     df2 = study_batch_multi()
+    #     df = pd.concat((df,df2), ignore_index=True)
     print("interesting fraction:")
     dfi = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
     dfi = dfi[dfi["h_idv"] <= AREA_OF_INTEREST[1]]

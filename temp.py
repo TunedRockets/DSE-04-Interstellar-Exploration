@@ -32,19 +32,6 @@ def worker(queue):
 if __name__ == "__main__":
 
 
-    with Pool() as pool:
-
-        r = pool.apply_async(sto)
-
-
-        res = pool.imap_unordered(get_frac, tqdm([10000 for _ in range(100000)], desc='finding pi'),chunksize=100)
-        sum = 0
-        count = 0
-        for r in res:
-            sum += r
-            count += 1
-        avg = sum/count
-        print(avg*4)
-
+    print(list([]))
 
     print('pool-closed')

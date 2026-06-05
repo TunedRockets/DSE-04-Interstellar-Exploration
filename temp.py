@@ -7,26 +7,35 @@ import matplotlib.pyplot as plt
 
 
 
-def argmax(x, key):
-    return max(enumerate(x), key=lambda x: key(x[1]))[0]
+def argymax(x:list[np.ndarray]): # argmax for the y coordinate
+    idx = 0
+    maxx = 0
+    for i, p in enumerate(x):
+        if p[1] > maxx: maxx = p[1]; idx = i
+    return idx
+
 
 if __name__ == "__main__":
 
     N = 5000
-    C = 22
+    C = N // 10
     points = np.random.random((N,2)) # points inside (1,1)
 
     points = points[np.argsort(points[:,0])] # sort by x
-
+    epsilon = 1e-8
     count = lambda p: len(points[
-            (points[:,0] <= p[0]) &
-            (points[:,1] <= p[1])
+            (points[:,0] <= p[0]+ epsilon) &
+            (points[:,1] <= p[1]+ epsilon)
     ])
 
     interior = list(points[:C]) # points inside the fence
-    maxy = argmax(interior, key=lambda x: x[1]) # max y index
+    maxy = argymax(interior) # max y index
 
     corners = [] # list of corners (the thing we want)
+
+    # first point is special case:
+    pf = points[C-1]
+    corners.append(np.array((pf[0],interior[maxy][1])))
 
     for i in range(C,N):
         p = points[i]
@@ -34,7 +43,7 @@ if __name__ == "__main__":
 
         interior.pop(maxy) # get rid of highest
         interior.append(p)
-        maxy = argmax(interior, key=lambda x: x[1]) # max y index
+        maxy = argymax(interior) # max y index
         # if (interior[maxy] == p).all(): continue # no corner
         corners.append(np.array((p[0],interior[maxy][1])))
 
@@ -44,7 +53,10 @@ if __name__ == "__main__":
     print(f"{len(points)=}\t{len(corners)=}")
     plt.scatter(points[:,0],points[:,1],label="points")
     corners = np.array(corners)
-    plt.scatter(corners[:,0],corners[:,1], marker='x', label="corners")
+    if corners.shape == (1,2):
+        plt.scatter(corners[0,0],corners[0,1], marker='x', label="corners")
+    else:
+        plt.scatter(corners[:,0],corners[:,1], marker='x', label="corners")
     plt.legend()
     plt.show()
 

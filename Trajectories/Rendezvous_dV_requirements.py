@@ -22,15 +22,16 @@ import multiprocessing as mp
 from functools import partial
 from scipy.interpolate import RegularGridInterpolator
 from scipy.optimize import minimize
+from Structures.holistic_mass_solver import Hestia
 # SETTINGS:
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data" 
 PICKLE_NAME = "ISOdata"
 USER_NAME = os.getlogin()
 
-MAX_MISSION_TIME = 10 # [years]
+MAX_MISSION_TIME = 20 # [years]
 LONGP_NUM = 0
-AREA_OF_INTEREST = (4,7,20)
+AREA_OF_INTEREST = (4,5,17)
 EMERGENCY_SITUATION = False
 VINF = 8.5 # + 0.577 
 # ap = 5.45 AU
@@ -131,6 +132,7 @@ def find_best_point(df:pd.DataFrame, N:int):
 
     best_row = None
     best_mass = m.inf
+    best_count = 0
     
     for i, row in df.iterrows():
         dv0 = row['h_tdv']
@@ -140,10 +142,19 @@ def find_best_point(df:pd.DataFrame, N:int):
         slice = slice[slice["h_idv"] <= dv1]
         slice = slice[slice["h_rdv"] <= dv2]
         slice_count = len(slice)
-        if slice_count < needed: continue
-        if row['h_mass'] < best_mass:
-            best_mass = row['h_mass']
-            best_row = row
+        if slice_count < needed and (not best_row is None): pass # better working model
+        elif slice_count < needed:
+            # best is none, compare counts then mass
+            if slice_count >= best_count:
+                # improve guess if mass is better:
+                if row['h_mass'] <= best_mass:
+                    best_mass = row['h_mass']
+                    best_row = row
+                    best_count = slice_count
+        else:
+            if row['h_mass'] < best_mass:
+                best_mass = row['h_mass']
+                best_row = row
     return best_row
 
 
@@ -236,11 +247,9 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
             'h_mass': res['mass'],
             'h_ts' : (res['ts']-detect_t)/DAY,
             'h_te' : (res['te']-detect_t)/DAY,
-            'h_r' : res['r']/AU,
-            'h_rad_angle' : m.degrees(res['radial']),
-            'h_rad_dv': res['rad_burn']
+            'h_r' : res['r']/AU
         })
-    except(ArithmeticError, ValueError, AssertionError): pass # no intercept :(
+    except(ArithmeticError, ValueError, AssertionError, KeyError): pass # no intercept :(
 
 
     return out
@@ -283,10 +292,7 @@ def study_batch_multi(gen_type:str='', longp_num:int=0)->pd.DataFrame:
     with mp.Pool() as p:
     
         res = tqdm(p.imap_unordered(F, ISOs), desc=f"Studying ISOs, (longp_num = {longp_num})", total=len(ISOs))
-        for i in res:
-            resl.append(i)
-
-    print("Pool closed")
+        resl = list(res)
     return pd.DataFrame(resl)
     
 
@@ -439,15 +445,18 @@ def run_in_background():
         print('---------\n')
 
 
-def i_am_going_insane():
+def we_am_going_insane():
     '''Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy'''
     N = 350
     # df = get_data(1)
     df = study_batch_multi()
+    df2 = study_batch_multi()
+    df = pd.concat((df,df2), ignore_index=True)
     print("interesting fraction:")
     dfi = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
     dfi = dfi[dfi["h_idv"] <= AREA_OF_INTEREST[1]]
     dfi = dfi[dfi["h_rdv"] <= AREA_OF_INTEREST[2]]
+    print(dfi[['h_tdv','h_idv','h_rdv','h_mass']])
 
     print(f" {len(dfi)} / {len(df)} = {len(dfi)/len(df)}")
 
@@ -458,6 +467,16 @@ def i_am_going_insane():
         v1 = point['h_idv']
         v2 = point['h_rdv']
         m = point['h_mass']
+        changed = False
+        # get accurate mass:
+        if v0 > AREA_OF_INTEREST[0] or v1 > AREA_OF_INTEREST[1] or v2 > AREA_OF_INTEREST[2]:
+            try:
+                H = Hestia(v0*1000, v2*1000, v1*1000, False,0.001)
+                H._converge()
+                m = H.lower_stage_wet_mass
+                changed = True
+            except: m = np.inf
+            
         
         under = _under(df, v0,v1,v2)
         P = under/len(df)
@@ -465,7 +484,7 @@ def i_am_going_insane():
 
         s = 'D:' if EMERGENCY_SITUATION else ''
 
-        s += (f"best mass: {m:6.0f} kg, " +
+        s += (f"best mass: {m:6.0f}  " + ('*' if changed else "") + "kg," +
             f"success chance: {P*100:04.2f}%, " +
             f"delta vees: {v0:04.3f}, {v1:04.3f}, {v2:04.3f} km/s," +
             f"ISOs generated: {len(df):4},"
@@ -486,8 +505,8 @@ if __name__ == "__main__":
 
 
     while True:
-        get_cached_ISOs(1)
-        # i_am_going_insane()
+        # get_cached_ISOs(1)
+        we_am_going_insane()
     # run_in_background()  
 
     df = get_data(15)

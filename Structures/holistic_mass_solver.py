@@ -306,7 +306,9 @@ class Hestia():
         if self.verbose:
             print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
             print(f'thermal power: {thermal_power:5.1f} W')
+            print(f'electric power: {Preq:5.1f} W')
             print(f'radiator mass: {radiator_mass:5.1f} kg')
+            print(f'reactor mass: {reactor_mass:5.1f} kg')
             print(f'radiator area: {radiator_mass/areal_density:5.1f} m2')
 
         self.Power_provided = Preq
@@ -952,15 +954,15 @@ def plot_interp_heatmap(
 
 
 if __name__ == "__main__":
-    # SC = Hestia(
-    #     dV_inclination=3000,
-    #     dV_rdvz=10000,
-    #     dV_boost=7000,
-    #     verbose=True,
-    #     convergence_tolerance=0.001
-    # )
-    #
-    # SC._converge()
+    SC = Hestia(
+        dV_inclination=3000,
+        dV_rdvz=10000,
+        dV_boost=5000,
+        verbose=True,
+        convergence_tolerance=0.001
+    )
+
+    SC._converge()
 
     resolution = 15
     dVs_incl = np.linspace(0, 3500, resolution)

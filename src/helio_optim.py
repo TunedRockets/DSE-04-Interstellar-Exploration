@@ -24,40 +24,44 @@ def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
 def mad_optim(ISO:jkat.Orbit, max_time:float, detect_t:float, vinf:float):
 
     def F(t):
-        '''manually for own weighting'''
-        t1 = t[0]; t2 = t[1]
-        r1, v1 = jkat.Earth.t2vectors(t1)
-        r2, v2 = ISO.t2vectors(t2)
-        vl1,vl2 = jkat.trajectories.lambert(r1,r2,t2-t1,ISO.mu, True)
-        va1, va2 = jkat.trajectories.lambert(r1,r2, t2-t1, ISO.mu, False)
-        dvl1 = np.linalg.norm(v1-vl1) - vinf
-        dvl1 = max(dvl1,0)
-        dvl2 = np.linalg.norm(v2-vl2)
-        lmass = interpolator_wrapper(0,dvl1,dvl2) #type: ignore
+        try:
+            '''manually for own weighting'''
+            t1 = t[0]; t2 = t[1]
+            r1, v1 = jkat.Earth.t2vectors(t1)
+            r2, v2 = ISO.t2vectors(t2)
+            try: vl1,vl2 = jkat.trajectories.lambert(r1,r2,t2-t1,ISO.mu, True)
+            except: vl1=vl2=np.array([np.inf,np.inf,np.inf])
+            try: va1, va2 = jkat.trajectories.lambert(r1,r2, t2-t1, ISO.mu, False)
+            except: va1=va2=np.array([np.inf,np.inf,np.inf])
+            dvl1 = np.linalg.norm(v1-vl1) - vinf
+            dvl1 = max(dvl1,0)
+            dvl2 = np.linalg.norm(v2-vl2)
+            lmass = interpolator_wrapper(0,dvl1,dvl2) #type: ignore
 
-        dva1 = np.linalg.norm(v1-va1) - vinf
-        dva1 = max(dva1,0)
-        dva2 = np.linalg.norm(v2-va2)
-        amass = interpolator_wrapper(0,dva1,dva2)#type: ignore
-        if lmass < amass:
-            return {
-            "ts": t1,
-            "te": t2,
-            'dv0': 0,
-            "dv1": dvl1,
-            "dv2": dvl2,
-            'r': np.linalg.norm(r2),
-            'mass': lmass
-        }
-        else: return {
-            "ts": t1,
-            "te": t2,
-            'dv0': 0,
-            "dv1": dva1,
-            "dv2": dva2,
-            'r': np.linalg.norm(r2),
-            'mass': amass
-        }
+            dva1 = np.linalg.norm(v1-va1) - vinf
+            dva1 = max(dva1,0)
+            dva2 = np.linalg.norm(v2-va2)
+            amass = interpolator_wrapper(0,dva1,dva2)#type: ignore
+            if lmass < amass:
+                return {
+                "ts": t1,
+                "te": t2,
+                'dv0': 0,
+                "dv1": dvl1,
+                "dv2": dvl2,
+                'r': np.linalg.norm(r2),
+                'mass': lmass
+            }
+            else: return {
+                "ts": t1,
+                "te": t2,
+                'dv0': 0,
+                "dv1": dva1,
+                "dv2": dva2,
+                'r': np.linalg.norm(r2),
+                'mass': amass
+            }
+        except: return {'dv0':m.inf, 'dv1': m.inf, 'dv2': m.inf, 'mass': m.inf}
     
     def w(t): 
         try: return F(t)['mass']
@@ -65,7 +69,8 @@ def mad_optim(ISO:jkat.Orbit, max_time:float, detect_t:float, vinf:float):
 
     x0 = np.array(((ISO.tp + ISO.tp + jkat.YEAR)/2, (ISO.tp + jkat.YEAR + ISO.tp + 2*jkat.YEAR)/2))
     topt = minimize(w, x0, bounds=((detect_t,max_time), (detect_t, max_time)))
-    return F(topt)
+    if topt.success: return F(topt.x)
+    else: return {}
     
 
 def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float):

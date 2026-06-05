@@ -240,3 +240,134 @@ no valid points
 no valid points
 best mass: 725097 kg, success chance: 89.45%, delta vees: 3.195, 4.351, 18.487 km/s,ISOs generated: 1717,
 no valid points
+no valid points
+D:best mass: 576355 kg, success chance: 90.52%, delta vees: 0.000, 6.430, 15.584 km/s,ISOs generated: 1938,
+no valid points
+D:best mass: 588609 kg, success chance: 88.95%, delta vees: 0.000, 6.660, 15.662 km/s,ISOs generated: 1913,
+D:best mass: 595221 kg, success chance: 90.74%, delta vees: 0.000, 6.722, 16.011 km/s,ISOs generated: 1919,
+no valid points
+no valid points
+D:best mass: 489226 kg, success chance: 91.47%, delta vees: 0.000, 6.510, 6.475 km/s,ISOs generated: 1427,
+no valid points
+D:best mass: 496034 kg, success chance: 96.15%, delta vees: 0.000, 6.680, 6.303 km/s,ISOs generated: 1403,
+D:best mass: 489226 kg, success chance: 93.69%, delta vees: 0.000, 6.510, 6.475 km/s,ISOs generated: 1399,
+no valid points
+no valid points
+D:best mass: 557897 kg, success chance: 96.04%, delta vees: 0.000, 6.877, 11.506 km/s,ISOs generated: 3268,
+D:best mass: 472514 kg, success chance: 92.45%, delta vees: 0.000, 6.366, 5.522 km/s,ISOs generated: 3263,
+D:best mass: 552976 kg, success chance: 92.90%, delta vees: 0.000, 6.741, 11.693 km/s,ISOs generated: 3321,
+D:best mass: 476006 kg, success chance: 92.23%, delta vees: 0.000, 6.435, 5.527 km/s,ISOs generated: 3300,
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+best mass:   3426 kg, success chance: 10.46%, delta vees: 0.172, 2.541, 11.637 km/s,ISOs generated: 3167,
+best mass:   2872 kg, success chance: 10.42%, delta vees: 0.283, 2.051, 11.029 km/s,ISOs generated: 3182,
+best mass:   3410 kg, success chance: 10.57%, delta vees: 0.985, 2.438, 11.817 km/s,ISOs generated: 3135,
+best mass:   5452 kg, success chance: 10.21%, delta vees: 2.516, 2.867, 16.533 km/s,ISOs generated: 3250,
+best mass:   5074 kg, success chance: 10.28%, delta vees: 2.494, 2.763, 16.313 km/s,ISOs generated: 3228,
+best mass:   5223 kg, success chance: 10.09%, delta vees: 1.267, 3.302, 10.484 km/s,ISOs generated: 3291,
+best mass:   3953 kg, success chance: 47.07%, delta vees: 1.378, 2.878, 8.991 km/s,ISOs generated: 3304,
+best mass:  13361 kg, success chance: 16.73%, delta vees: 2.894, 4.567, 8.719 km/s,ISOs generated: 3824,
+best mass:  12840 kg, success chance: 8.89%, delta vees: 2.896, 4.535, 8.610 km/s,ISOs generated: 3762,
+best mass: 737884 kg, success chance: 36.92%, delta vees: 3.319, 6.990, 5.710 km/s,ISOs generated: 3800,
+best mass:   7345 kg, success chance: 64.25%, delta vees: 3.312, 3.303, 17.000 km/s,ISOs generated: 3748,
+best mass:   3107 kg, success chance: 8.84%, delta vees: 3.276, 2.315, 4.463 km/s,ISOs generated: 3780,
+best mass:   2810 kg, success chance: 8.79%, delta vees: 3.276, 2.095, 3.288 km/s,ISOs generated: 3805,
+TT best mass:   4474 kg, success chance: 9.61%, delta vees: 0.475, 2.670, 9.228 km/s,ISOs generated: 3466,
+TT best mass: 846911 kg, success chance: 54.91%, delta vees: 2.296, 8.877, 18.929 km/s,ISOs generated: 3079,
+TT best mass: 706430 kg, success chance: 20.29%, delta vees: 1.887, 8.916, 6.728 km/s,ISOs generated: 3088,
+TT best mass: 849164 kg, success chance: 74.36%, delta vees: 2.540, 8.972, 17.457 km/s,ISOs generated: 3092,
+TT best mass: 501657 kg, success chance: 10.77%, delta vees: 1.879, 5.591, 2.919 km/s,ISOs generated: 3071,
+TT best mass: 910719 kg, success chance: 43.52%, delta vees: 0.863, 11.466, 19.527 km/s,ISOs generated: 3066,
+TT best mass: 910719 kg, success chance: 37.22%, delta vees: 0.863, 11.466, 19.527 km/s,ISOs generated: 3009,
+TT best mass: 706430 kg, success chance: 20.56%, delta vees: 1.887, 8.916, 6.728 km/s,ISOs generated: 3042,
+TT best mass: 871976 kg, success chance: 82.04%, delta vees: 2.305, 9.501, 18.270 km/s,ISOs generated: 3065,
+best mass:   3365 kg, success chance: 11.17%, delta vees: 3.179, 2.595, 3.575 km/s,ISOs generated: 2955,
+best mass:   5458 kg, success chance: 11.28%, delta vees: 3.179, 3.431, 4.752 km/s,ISOs generated: 2924,
+best mass:   3288 kg, success chance: 11.29%, delta vees: 3.179, 2.535, 3.434 km/s,ISOs generated: 2923,
+best mass:   3365 kg, success chance: 11.28%, delta vees: 3.179, 2.595, 3.575 km/s,ISOs generated: 2926,
+no valid points
+best mass:   3427 kg, success chance: 11.50%, delta vees: 3.179, 2.645, 3.678 km/s,ISOs generated: 2865,
+best mass:   3365 kg, success chance: 11.43%, delta vees: 3.179, 2.595, 3.575 km/s,ISOs generated: 2885,
+no valid points
+best mass:   4155 kg, success chance: 11.35%, delta vees: 3.179, 2.987, 4.197 km/s,ISOs generated: 2905,
+no valid points
+best mass:   5458 kg, success chance: 10.99%, delta vees: 3.179, 3.431, 4.752 km/s,ISOs generated: 3006,
+best mass:   5239 kg, success chance: 11.41%, delta vees: 3.179, 3.371, 4.681 km/s,ISOs generated: 2890,
+no valid points
+best mass:   3432 kg, success chance: 11.20%, delta vees: 3.183, 2.646, 3.733 km/s,ISOs generated: 2948,
+best mass:  15657 kg, success chance: 11.23%, delta vees: 2.465, 4.342, 16.959 km/s,ISOs generated: 2940,
+no valid points
+best mass:   3432 kg, success chance: 30.34%, delta vees: 3.183, 2.646, 3.733 km/s,ISOs generated: 2906,
+no valid points
+no valid points
+no valid points
+no valid points
+no valid points
+best mass:   3432 kg, success chance: 11.43%, delta vees: 3.183, 2.646, 3.733 km/s,ISOs generated: 2884,
+no valid points
+best mass:   3378 kg, success chance: 11.45%, delta vees: 3.195, 2.592, 3.832 km/s,ISOs generated: 2878,
+best mass:   3432 kg, success chance: 11.50%, delta vees: 3.183, 2.646, 3.733 km/s,ISOs generated: 2866,
+no valid points
+best mass:   3552 kg, success chance: 11.41%, delta vees: 3.179, 2.746, 3.846 km/s,ISOs generated: 2889,
+no valid points
+no valid points
+no valid points
+best mass:   5845 kg, success chance: 11.23%, delta vees: 3.227, 3.502, 5.884 km/s,ISOs generated: 2938,
+best mass: 569364 kg, success chance: 26.67%, delta vees: 0.015, 7.037, 11.744 km/s,ISOs generated: 3387,
+best mass:   4119 kg, success chance: 18.69%, delta vees: 3.314, 2.897, 6.637 km/s,ISOs generated: 3384,
+best mass: 733257 kg, success chance: 63.89%, delta vees: 0.433, 8.441, 18.191 km/s,ISOs generated: 3441,
+best mass: 521157 kg, success chance: 46.22%, delta vees: 0.430, 5.145, 13.477 km/s,ISOs generated: 3389,
+best mass:   3174 kg, success chance: 9.91%, delta vees: 0.002, 2.528, 7.823 km/s,ISOs generated: 3353,
+best mass: 666385 kg, success chance: 40.98%, delta vees: 0.447, 8.824, 9.485 km/s,ISOs generated: 3321,
+best mass: 690753 kg, success chance: 71.17%, delta vees: 0.447, 8.440, 13.849 km/s,ISOs generated: 3383,
+best mass: 561071 kg, success chance: 9.86%, delta vees: 0.432, 7.621, 5.075 km/s,ISOs generated: 3373,
+best mass: 961031 kg, success chance: 84.17%, delta vees: 3.281, 8.799, 19.241 km/s,ISOs generated: 3427,
+=== 20 years: ===
+best mass:   1883 kg, success chance: 10.59%, delta vees: 1.550, 1.164, 10.219 km/s,ISOs generated: 3127,
+best mass: 619707 kg, success chance: 36.33%, delta vees: 1.420, 4.533, 19.461 km/s,ISOs generated: 3103,
+best mass: 531511 kg, success chance: 10.53%, delta vees: 1.387, 2.898, 19.049 km/s,ISOs generated: 3147,
+best mass:   5870 kg, success chance: 10.71%, delta vees: 1.393, 3.196, 17.000 km/s,ISOs generated: 3089,
+best mass:   3247 kg, success chance: 10.62%, delta vees: 1.432, 2.096, 14.767 km/s,ISOs generated: 3118,
+best mass:   1883 kg, success chance: 10.65%, delta vees: 1.550, 1.164, 10.219 km/s,ISOs generated: 3109,
+best mass: 547366 kg, success chance: 10.59%, delta vees: 1.381, 3.058, 19.882 km/s,ISOs generated: 3127,
+best mass:   5870 kg, success chance: 10.51%, delta vees: 1.393, 3.196, 17.000 km/s,ISOs generated: 3154,
+best mass:   2732 kg, success chance: 10.54%, delta vees: 1.466, 1.706, 12.604 km/s,ISOs generated: 3142,
+best mass: 531511 kg, success chance: 10.40%, delta vees: 1.387, 2.898, 19.049 km/s,ISOs generated: 3189,
+best mass: 606601 kg, success chance: 10.58%, delta vees: 1.416, 4.402, 18.839 km/s,ISOs generated: 3131,
+best mass:   2444 kg, success chance: 10.47%, delta vees: 1.488, 1.524, 11.674 km/s,ISOs generated: 3164,
+best mass:   3654 kg, success chance: 10.75%, delta vees: 1.418, 2.302, 15.943 km/s,ISOs generated: 3079,
+best mass:   3247 kg, success chance: 10.69%, delta vees: 1.432, 2.096, 14.767 km/s,ISOs generated: 3096,
+best mass:   3728 kg, success chance: 10.65%, delta vees: 1.416, 2.327, 16.084 km/s,ISOs generated: 3109,
+best mass: 531511 kg, success chance: 10.48%, delta vees: 1.387, 2.898, 19.049 km/s,ISOs generated: 3161,
+best mass: 547366 kg, success chance: 10.67%, delta vees: 1.381, 3.058, 19.882 km/s,ISOs generated: 3101,
+best mass:   4723 kg, success chance: 10.61%, delta vees: 1.400, 2.684, 17.000 km/s,ISOs generated: 3122,
+best mass:   1015  *kg,success chance: 90.56%, delta vees: 3.211, 4.781, 13.100 km/s,ISOs generated: 3274,
+best mass:    inf  kg,success chance: 83.98%, delta vees: 1.035, 7.982, 13.391 km/s,ISOs generated: 3449,
+best mass:    inf  kg,success chance: 76.76%, delta vees: 1.035, 6.928, 10.464 km/s,ISOs generated: 3365,
+best mass:    inf  kg,success chance: 33.51%, delta vees: 1.034, 6.877, 10.159 km/s,ISOs generated: 3433,
+best mass:    inf  kg,success chance: 93.48%, delta vees: 1.035, 7.926, 13.281 km/s,ISOs generated: 3346,
+best mass:    inf  kg,success chance: 40.11%, delta vees: 1.034, 6.877, 10.159 km/s,ISOs generated: 3416,
+best mass:    inf  kg,success chance: 9.73%, delta vees: 0.950, 6.816, 7.706 km/s,ISOs generated: 3419,
+best mass:  40053  *kg,success chance: 9.79%, delta vees: 1.789, 5.298, 13.277 km/s,ISOs generated: 3396,
+best mass:    inf  kg,success chance: 89.88%, delta vees: 1.904, 7.373, 19.434 km/s,ISOs generated: 3372,
+best mass:    inf  kg,success chance: 94.41%, delta vees: 1.904, 7.373, 19.434 km/s,ISOs generated: 3291,
+best mass: 388435  kg,success chance: 10.62%, delta vees: 0.048, 5.269, 2.260 km/s,ISOs generated: 3119,

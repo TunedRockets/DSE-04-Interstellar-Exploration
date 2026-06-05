@@ -43,7 +43,7 @@ RCS_LEVER     = HALF              # [m] thruster moment arm to CoM (cube half-ed
 RCS_ISP       = 30.0              # [s] specific impulse (cold-gas GN2; ~220 s if monoprop)
 RCS_COUPLE    = True              # True: opposed thruster pair (pure couple, 2 thrusters fire)
 N_DUMP_ORBITS = 3                # number of orbits over which RW momentum is dumped via RCS
-RCS_MARGIN    = 1.5               # propellant sizing margin
+RCS_MARGIN    = 1.5              # propellant sizing margin
 
 # ----------------------------------------------------------------------
 # 3. ORBIT DEFINITION
@@ -224,7 +224,7 @@ def rcs_propellant():
 # 7. ADCS HARDWARE SELECTION LOGIC
 # ----------------------------------------------------------------------
 def select_adcs():
-    margin = 2.0
+    margin = 1.5
     req_cont_torque = peak["Environmental_total"] * margin
     req_slew_torque = max(M_slew, M_oberth_slew) * margin
     req_momentum    = max(H_peri_pass, H_slew) * margin

@@ -18,6 +18,7 @@ import pickle
 from pathlib import Path
 
 LSST_sensitivity_magnitude = 24.38
+# LSST_sensitivity_magnitude = 28
 
 
 

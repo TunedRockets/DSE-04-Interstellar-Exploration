@@ -32,6 +32,8 @@ def worker(queue):
 if __name__ == "__main__":
 
 
-    print(list([]))
-
+    for x in range(100000000):
+        print(f"Progress {x}", end="\r")
+        
+    print('\n')
     print('pool-closed')

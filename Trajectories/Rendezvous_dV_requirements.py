@@ -29,9 +29,9 @@ PATH_TO_DATA = Path(__file__).parent.parent / "data"
 PICKLE_NAME = "ISOdata"
 USER_NAME = os.getlogin()
 
-MAX_MISSION_TIME = 20 # [years]
+MAX_MISSION_TIME = 10 # [years]
 LONGP_NUM = 0
-AREA_OF_INTEREST = (4,5,17)
+AREA_OF_INTEREST = (4,7,17)
 EMERGENCY_SITUATION = False
 VINF = 8.5 # + 0.577 
 # ap = 5.45 AU
@@ -130,14 +130,24 @@ def find_best_point(df:pd.DataFrame, N:int):
     df = df[df["h_idv"] <= AREA_OF_INTEREST[1]]
     df = df[df["h_rdv"] <= AREA_OF_INTEREST[2]]
 
-    best_row = None
-    best_mass = m.inf
+
+    vv0 = np.array(df['h_tdv'])
+    vv1 = np.array(df['h_idv'])
+    vv2 = np.array(df['h_rdv'])
+    vv0,vv1,vv2 = np.meshgrid(vv0,vv1,vv2)
+    vv0 = vv0.flatten(); vv1 = vv1.flatten(); vv2 = vv2.flatten()
+
+    points = np.column_stack((vv0,vv1,vv2))
+
+    best_point = None
+    best_mass = np.inf
     best_count = 0
 
-    for i, row in df.iterrows():
-        dv0 = row['h_tdv']
-        dv1 = row['h_idv']
-        dv2 = row['h_rdv']
+    for point in tqdm(points, desc="find best point"):
+        dv0 = point[0]
+        dv1 = point[1]
+        dv2 = point[2]
+        m = interpolator_wrapper(dv0,dv1,dv2)
         slice = df.loc[
             (df["h_tdv"] <= dv0) &
             (df["h_idv"] <= dv1) &
@@ -146,18 +156,19 @@ def find_best_point(df:pd.DataFrame, N:int):
         slice_count = len(slice)
 
         if slice_count > needed:
-            if row['h_mass'] < best_mass:
-                best_row = row; best_mass = row['h_mass']
+            if m < best_mass:
+                best_point = point; best_mass = m
             continue
         # else not enough:
         if slice_count >= best_count:
             best_count = slice_count
-            if row['h_mass'] < best_mass:
-                best_row = row; best_mass = row['h_mass']
+            if m < best_mass:
+                best_point = point; best_mass = m
             continue
         # else just bad:
         continue
-    return best_row
+    if best_point is None: return None
+    return best_point[0], best_point[1], best_point[2], best_mass
 
 
 # def mass_view(df:pd.DataFrame, N:int, res:int=20, plot:bool=True):
@@ -452,7 +463,7 @@ def we_am_going_insane():
     N = 350
     # df = get_data(1)
     df = study_batch_multi()
-    for i in range(10):
+    for i in range(1):
         print(f"batch: {i}")
         df2 = study_batch_multi()
         df = pd.concat((df,df2), ignore_index=True)
@@ -467,10 +478,10 @@ def we_am_going_insane():
     point = find_best_point(df, N)
     if point is None: s = 'no valid points'
     else:
-        v0 = point['h_tdv']
-        v1 = point['h_idv']
-        v2 = point['h_rdv']
-        m = point['h_mass']
+        v0 = point[0]
+        v1 = point[1]
+        v2 = point[2]
+        m = point[3]
         changed = False
         # get accurate mass:
         if v0 > AREA_OF_INTEREST[0] or v1 > AREA_OF_INTEREST[1] or v2 > AREA_OF_INTEREST[2]:

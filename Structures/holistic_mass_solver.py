@@ -177,16 +177,18 @@ class Hestia():
 
     def _converge(self, max_iter:int=1000):
         '''run the convergence'''
+        try:
+            for _ in range(max_iter):
 
-        for _ in range(max_iter):
+                if self._iterate():
+                    if self.verbose:
+                        print('\n!!! conversion finished !!!\n\n\n\n')
+                        print(self)
+                    return
+            else:
+                raise TimeoutError("Did not converge in time")
+        except(ValueError,ArithmeticError,TypeError): raise ValueError("Error in divergence!")  
 
-            if self._iterate():
-                if self.verbose:
-                    print('\n!!! conversion finished !!!\n\n\n\n')
-                    print(self)
-                return
-        else:
-            raise TimeoutError("Did not converge in time")
 
     def _iterate(self)->bool:
         '''runs through all iteration methods'''
@@ -351,7 +353,7 @@ def _single_run(args):
     )
     try:
         sc._converge()
-        total_mass = sc.lo
+        total_mass = sc.lower_stage_wet_mass
     except:
         total_mass = np.nan
     # print()
@@ -410,7 +412,7 @@ def generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost):
 
     return data
 
-#import plotly.graph_objects as go
+import plotly.graph_objects as go
 
 def plot_mass_database(data):
 
@@ -476,8 +478,8 @@ def plot_mass_database(data):
 from scipy.interpolate import RegularGridInterpolator
 import pickle
 
-
-def load_mass_database(filename="mass_database.pkl"):
+path = Path(__file__).parent / "mass_database.pkl"
+def load_mass_database(filename=path):
     """
     Load a precomputed Hestia mass database.
 
@@ -519,7 +521,7 @@ def load_mass_database(filename="mass_database.pkl"):
         )
 
     return data
-path = Path(__file__).parent / "mass_database.pkl"
+
 class MassInterpolator:
 
     def __init__(self, filename=path):
@@ -544,7 +546,8 @@ class MassInterpolator:
             dV_boost
         ])
 
-        return float(self.interp(point))
+        val = self.interp(point)
+        return float(np.asarray(val).squeeze())
 
 
 import random
@@ -660,16 +663,76 @@ def _test_mass_database(
     else:
         print(f"PASSED: {n_tests}/{n_tests}")
 
+def _test_interpolator_no_nans(
+    data,
+    n_tests=100_000,
+    seed=42,
+):
+    rng = np.random.default_rng(seed)
+
+    interp = MassInterpolator()
+
+    inc_min, inc_max = data["dV_inclination"][0], data["dV_inclination"][-1]
+    rdv_min, rdv_max = data["dV_rdvz"][0], data["dV_rdvz"][-1]
+    boo_min, boo_max = data["dV_boost"][0], data["dV_boost"][-1]
+
+    # First make sure the database itself is clean
+    n_grid_nans = np.isnan(data["mass"]).sum()
+
+    print(f"NaNs in source grid: {n_grid_nans}")
+
+    if n_grid_nans:
+        raise AssertionError(
+            f"Source grid contains {n_grid_nans} NaNs"
+        )
+
+    for i in range(n_tests):
+
+        point = np.array([
+            rng.uniform(inc_min, inc_max),
+            rng.uniform(rdv_min, rdv_max),
+            rng.uniform(boo_min, boo_max),
+        ])
+
+        val = interp.interp(point)
+
+        if np.isnan(val).any():
+            raise AssertionError(
+                f"NaN returned at point {point}"
+            )
+
+    print(f"PASSED: {n_tests} random in-range points")
+
+def _test_all_grid_points(data):
+
+    interp = MassInterpolator()
+
+    for inc in data["dV_inclination"]:
+        for rdvz in data["dV_rdvz"]:
+            for boost in data["dV_boost"]:
+
+                val = interp.interp([inc, rdvz, boost])
+
+                if np.isnan(val).any():
+                    raise AssertionError(
+                        f"NaN at exact grid point "
+                        f"({inc}, {rdvz}, {boost})"
+                    )
+
+    print("PASSED: all grid points")
+
+
+
 if __name__ == "__main__":
-    # SC = Hestia(
-    #     dV_inclination=3000,
-    #     dV_rdvz=1000,
-    #     dV_boost=5000,
-    #     verbose=True,
-    #     convergence_tolerance=0.001
-    # )
-    #
-    # SC._converge()
+    SC = Hestia(
+        dV_inclination=3000,
+        dV_rdvz=10000,
+        dV_boost=4000,
+        verbose=True,
+        convergence_tolerance=0.001
+    )
+
+    SC._converge()
 
     resolution = 10
     dVs_incl = np.linspace(0, 4000, resolution)
@@ -677,6 +740,8 @@ if __name__ == "__main__":
     dVs_boost = np.linspace(0, 5000, resolution)
     # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
-    # plot_mass_database(data)
+    plot_mass_database(data)
 
     _test_mass_database(data, n_tests=10, tolerance=1e-2)
+    _test_interpolator_no_nans(data)
+    _test_all_grid_points(data)

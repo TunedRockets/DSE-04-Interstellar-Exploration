@@ -6,14 +6,42 @@ for further analysis, interface is the get_ISO function, rest is supporting func
 
 from lib.Synthetic_population_of_Interstellar_Objects.synthetic_population import synthetic_population
 from jkat import Orbit
-from jkat.utils import SUN_MU, AU, YEAR, root_finder_bisection
+from jkat.utils import SUN_MU, AU, YEAR, root_finder_bisection, pe2p
 from jkat import Earth
 import numpy as np
 import math as m
 from tqdm import tqdm
 from typing import Callable
+from functools import partial
+from multiprocessing import Pool
+import pickle
+from pathlib import Path
 
 LSST_sensitivity_magnitude = 24.38
+
+
+
+def job(obtuple, gen_type, lsst)->tuple[Orbit,float,str]|None:
+    np.seterr(all="ignore")
+    q,e,i,raan,argp = obtuple
+    p = pe2p(q*AU,e)
+    ob = Orbit(p,e,i,raan,argp,0,SUN_MU)
+    # shuffle times:
+    ob.tp = np.random.rand()*YEAR*10
+    # figure out detection:
+    try:
+        if gen_type == 'sun': # debug, always let through
+            d_time = -m.inf
+        else:
+            H,gen_type = _generate_abs_magnitude(gen_type=gen_type)
+            d_time = _detection_time(ob, H, lsst)
+    except (ArithmeticError, ValueError):
+        # wasn't detected. skip
+        return;
+
+    return (ob, d_time, gen_type)
+
+
 
 def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,str]]:
     '''Use Marčeta's model for ISO generation to create a batch of synthetic ISOs. 
@@ -46,32 +74,58 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
     vd = np.deg2rad(7) # vertex deviation [rad]
     va = 0 # asymmetric drift [m/s]
     R_reff = 696_340_000 # reference radius of sun [m]
+    F = partial(job, gen_type=gen_type, lsst=LSST_sensitivity_magnitude)
 
     # q (periapsis) is in AU, rest is radians
-    q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
-    rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
+    get = partial(synthetic_population, rm=rm, n0=n0, v_min=v_min, v_max=v_max, u_Sun=u_sun, v_Sun=v_sun, w_Sun=w_sun,
+                  sigma_vx=sigma_vx,sigma_vy=sigma_vy,sigma_vz=sigma_vz, vd=vd, va=va, R_reff=R_reff)
+    # q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
+    # rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
+    N = 20
+    with Pool() as p:
+        q=[];e=[];inc=[];RAAN=[];arg_p=[]
+        isores = tqdm(p.imap_unordered(get, np.zeros(N)),total=N, desc='Generating Marčeta ISOs')
+        for i in isores:
+            q.extend(i[0]);e.extend(i[1]) # theta.extend(i[2])
+            inc.extend(i[3]);RAAN.extend(i[4]);arg_p.extend(i[5])
 
-    # translate q to p:
-    p = q*(1+e) * AU
-    oobb = []
-    for i in tqdm(range(len(q)), desc="Converting Marčeta ISOs to Keplerian orbits and determining detection time"):
-        ob = Orbit(p[i],e[i],inc[i],RAAN[i],arg_p[i],0,SUN_MU)
-        # shuffle times:
-        ob.tp = np.random.rand()*YEAR
-        # figure out detection:
-        try:
-            if gen_type == 'sun': # debug, always let through
-                d_time = -m.inf
-            else:
-                H,gen_type = _generate_abs_magnitude(gen_type=gen_type)
-                d_time = _detection_time(ob, H, LSST_sensitivity_magnitude)
-        except (ArithmeticError, ValueError):
-            # wasn't detected. skip
-            continue
-
-        oobb.append((ob, d_time, gen_type))
-    print(f"\t{len(oobb)}/{len(p)} orbits were detected and passed on to analysis")
+        obtuples = zip(q,e,inc,RAAN,arg_p)
+    
+    
+        res = filter(None,tqdm(p.imap_unordered(F, obtuples), desc="Detecting ISOs from Marčeta", total=len(q)))
+        oobb = list(res)
+    
+    
+    print(f"\t{len(oobb)}/{len(q)} orbits were detected and passed on to analysis")
     return oobb
+
+PICKLE_NAME = "ISOlist"
+PATH_TO_DATA = Path(__file__).parent.parent / "data" / PICKLE_NAME
+
+
+def get_cached_ISOs(extra_batches:int = 0)->list[tuple[Orbit, float, str]]:
+    '''get a cached list of ISOs and generate more ISOs if requested'''
+    try:
+        with open(PATH_TO_DATA, 'rb') as file:
+            data = pickle.load(file)
+    except (FileNotFoundError):
+        data = []
+
+    if extra_batches > 0:
+        for i in range(extra_batches):
+            print('============================================')
+            print(f"Generating batch {i+1} of {extra_batches}:")
+            print('============================================')
+            data.extend(get_ISO())
+            print(f"current length: {len(data)}")
+        # save data:
+        with open(PATH_TO_DATA, 'wb') as file:
+            pickle.dump(data, file)
+    return data
+
+
+
+
 
 generation_types = ['omuamua', 'atlas-borisov', 'sun']
 def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:

@@ -14,17 +14,20 @@ from tqdm import tqdm
 from typing import Callable
 from functools import partial
 from multiprocessing import Pool
+import pickle
+from pathlib import Path
 
 LSST_sensitivity_magnitude = 24.38
 
 
 
 def job(obtuple, gen_type, lsst)->tuple[Orbit,float,str]|None:
+    np.seterr(all="ignore")
     q,e,i,raan,argp = obtuple
     p = pe2p(q*AU,e)
     ob = Orbit(p,e,i,raan,argp,0,SUN_MU)
     # shuffle times:
-    ob.tp = np.random.rand()*YEAR
+    ob.tp = np.random.rand()*YEAR*10
     # figure out detection:
     try:
         if gen_type == 'sun': # debug, always let through
@@ -95,6 +98,34 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
     
     print(f"\t{len(oobb)}/{len(q)} orbits were detected and passed on to analysis")
     return oobb
+
+PICKLE_NAME = "ISOlist"
+PATH_TO_DATA = Path(__file__).parent.parent / "data" / PICKLE_NAME
+
+
+def get_cached_ISOs(extra_batches:int = 0)->list[tuple[Orbit, float, str]]:
+    '''get a cached list of ISOs and generate more ISOs if requested'''
+    try:
+        with open(PATH_TO_DATA, 'rb') as file:
+            data = pickle.load(file)
+    except (FileNotFoundError):
+        data = []
+
+    if extra_batches > 0:
+        for i in range(extra_batches):
+            print('============================================')
+            print(f"Generating batch {i+1} of {extra_batches}:")
+            print('============================================')
+            data.extend(get_ISO())
+            print(f"current length: {len(data)}")
+        # save data:
+        with open(PATH_TO_DATA, 'wb') as file:
+            pickle.dump(data, file)
+    return data
+
+
+
+
 
 generation_types = ['omuamua', 'atlas-borisov', 'sun']
 def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:

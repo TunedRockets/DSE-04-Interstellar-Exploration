@@ -11,8 +11,8 @@ sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
 import jkat
 from jkat import AU, YEAR, DAY
-from src.get_ISO import get_ISO
-from src.helio_optim import helio_optim, interpolator_wrapper
+from src.get_ISO import get_ISO, get_cached_ISOs
+from src.helio_optim import helio_optim, interpolator_wrapper, mad_optim
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m
@@ -30,8 +30,9 @@ USER_NAME = os.getlogin()
 
 MAX_MISSION_TIME = 10 # [years]
 LONGP_NUM = 0
-
-
+AREA_OF_INTEREST = (4,7,20)
+EMERGENCY_SITUATION = False
+VINF = 8.5 # + 0.577 
 # ap = 5.45 AU
 # pe = 10 sun radii
 # longp = 124.14 *
@@ -40,7 +41,7 @@ LONGP_NUM = 0
 from jkat.utils.elements import apse2ae
 a,e = apse2ae(5.45*jkat.AU, 10*jkat.SUN_RADIUS)
 parking_orbit = jkat.orbit_from_ephemeris(
-    a, e, m.radians(1.3), 0, m.radians(124.14), m.radians(100.4), jkat.SUN_MU
+    a, e, m.radians(1.3), 0, m.radians(200), m.radians(100.4), jkat.SUN_MU
 )
 
 def get_parking(longp:float)->jkat.Orbit:
@@ -116,110 +117,81 @@ def _under(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->int:
     frac = frac[frac['h_rdv'] <= dv2]
     return len(frac)
 
-INTERPOLATOR:None|RegularGridInterpolator = None
-CONTINUOUS_NUM = 0
-AREA_OF_INTEREST = (4,7,20)
-INTERP_RESOLUTION = 20
-def _interp_setup(dfi:pd.DataFrame, N:int|None = None):
-    global CONTINUOUS_NUM, INTERPOLATOR
-    CONTINUOUS_NUM = len(dfi) if N is None else N
-    x1 = np.linspace(0,AREA_OF_INTEREST[0], INTERP_RESOLUTION)
-    x2 = np.linspace(0,AREA_OF_INTEREST[1], INTERP_RESOLUTION)
-    x3 = np.linspace(0,AREA_OF_INTEREST[2], INTERP_RESOLUTION)
-    xx1,xx2,xx3 = np.meshgrid(x1,x2,x3)
+def find_best_point(df:pd.DataFrame, N:int):
 
-    F = lambda x, y, z:  _under(dfi, x,y,z)
-
-    val = np.vectorize(F)(xx1,xx2,xx3)
-    
-    INTERPOLATOR = RegularGridInterpolator((x1,x2,x3), val, method='linear', bounds_error=False, fill_value=None) #type:ignore
-
-
-
-def continuous_success(dv0:float, dv1:float, dv2:float, df:pd.DataFrame)->tuple[float,float]:
-    '''success chance using a more continuous method'''
-    if INTERPOLATOR is None: raise ValueError("interpolator not yet set up")
-    working = INTERPOLATOR((dv0,dv1,dv2))
-    m = interpolator_wrapper(dv0,dv1,dv2)
-    return working/CONTINUOUS_NUM, m
-
-def discrete_success(dv0:float, dv1:float, dv2:float, df:pd.DataFrame)->tuple[float,float]:
-    return _under(df,dv0,dv1,dv2)/len(df), interpolator_wrapper(dv0,dv1,dv2)
-
-def dv_optimizer(df:pd.DataFrame, N:int, x0:np.ndarray|None=None)->tuple[float,float,float]:
-    '''get the optimal dv budget distribution for the given number'''
+    count = len(df)
     Pi = 1 - (1-0.9)**(1/N) # needed individual probability
-
-    def F(x:np.ndarray)->float:
-        try:
-            P, m = discrete_success(x[0], x[1], x[2], df)
-            return m
-        except: return np.inf
-    def C(x:np.ndarray)->float:
-        return discrete_success(x[0], x[1], x[2], df)[0] - Pi
-    x0 = np.array((3,4,15)) if x0 is None else x0
-
-    opt = minimize(F,x0, 
-                   bounds=((0,AREA_OF_INTEREST[0]), (0,AREA_OF_INTEREST[1]), (0,AREA_OF_INTEREST[2])),
-                   method="COBYLA",
-                   constraints=[{"fun": C, 'type':"ineq"}])
-    if not opt.success: raise ValueError(f"minimizer failed: {opt.message}")
-    else: opt = opt.x
+    needed = np.floor(count*Pi) #TODO: change to ceil for more accuracy
     
-    Popt, mopt = discrete_success(opt[0], opt[1], opt[2], df)
-    print(f"Solution found with Pi={100*Popt:1.3f}%")
-    print(f"Pu={100*(1-(1-Popt)**N):2.3f}%")
-    print(f"mass of: {mopt} kg")
-    print(f"turn DV: {opt[0]:2.3f} km/s")
-    print(f"boost DV: {opt[1]:2.3f} km/s")
-    print(f"rendezvous DV: {opt[2]:2.3f} km/s")
+    # limit to search space:
+    
+    df = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
+    df = df[df["h_idv"] <= AREA_OF_INTEREST[1]]
+    df = df[df["h_rdv"] <= AREA_OF_INTEREST[2]]
+
+    best_row = None
+    best_mass = m.inf
+    
+    for i, row in df.iterrows():
+        dv0 = row['h_tdv']
+        dv1 = row['h_idv']
+        dv2 = row['h_rdv']
+        slice = df[df["h_tdv"] <= dv0]
+        slice = slice[slice["h_idv"] <= dv1]
+        slice = slice[slice["h_rdv"] <= dv2]
+        slice_count = len(slice)
+        if slice_count < needed: continue
+        if row['h_mass'] < best_mass:
+            best_mass = row['h_mass']
+            best_row = row
+    return best_row
 
 
-    return opt[0], opt[1], opt[2]
-
-def mass_view(df:pd.DataFrame, N:int, res:int=20, plot:bool=True):
-    '''plot heatmap of mass for successful schematics'''
+# def mass_view(df:pd.DataFrame, N:int, res:int=20, plot:bool=True):
+#     '''plot heatmap of mass for successful schematics'''
 
     
-    dv0 = np.linspace(0,4,res)
-    dv1 = np.linspace(0,5, res)
-    dv2 = np.linspace(0,15,res)
-    dv0,dv1,dv2 = np.meshgrid(dv0,dv1,dv2)
-    dv0 = dv0.flatten(); dv1 = dv1.flatten(); dv2 = dv2.flatten()
-    mm = []
-    pp = []
-    Pi = 1 - (1-0.9)**(1/N) # needed individual probability
+#     dv0 = np.linspace(0,4,res)
+#     dv1 = np.linspace(0,5, res)
+#     dv2 = np.linspace(0,15,res)
+#     dv0,dv1,dv2 = np.meshgrid(dv0,dv1,dv2)
+#     dv0 = dv0.flatten(); dv1 = dv1.flatten(); dv2 = dv2.flatten()
+#     mm = []
+#     pp = []
+#     Pi = 1 - (1-0.9)**(1/N) # needed individual probability
 
-    for i in tqdm(range(len(dv0)), desc="mass view"):
-        p,m = discrete_success(dv0[i],dv1[i],dv2[i], df)
-        if p < Pi:
-            dv0[i] = 0; dv1[i] = 0; dv2[i] = 0
-        mm.append(m)
-        pp.append(p)
+#     for i in tqdm(range(len(dv0)), desc="mass view"):
+#         m = 
+
+#         mm.append(m)
+#         pp.append(p)
     
-    arg = dv0 > 0
-    dv0 = dv0[arg]
-    dv1 = dv1[arg]
-    dv2 = dv2[arg]
-    mm = np.array(mm)[arg]
-    pp = np.array(pp)[arg]
-    if plot:
-        print("plotting")
-        fig = plt.figure()
-        ax = fig.add_subplot(111,projection='3d')
-        scatter = ax.scatter(dv0,dv1,dv2, c=mm, cmap='PRGn') #type:ignore
-        fig.colorbar(scatter, ax=ax)
-        plt.show()
+#     arg = dv0 > 0
+#     dv0 = dv0[arg]
+#     dv1 = dv1[arg]
+#     dv2 = dv2[arg]
+#     mm = np.array(mm)[arg]
+#     pp = np.array(pp)[arg]
+#     if plot:
+#         print("plotting")
+#         fig = plt.figure()
+#         ax = fig.add_subplot(111,projection='3d')
+#         scatter = ax.scatter(dv0,dv1,dv2, c=pp, cmap='PRGn') #type:ignore
+#         fig.colorbar(scatter, ax=ax)
+#         ax.set_xlabel('turn_dv')
+#         ax.set_ylabel('boost_dv')
+#         ax.set_zlabel("rendezvous_dv")
+#         plt.show()
     
-    idx = np.argmin(mm)
-    print(("rough:" if plot else "fine:"))
-    print("-------")
-    print(f'M: {mm[idx]}')
-    print(f'P: {pp[idx]}')
-    print(f'dv0: {dv0[idx]}')
-    print(f'dv1: {dv1[idx]}')
-    print(f'dv2: {dv2[idx]}')
-    return dv0[idx], dv1[idx], dv2[idx]
+#     idx = np.argmin(mm)
+#     print(("rough:" if plot else "fine:"))
+#     print("-------")
+#     print(f'M: {mm[idx]}')
+#     print(f'P: {pp[idx]}')
+#     print(f'dv0: {dv0[idx]}')
+#     print(f'dv1: {dv1[idx]}')
+#     print(f'dv2: {dv2[idx]}')
+#     return dv0[idx], dv1[idx], dv2[idx]
 
 # ========== improved storage and study =============
 '''
@@ -254,7 +226,9 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
     '''
     out = {}
     try:
-        res = helio_optim(park, ISO, (ISO.tp + MAX_MISSION_TIME*YEAR), detect_t)
+        if  not EMERGENCY_SITUATION:
+            res = helio_optim(park, ISO, (ISO.tp + MAX_MISSION_TIME*YEAR), detect_t)
+        else: res = mad_optim(ISO,(ISO.tp + MAX_MISSION_TIME*YEAR), detect_t, VINF)
         out = ({
             'h_tdv': res['dv0'],
             'h_idv': res['dv1'],
@@ -295,7 +269,7 @@ def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int)->dict:
     # make default:
     try:
         out.update(study_ISO(ISO,parking_orbit, detect_t))
-    except (ArithmeticError, ValueError, AssertionError): pass
+    except (ArithmeticError, ValueError, AssertionError): return out
     return out
 
 
@@ -305,9 +279,13 @@ def study_batch_multi(gen_type:str='', longp_num:int=0)->pd.DataFrame:
     ISOs = get_ISO(gen_type=gen_type)
     F = partial(job, longp_num=longp_num)
     #for each ISO get row:
+    resl = []
     with mp.Pool() as p:
+    
         res = tqdm(p.imap_unordered(F, ISOs), desc=f"Studying ISOs, (longp_num = {longp_num})", total=len(ISOs))
-        resl = list(res)
+        for i in res:
+            resl.append(i)
+
     print("Pool closed")
     return pd.DataFrame(resl)
     
@@ -464,36 +442,37 @@ def run_in_background():
 def i_am_going_insane():
     '''Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy'''
     N = 350
+    # df = get_data(1)
     df = study_batch_multi()
-    # df2 = study_batch_multi()
-    # df = pd.concat((df,df2),ignore_index=True)
-    try:
-        v0,v1,v2 = mass_view(df,N, plot=False)
-        v0,v1,v2 = dv_optimizer(df, N, np.array([v0,v1,v2]))
-    except:
-        try:
-            v0,v1,v2 = dv_optimizer(df, N)
-        except: v0=v1=v2=np.nan
-    try:
-        P, m = discrete_success(v0,v1,v2,df)
-    except(ValueError,ArithmeticError,AssertionError): P = 0; m = np.nan
-    P = (1-(1-P)**N)
+    print("interesting fraction:")
+    dfi = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
+    dfi = dfi[dfi["h_idv"] <= AREA_OF_INTEREST[1]]
+    dfi = dfi[dfi["h_rdv"] <= AREA_OF_INTEREST[2]]
 
-    num_oberth = len(df['type'] == 'oberth')
-    num_low = len(df['type'] == "low burn")
-    num_high = len(df['type'] == "high burn")
+    print(f" {len(dfi)} / {len(df)} = {len(dfi)/len(df)}")
 
+    point = find_best_point(df, N)
+    if point is None: s = 'no valid points'
+    else:
+        v0 = point['h_tdv']
+        v1 = point['h_idv']
+        v2 = point['h_rdv']
+        m = point['h_mass']
+        
+        under = _under(df, v0,v1,v2)
+        P = under/len(df)
+        P = (1-(1-P)**N)
 
-    s = (f"best mass: {m:6.0f} kg, " +
-        f"success chance: {P*100:04.2f}%, " +
-        f"delta vees: {v0:04.3f}, {v1:04.3f}, {v2:04.3f} km/s," +
-        f"ISOs generated: {len(df):4}," +
-        f'oberths: {num_oberth:4}, low burns: {num_low:4}, high burns: {num_high:4},'
-        '\n'  
-    )
+        s = 'D:' if EMERGENCY_SITUATION else ''
+
+        s += (f"best mass: {m:6.0f} kg, " +
+            f"success chance: {P*100:04.2f}%, " +
+            f"delta vees: {v0:04.3f}, {v1:04.3f}, {v2:04.3f} km/s," +
+            f"ISOs generated: {len(df):4},"
+        )
     path = Path(__file__).parent / 'runs.txt'
     with open(path, 'a') as file:
-        file.write(s)
+        file.write(s + '\n')
         print(s)
     return
 
@@ -505,8 +484,10 @@ def i_am_going_insane():
 if __name__ == "__main__":
 
 
+
     while True:
-        i_am_going_insane()
+        get_cached_ISOs(1)
+        # i_am_going_insane()
     # run_in_background()  
 
     df = get_data(15)

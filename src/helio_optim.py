@@ -8,7 +8,7 @@ from typing import Callable
 
 import math as m
 import numpy as np
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize_scalar, minimize
 
 M = MassInterpolator()
 interp = M.interp
@@ -18,7 +18,56 @@ def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
     '''wrapper to ensure it works, INPUT IS IN KM/S'''
     try:
         return interp(np.array([dv0*1000,dv2*1000,dv1*1000]))[0]
-    except: return (dv1*7 + dv2)*10_000
+    except: return (dv1*5 + dv2 + dv0*7)*10_000 + 99_000
+
+
+
+def mad_optim(ISO:jkat.Orbit, max_time:float, detect_t:float, vinf:float):
+
+    def F(t):
+        '''manually for own weighting'''
+        t1 = t[0]; t2 = t[1]
+        r1, v1 = jkat.Earth.t2vectors(t1)
+        r2, v2 = ISO.t2vectors(t2)
+        vl1,vl2 = jkat.trajectories.lambert(r1,r2,t2-t1,ISO.mu, True)
+        va1, va2 = jkat.trajectories.lambert(r1,r2, t2-t1, ISO.mu, False)
+        dvl1 = np.linalg.norm(v1-vl1) - vinf
+        dvl1 = max(dvl1,0)
+        dvl2 = np.linalg.norm(v2-vl2)
+        lmass = interpolator_wrapper(0,dvl1,dvl2) #type: ignore
+
+        dva1 = np.linalg.norm(v1-va1) - vinf
+        dva1 = max(dva1,0)
+        dva2 = np.linalg.norm(v2-va2)
+        amass = interpolator_wrapper(0,dva1,dva2)#type: ignore
+        if lmass < amass:
+            return {
+            "ts": t1,
+            "te": t2,
+            'dv0': 0,
+            "dv1": dvl1,
+            "dv2": dvl2,
+            'r': np.linalg.norm(r2),
+            'mass': lmass
+        }
+        else: return {
+            "ts": t1,
+            "te": t2,
+            'dv0': 0,
+            "dv1": dva1,
+            "dv2": dva2,
+            'r': np.linalg.norm(r2),
+            'mass': amass
+        }
+    
+    def w(t): 
+        try: return F(t)['mass']
+        except(ValueError, ArithmeticError): return m.inf
+
+    x0 = np.array(((ISO.tp + ISO.tp + jkat.YEAR)/2, (ISO.tp + jkat.YEAR + ISO.tp + 2*jkat.YEAR)/2))
+    topt = minimize(w, x0, bounds=((detect_t,max_time), (detect_t, max_time)))
+    return F(topt)
+    
 
 def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float):
     '''find the optimal trajectory for the heliocentric Orberth manoeuvre'''
@@ -235,7 +284,7 @@ def rotate_to_match(ob:jkat.Orbit, target:jkat.Orbit)->tuple[float, np.ndarray, 
 
 
 
-def minimizer_1d(f:Callable, a:float, b:float, tol:float = 1e-4, escape_value:float = None)->float:
+def minimizer_1d(f:Callable, a:float, b:float, tol:float = 1e-4, escape_value:float|None = None)->float:
 
     invphi = (m.sqrt(5) - 1) / 2  #
 

@@ -52,65 +52,6 @@ def get_parking(longp:float)->jkat.Orbit:
 
 
 
-# === probability functions =====
-
-# def mission_success_probability(dV_budget:int, N:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
-#     '''Generates total mission probability for the given scenario.
-
-#     :param dV_budget: Delta V budget of the mission
-#     :type dV_budget: int
-#     :param N: number of ISOs detected during the mission
-#     :type N: int
-#     :param rdvz: Whether to consider rendezvous or flyby
-#     :type rdvz: bool
-#     :param df: dataframe with the ISO data to consider, defaults to None
-#     :type df: pd.DataFrame | None, optional
-#     :return: success probability
-#     :rtype: float
-#     '''
-#     p_ISO = ISO_probability(dV_budget, rdvz, df)
-#     p_least_one = 1-(1-p_ISO)**N
-#     return p_least_one
-
-# def ISO_probability(dV_budget:int, rdvz:bool, df:pd.DataFrame|None=None)->float:
-#     '''calculate individual chance of success for given dv budget and detection distance,
-#     currently only works with integer dV budgets
-
-#     :param dV_budget: Delta V budget of the mission
-#     :type dV_budget: int
-#     :param rdvz: Whether to consider rendezvous or flyby
-#     :type rdvz: bool
-#     :param df: dataframe with the ISO data to consider, defaults to None
-#     :type df: pd.DataFrame | None, optional
-#     :return: probability of intercepting/rendezvousing with one ISO
-#     :rtype: float
-#     '''
-#     # hist = get_dv_hist(rm,weight)
-#     # return np.sum(hist[:m.floor(dV_budget)+1])
-
-#     p = dv_below_budget(dV_budget,rdvz, df)
-#     return p
-
-# def dv_below_budget(dv_budget:float, rdvz:bool,df:pd.DataFrame|None=None)->float:
-#     '''get fraction of orbits that are at or below a dv_budget
-
-#     :param dv_budget: Delta V budget of the mission
-#     :type dv_budget: float
-#     :param rdvz: Whether to consider rendezvous or flyby
-#     :type rdvz: bool
-#     :param df: dataframe with the ISO data to consider, defaults to None
-#     :type df: pd.DataFrame | None, optional
-#     :return: fraction of ISOs in dataframe that are reachable with the given dv budget
-#     :rtype: float
-#     '''
-#     if df is None: df = get_data()
-#     if not rdvz:
-#         dv = df['icpt_idv']
-#     else:
-#         dv = df['rdvz_idv'] + df['rdvz_rdv']
-#     dv = dv[dv <= dv_budget]
-#     return len(dv)/len(df)
-
 
 def _under(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->int:
     frac = df[df['h_tdv'] <= dv0]
@@ -118,163 +59,89 @@ def _under(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->int:
     frac = frac[frac['h_rdv'] <= dv2]
     return len(frac)
 
+def _argymax(x:list[np.ndarray]): # argmax for the y coordinate
+    idx = 0
+    maxx = 0
+    for i, p in enumerate(x):
+        if p[1] > maxx: maxx = p[1]; idx = i
+    return idx
 
-def find_best_point(df:pd.DataFrame, N:int)->tuple[float,float,float,float]:
+def _study_slice(points:np.ndarray, pivot:np.ndarray, C:int)->list[np.ndarray]:
+    '''study a slice, and add new pivot'''
+    if len(points) < C: return [] # no corner here...
+
+    z = pivot[2]
+    points = np.vstack((points, pivot)) # add pivot
+    points = points[np.argsort(points[:,0])] # sort by x
+    interior = list(points[:C]) # points inside the fence
+    pivot_idx = np.argwhere((points == pivot)[:,0])[0,0]
+    maxy = _argymax(interior) # max y index
+    corners = [] # list of corners (the thing we want)
+
+    # first point is special case:
+    pf = points[C-1]
+    corners.append(np.array((pf[0],interior[maxy][1])))
+
+    for i in range(C,len(points)):
+        p = points[i]
+        if (p == pivot).all() and p[1] > interior[maxy][1]:
+            return [] #pivot outside, so no new points
+        if p[1] > interior[maxy][1]: continue # outside the fence
+        interior.pop(maxy) # get rid of highest
+        interior.append(p)
+        maxy = _argymax(interior) # max y index
+        if (i >= pivot_idx): # only add if after the pivot, since otherwise better already exists
+            corners.append(np.array((p[0],interior[maxy][1])))
+
+    corners = np.hstack((corners,z*np.ones((len(corners),1))))
+    return list(corners)
+
+def _bounding_box_solver(points:np.ndarray, C:int)->list[np.ndarray]:
+    '''find all coordinates that cover C points
+    i think it grows by N^2, it can run quite quick with N<200 and even N<500.
+    so i think it's good enough
+    '''
+    points = points[np.argsort(points[:,2])] # sort by z
+    if len(points) < C: return []
+    elif len(points) == C: return [np.array(
+        (np.max(points[:,0]),np.max(points[:,1]),np.max(points[:,2]))
+    )]
+    corners = []
+    for i in tqdm(range(C-1,len(points)), desc="finding bounding boxes"):
+        corners.extend(_study_slice(
+            points[:i], points[i], C
+        ))
+    return corners
+
+def find_best_point(df:pd.DataFrame, N:int, P:float=0.9)->tuple[float,float,float,float]:
 
     count = len(df)
-    Pi = 1 - (1-0.9)**(1/N) # needed individual probability
-    needed = np.floor(count*Pi) #TODO: change to ceil for more accuracy
+    Pi = 1 - (1-P)**(1/N) # needed individual probability
+    needed = m.ceil(count*Pi)
     
 
     df = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
     df = df[df["h_idv"] <= AREA_OF_INTEREST[1]]
     df = df[df["h_rdv"] <= AREA_OF_INTEREST[2]]
 
-    
+    ISO_points = df[['h_tdv', 'h_idv', 'h_rdv']].to_numpy()
+    point_list = _bounding_box_solver(ISO_points, needed)
+    if len(point_list) == 0: 
+        print(f"No point meets probability threshold of {P:.0%}, using best odds possible")
+        point_list = [np.array((
+        np.max(ISO_points[:,0]),
+        np.max(ISO_points[:,1]),
+        np.max(ISO_points[:,2]),
+        ))]
 
-    ISOdv0 = np.array(df['h_tdv'])
-    ISOdv1 = np.array(df['h_idv'])
-    ISOdv2 = np.array(df['h_rdv'])
-
-    actualISOs = np.column_stack((ISOdv0,ISOdv1,ISOdv2))
-
-
-    ISOdv0.sort(); ISOdv1.sort(); ISOdv2.sort()
-    max_possible = len(df)
-    if max_possible < needed:
-        print("NOT POSSIBLE WITH 90%!!!")
-        return ISOdv0[-1], ISOdv1[-1], ISOdv2[-1], interpolator_wrapper(ISOdv0[-1], ISOdv1[-1], ISOdv2[-1])
-
-    get_count = lambda v0,v1,v2: len(actualISOs[
-            (actualISOs[:,0] <= v0) &
-            (actualISOs[:,1] <= v1) &
-            (actualISOs[:,2] <= v2)
-    ])
-
-    point_list = []
-    for i in ISOdv2[::-1]:
-        for j in ISOdv1[::-1]:
-            for k in ISOdv0[::-1]:
-
-                if get_count(k,j,i) >= needed: point_list.append((i,j,k))
-                else: pass
-    
     best_point = point_list[0]
     best_mass = np.inf
-
     for point in point_list:
-        m = interpolator_wrapper(point[0], point[1], point[2])
-        if m < best_mass:
-            best_point = point; best_mass = m
+        mass = interpolator_wrapper(point[0], point[1], point[2])
+        if mass < best_mass:
+            best_point = point; best_mass = mass
     
-    return *best_point, best_mass
-
-
-    
-
-
-
-
-def find_best_point_old(df:pd.DataFrame, N:int):
-
-    count = len(df)
-    Pi = 1 - (1-0.9)**(1/N) # needed individual probability
-    needed = np.floor(count*Pi) #TODO: change to ceil for more accuracy
-    
-    # limit to search space:
-    
-    df = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
-    df = df[df["h_idv"] <= AREA_OF_INTEREST[1]]
-    df = df[df["h_rdv"] <= AREA_OF_INTEREST[2]]
-
-
-    vv0 = np.array(df['h_tdv'])
-    vv1 = np.array(df['h_idv'])
-    vv2 = np.array(df['h_rdv'])
-    vv0,vv1,vv2 = np.meshgrid(vv0,vv1,vv2)
-    vv0 = vv0.flatten(); vv1 = vv1.flatten(); vv2 = vv2.flatten()
-    points = np.column_stack((vv0,vv1,vv2))
-
-    # exclude points.
-    # all points with n < needed 
-
-    best_point = None
-    best_mass = np.inf
-    best_count = 0
-
-    for point in tqdm(points, desc="find best point"):
-        dv0 = point[0]
-        dv1 = point[1]
-        dv2 = point[2]
-        
-        slice = df.loc[
-            (df["h_tdv"] <= dv0) &
-            (df["h_idv"] <= dv1) &
-            (df["h_rdv"] <= dv2)
-        ]
-        slice_count = len(slice)
-
-        if slice_count > needed:
-            if (m := interpolator_wrapper(dv0,dv1,dv2)) < best_mass:
-                best_point = point; best_mass = m
-            continue
-        # else not enough:
-        if slice_count >= best_count:
-            best_count = slice_count
-            if (m := interpolator_wrapper(dv0,dv1,dv2)) < best_mass:
-                best_point = point; best_mass = m
-            continue
-        # else just bad:
-        continue
-    if best_point is None: return None
     return best_point[0], best_point[1], best_point[2], best_mass
-
-
-# def mass_view(df:pd.DataFrame, N:int, res:int=20, plot:bool=True):
-#     '''plot heatmap of mass for successful schematics'''
-
-    
-#     dv0 = np.linspace(0,4,res)
-#     dv1 = np.linspace(0,5, res)
-#     dv2 = np.linspace(0,15,res)
-#     dv0,dv1,dv2 = np.meshgrid(dv0,dv1,dv2)
-#     dv0 = dv0.flatten(); dv1 = dv1.flatten(); dv2 = dv2.flatten()
-#     mm = []
-#     pp = []
-#     Pi = 1 - (1-0.9)**(1/N) # needed individual probability
-
-#     for i in tqdm(range(len(dv0)), desc="mass view"):
-#         m = 
-
-#         mm.append(m)
-#         pp.append(p)
-    
-#     arg = dv0 > 0
-#     dv0 = dv0[arg]
-#     dv1 = dv1[arg]
-#     dv2 = dv2[arg]
-#     mm = np.array(mm)[arg]
-#     pp = np.array(pp)[arg]
-#     if plot:
-#         print("plotting")
-#         fig = plt.figure()
-#         ax = fig.add_subplot(111,projection='3d')
-#         scatter = ax.scatter(dv0,dv1,dv2, c=pp, cmap='PRGn') #type:ignore
-#         fig.colorbar(scatter, ax=ax)
-#         ax.set_xlabel('turn_dv')
-#         ax.set_ylabel('boost_dv')
-#         ax.set_zlabel("rendezvous_dv")
-#         plt.show()
-    
-#     idx = np.argmin(mm)
-#     print(("rough:" if plot else "fine:"))
-#     print("-------")
-#     print(f'M: {mm[idx]}')
-#     print(f'P: {pp[idx]}')
-#     print(f'dv0: {dv0[idx]}')
-#     print(f'dv1: {dv1[idx]}')
-#     print(f'dv2: {dv2[idx]}')
-#     return dv0[idx], dv1[idx], dv2[idx]
 
 # ========== improved storage and study =============
 '''
@@ -354,10 +221,10 @@ def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int)->dict:
     return out
 
 
-def study_batch_multi(gen_type:str='', longp_num:int=0)->pd.DataFrame:
+def study_batch_multi(gen_type:str='', longp_num:int=0, N_batches:int=20)->pd.DataFrame:
     '''multithreaded analysis'''
     
-    ISOs = get_ISO(gen_type=gen_type)
+    ISOs = get_ISO(gen_type=gen_type, N_batches=N_batches)
     F = partial(job, longp_num=longp_num)
     #for each ISO get row:
     resl = []
@@ -520,8 +387,9 @@ def run_in_background():
 def we_am_going_insane():
     '''Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy. Crazy? I was crazy once. They locked me in a room. A rubber room. A rubber room with rats, and rats make me crazy'''
     N = 350
+    Paim = 0.9 # probability aim
     # df = get_data(1)
-    df = study_batch_multi()
+    df = study_batch_multi(N_batches=30)
     # for i in range(10):
     #     print(f"batch: {i}")
     #     df2 = study_batch_multi()
@@ -531,10 +399,11 @@ def we_am_going_insane():
     dfi = dfi[dfi["h_idv"] <= AREA_OF_INTEREST[1]]
     dfi = dfi[dfi["h_rdv"] <= AREA_OF_INTEREST[2]]
     print(dfi[['h_tdv','h_idv','h_rdv','h_mass']])
+    count = len(dfi)
 
-    print(f" {len(dfi)} / {len(df)} = {len(dfi)/len(df)}")
+    print(f" {count} / {len(df)} = {count/len(df)}")
 
-    point = find_best_point(df, N)
+    point = find_best_point(df, N, Paim) # CHANGE THE ODDS
     if point is None: s = 'no valid points'
     else:
         v0 = point[0]
@@ -558,10 +427,10 @@ def we_am_going_insane():
 
         s = 'D:' if EMERGENCY_SITUATION else ''
 
-        s += (f"best mass: {m:6.0f}  " + ('*' if changed else "") + "kg," +
-            f"success chance: {P*100:04.2f}%, " +
-            f"delta vees: {v0:04.3f}, {v1:04.3f}, {v2:04.3f} km/s," +
-            f"ISOs generated: {len(df):4},"
+        s += (f"best mass: {m:>7.0f}" + ('*' if changed else " ") + "kg," +
+            f"success chance: {P:4.2%}, " +
+            f"delta vees: {v0:06.3f}, {v1:06.3f}, {v2:06.3f} km/s, " +
+            f"ISOs generated: {count:>3}/{len(df):<5}"
         )
     path = Path(__file__).parent / 'runs.txt'
     with open(path, 'a') as file:
@@ -582,81 +451,4 @@ if __name__ == "__main__":
         # get_cached_ISOs(1)
         we_am_going_insane()
     # run_in_background()  
-
-    df = get_data(15)
-    print(len(df))
-    dfi = df[df['h_tdv'] < 5]
-    print(f"cut tdv > 4: {len(dfi)}")
-    dfi = dfi[dfi['h_idv'] < 7]
-    print(f"cut idv > 7: {len(dfi)}")
-    dfi = dfi[dfi['h_rdv']<20]
-    print(f"cut rdv > 20: {len(dfi)}")
-    plt.hist(df['h_rdv'])
-    plt.show()
-
-
-    # _interp_setup(df)
-    print(f"{len(df)=}\t {len(dfi)=}\t frac: {len(dfi)/len(df)}, \n nans: {len(df[np.isnan(df['h_mass'])])}")
-    # input()
-    dfs = df.sort_values('h_mass', ignore_index=True)
-    print(dfs[['h_mass', "h_tdv", "h_idv", "h_rdv", "h_te"]])
-    try:
-        mass_view(df,350, res=20)
-    except ValueError: pass
-    print('\n\n')
-    dv_optimizer(df, 350)
-
-    # longp_graph(df,prob_needed, LONGP_NUM)
-
-    # plots_for_probability_map() 
-
-
-    
-    
-    
-    # input()
-
-    run_in_background()
-    
-    
-
-
-
-
-
-    # # df = df[df["rdvz_total"] < 19.3]
-    # df = df[df['magnitude_generation_method'] == "Omuamua"]
-    # # df = df[df['magnitude_generation_method'] == "atlas-borisov"]
-
-
-    # data = df['detection_r']
-    # print(f'detection r: {np.average(data):.3f}')
-    # data = df['periapsis']
-    # print(f'periapsis: {np.average(data):.3f}')
-    # data = df['time_until_periapsis']
-    # print(f'time_until_periapsis: {np.average(data):.3f}')
-    # print(f'count: {len(df)}')
-
-
-
-
-
-    # example of using the functions:
-    
-
-    # plt.hist(dfb[dfb['rdvz_total'] <= 20]['rdvz_r'],density=True, bins=20)
-    # print(f"{len(dfb[dfb['rdvz_total'] <= 20])/len(dfb):.3f}")
-    # plt.show()
-    # dv_histogram(True,True,dfb)
-    # plt.show()
-    # probability_map(dfb,True)
-    # plt.show()
-
-    
-    # dfb = dfb.sort_values('rdvz_total')
-    # print(dfb[["rdvz_total", "detection_r","periapsis","time_until_periapsis","rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival"]])
-
-
-
-    # run_in_background()
     pass

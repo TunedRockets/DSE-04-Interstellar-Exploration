@@ -44,7 +44,7 @@ def job(obtuple, gen_type, lsst)->tuple[Orbit,float,str]|None:
 
 
 
-def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,str]]:
+def get_ISO(T:float=0, rm:float=10, gen_type:str='', N_batches:int = 20)->list[tuple[Orbit, float,str]]:
     '''Use Marčeta's model for ISO generation to create a batch of synthetic ISOs. 
 
     :param T: Time passed to the synthetic_population model. 
@@ -82,10 +82,9 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
                   sigma_vx=sigma_vx,sigma_vy=sigma_vy,sigma_vz=sigma_vz, vd=vd, va=va, R_reff=R_reff)
     # q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
     # rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
-    N = 20
     with Pool() as p:
         q=[];e=[];inc=[];RAAN=[];arg_p=[]
-        isores = tqdm(p.imap_unordered(get, np.zeros(N)),total=N, desc='Generating Marčeta ISOs')
+        isores = tqdm(p.imap_unordered(get, np.zeros(N_batches)),total=N_batches, desc='Generating Marčeta ISOs')
         for i in isores:
             q.extend(i[0]);e.extend(i[1]) # theta.extend(i[2])
             inc.extend(i[3]);RAAN.extend(i[4]);arg_p.extend(i[5])

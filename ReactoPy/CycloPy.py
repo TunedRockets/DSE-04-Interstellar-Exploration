@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 from Power.powerinsizeout import reactor_thermal
 from matplotlib.patches import Patch
-from ReactorSize import Reactor
+from ReactoPy.ReactorSize import Reactor
 
 # import matplotlib as mpl
 # mpl.use('tkagg')

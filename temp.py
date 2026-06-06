@@ -14,8 +14,6 @@ def argymax(x:list[np.ndarray]): # argmax for the y coordinate
         if p[1] > maxx: maxx = p[1]; idx = i
     return idx
 
-
-
 def study_slice(points:np.ndarray, pivot:np.ndarray, C:int)->list[np.ndarray]:
     '''study a slice, and add new pivot'''
 

@@ -4,6 +4,7 @@ from scipy.optimize import fsolve
 from Power.powerinsizeout import reactor_thermal
 from matplotlib.patches import Patch
 from ReactoPy.ReactorSize import Reactor
+from functools import cache
 
 # import matplotlib as mpl
 # mpl.use('tkagg')
@@ -939,6 +940,7 @@ def mass_heatmap(
 
     return best
 
+@cache
 def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressure=3447*1000, verbose=False, plot=False):
     cycle = BraytonCycle(Helium, 0.85, 0.88, 0.90)
     best = mass_heatmap(cycle, W_elec, P1=rad_pressure, T3=T3, max_T1=max_T1, limit=5000, plot=plot, verbose=verbose)

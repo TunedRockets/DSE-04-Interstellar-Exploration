@@ -31,7 +31,7 @@ USER_NAME = os.getlogin()
 
 MAX_MISSION_TIME = 10 # [years]
 LONGP_NUM = 0
-AREA_OF_INTEREST = (4,7,17)
+AREA_OF_INTEREST = (4,7,17) # Area where the mass function is defined
 EMERGENCY_SITUATION = False
 VINF = 8.5 # + 0.577 
 # ap = 5.45 AU
@@ -54,9 +54,9 @@ def get_parking(longp:float)->jkat.Orbit:
 
 
 def _under(df:pd.DataFrame, dv0:float, dv1:float, dv2:float)->int:
-    frac = df[df['h_tdv'] <= dv0]
-    frac = frac[frac['h_idv'] <= dv1]
-    frac = frac[frac['h_rdv'] <= dv2]
+    frac = df[df['dv0'] <= dv0]
+    frac = frac[frac['dv1'] <= dv1]
+    frac = frac[frac['dv2'] <= dv2]
     return len(frac)
 
 def _argymax(x:list[np.ndarray]): # argmax for the y coordinate
@@ -113,18 +113,18 @@ def _bounding_box_solver(points:np.ndarray, C:int)->list[np.ndarray]:
         ))
     return corners
 
-def find_best_point(df:pd.DataFrame, N:int, P:float=0.9)->tuple[float,float,float,float]:
+def find_best_point(df:pd.DataFrame, N:int, P:float=0.9, AOI:tuple[float,float,float]=AREA_OF_INTEREST, mass_fn=interpolator_wrapper)->tuple[float,float,float,float]:
 
     count = len(df)
     Pi = 1 - (1-P)**(1/N) # needed individual probability
     needed = m.ceil(count*Pi)
     
 
-    df = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
-    df = df[df["h_idv"] <= AREA_OF_INTEREST[1]]
-    df = df[df["h_rdv"] <= AREA_OF_INTEREST[2]]
+    df = df[df["dv0"] <= AOI[0]]
+    df = df[df["dv1"] <= AOI[1]]
+    df = df[df["dv2"] <= AOI[2]]
 
-    ISO_points = df[['h_tdv', 'h_idv', 'h_rdv']].to_numpy()
+    ISO_points = df[['dv0', 'dv1', 'dv2']].to_numpy()
     point_list = _bounding_box_solver(ISO_points, needed)
     if len(point_list) == 0: 
         print(f"No point meets probability threshold of {P:.0%}, using best odds possible")
@@ -136,8 +136,8 @@ def find_best_point(df:pd.DataFrame, N:int, P:float=0.9)->tuple[float,float,floa
 
     best_point = point_list[0]
     best_mass = np.inf
-    for point in point_list:
-        mass = interpolator_wrapper(point[0], point[1], point[2])
+    for point in tqdm(point_list, desc="Finding optimal Point"):
+        mass = mass_fn(point[0], point[1], point[2])
         if mass < best_mass:
             best_point = point; best_mass = mass
     
@@ -158,7 +158,7 @@ col_names = ["detection_r", "periapsis", "magnitude_generation_method", 'time_un
              "parameter", "e", "i", "RAAN", "arg_p", "t_p", 
              "icpt_idv", "icpt_rdv", "icpt_r", "icpt_t_launch", "icpt_t_arrival",
              "rdvz_idv", "rdvz_rdv", "rdvz_r", "rdvz_t_launch", "rdvz_t_arrival",
-             "h_turn",'h_rot', "h_idv", "h_rdv", "h_r", "h_t_launch", "h_t_arrival", 'park_longp'
+             "h_turn",'h_rot', "dv1", "dv2", "h_r", "h_t_launch", "h_t_arrival", 'park_longp'
              ]
 
 def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
@@ -176,14 +176,14 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
     '''
     out = {}
     try:
-        if  not EMERGENCY_SITUATION:
-            res = helio_optim(park, ISO, (ISO.tp + MAX_MISSION_TIME*YEAR), detect_t)
-        else: res = mad_optim(ISO,(ISO.tp + MAX_MISSION_TIME*YEAR), detect_t, VINF)
+
+        res = helio_optim(park, ISO, (ISO.tp + MAX_MISSION_TIME*YEAR), detect_t)
+
         out = ({
-            'h_tdv': res['dv0'],
-            'h_idv': res['dv1'],
-            'h_rdv': res['dv2'],
-            'h_mass': res['mass'],
+            'dv0': res['dv0'],
+            'dv1': res['dv1'],
+            'dv2': res['dv2'],
+            'mass': res['mass'],
             'h_ts' : (res['ts']-detect_t)/DAY,
             'h_te' : (res['te']-detect_t)/DAY,
             'h_r' : res['r']/AU
@@ -209,10 +209,10 @@ def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int)->dict:
         out1 = study_ISO(ISO,get_parking(longp),detect_t)
         if out1 == {}: continue
         out.update({
-            f'h_tdv_{name}' : out1['h_tdv'],
-            f'h_idv_{name}' : out1['h_idv'],
-            f'h_rdv_{name}' : out1['h_rdv'], 
-            f'h_mass_{name}' : out1['h_mass'],
+            f'dv0_{name}' : out1['dv0'],
+            f'dv1_{name}' : out1['dv1'],
+            f'dv2_{name}' : out1['dv2'], 
+            f'mass_{name}' : out1['mass'],
         })
     # make default:
     try:
@@ -319,7 +319,7 @@ def plot_from_row(row:pd.Series, max_r:float=m.inf):
     # printing:
 
     print(f'Helio:\nlaunches: {row["h_ts"]:.2f} days after detection, arrives {row["h_te"]:.2f} days after detection at a distance of {row["h_r"]} AU')
-    print(f"ion delta v cost is: {row["h_tdv"] + row['h_rdv']:.2f} km/s, and relative velocity at intercept is {row['h_rdv']:.2f} km/s, with a boost of {row['h_idv']} km/s, and turn of {row['h_tdv']} km/s")
+    print(f"ion delta v cost is: {row["dv0"] + row['dv2']:.2f} km/s, and relative velocity at intercept is {row['dv2']:.2f} km/s, with a boost of {row['dv1']} km/s, and turn of {row['dv0']} km/s")
     plt.legend()
     plt.show()
 
@@ -357,7 +357,7 @@ def longp_graph(df:pd.DataFrame, fraction:float, longp_num:int = 0):
         pp.append(longp)
         name = f"{m.degrees(longp):3.1f}"
         try:
-            v = df[f'h_idv_{name}']
+            v = df[f'dv1_{name}']
             v = v.sort_values(ignore_index=True)
             n = m.ceil(len(v)*fraction)
             vreq = v[n]
@@ -395,10 +395,10 @@ def we_am_going_insane():
     #     df2 = study_batch_multi()
     #     df = pd.concat((df,df2), ignore_index=True)
     print("interesting fraction:")
-    dfi = df[df["h_tdv"] <= AREA_OF_INTEREST[0]]
-    dfi = dfi[dfi["h_idv"] <= AREA_OF_INTEREST[1]]
-    dfi = dfi[dfi["h_rdv"] <= AREA_OF_INTEREST[2]]
-    print(dfi[['h_tdv','h_idv','h_rdv','h_mass']])
+    dfi = df[df["dv0"] <= AREA_OF_INTEREST[0]]
+    dfi = dfi[dfi["dv1"] <= AREA_OF_INTEREST[1]]
+    dfi = dfi[dfi["dv2"] <= AREA_OF_INTEREST[2]]
+    print(dfi[['dv0','dv1','dv2','mass']])
     count = len(dfi)
 
     print(f" {count} / {len(df)} = {count/len(df)}")

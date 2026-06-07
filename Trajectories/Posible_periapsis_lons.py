@@ -3,7 +3,7 @@ import numpy as np
 from jkat.utils import longp
 import math as m
 
-from Structures.holistic_mass_solver import dV_rdvz
+from Structures.holistic_mass_solver import guess_dV_rdvz
 from Trajectories.Rendezvous_dV_requirements import MAX_MISSION_TIME, LONGP_NUM
 from src.helio_optim import *
 from Rendezvous_dV_requirements import get_parking

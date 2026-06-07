@@ -37,14 +37,14 @@ static_area = (2.2**2)*m.pi + 2*2
 # ion system: (http://large.stanford.edu/courses/2025/ph240/tuckey1/docs/nasa-nov17.pdf)
 Isp_ion = 4220
 '''[s] ion drive isp'''
-dV_inclination = 3000
+guess_dV_inclination = 3000
 
 
 '''[m/s] dv for the inclination change maneuver'''
-dV_rdvz = 17_000
+guess_dV_rdvz = 17_000
 
 '''[m/s] dv for the rendezvous'''
-dV_ion = dV_rdvz + dV_inclination
+guess_dV_ion = guess_dV_rdvz + guess_dV_inclination
 '''[m/s] total dv required by ion system'''
 Me_ion = 15 + 36 # NEXT thruster mass
 '''[kg] ion engine mass'''
@@ -66,17 +66,16 @@ xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
 T_max_inclination = 600*jkat.DAY  # changed from Andres estimate to more pessimistic value
 
 
-a_min_ion = dV_inclination/T_max_inclination
-'''[m/s^2] minimum acceleration of the ion engines'''
+
 l_ion = 0.05
 '''[-] ion tank mass fraction'''
 
 # boost system:
 Isp_boost = 330
 '''[s] boost drive isp'''
-dV_boost = 4_000
-
+guess_dV_boost = 4_000
 '''[m/s] total dv required by boost system'''
+
 Me_boost = 100
 '''[kg] boost engine mass'''
 l_boost = 0.05
@@ -118,7 +117,7 @@ def dv2mf(dV:float, isp:float, m1:float, l:float)->float:
     mf = m1*(e-1)/(1+l-l*e) # fuel mass
     return mf
 
-@staticmethod
+
 class Hestia():
     '''this is the design to configure, as a class,
     each variable has a method to set itself, which is run through
@@ -126,11 +125,11 @@ class Hestia():
 
     def __init__(
             self,
-            dV_inclination:float=dV_inclination,
-            dV_rdvz:float=dV_rdvz,
-            dV_boost:float=dV_boost,
+            dV_inclination:float=guess_dV_inclination,
+            dV_rdvz:float=guess_dV_rdvz,
+            dV_boost:float=guess_dV_boost,
             verbose=False,
-            convergence_tolerance=1e-8
+            convergence_tolerance=1e-8,
     ):
         self.dV_inclination = dV_inclination
         self.dV_rdvz = dV_rdvz
@@ -262,13 +261,18 @@ class Hestia():
     def rdvz_burn_time(self):
         '''pessemistic estimate of burn time'''
         return self.dV_rdvz/(self.Number_ions*F_ion/self.upper_stage_wet_mass)
+    
+    @property
+    def a_min_ion(self):
+        return self.dV_inclination/T_max_inclination
+    '''[m/s^2] minimum acceleration of the ion engines'''
 
 
     def size_ion_system(self):
         '''size the ion system and figure out number of engines and power draw'''
 
         # get no. engines and their mass:
-        F_need = self.lower_stage_wet_mass*a_min_ion
+        F_need = self.lower_stage_wet_mass*self.a_min_ion
         self.Number_ions = m.ceil(F_need/F_ion)
         # set new ion mass:
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
@@ -579,8 +583,6 @@ def plot_mass_database_2(data):
 
     fig.show()
 
-
-
 from scipy.interpolate import RegularGridInterpolator
 import pickle
 
@@ -655,10 +657,7 @@ class MassInterpolator:
         val = self.interp(point)
         return float(np.asarray(val).squeeze())
 
-
 import random
-
-
 
 def _test_mass_database(
         data,
@@ -827,8 +826,6 @@ def _test_all_grid_points(data):
 
     print("PASSED: all grid points")
 
-
-
 def plot_interp_heatmap(
     fixed_axis,
     fixed_value,
@@ -948,6 +945,28 @@ def plot_interp_heatmap(
 
     plt.tight_layout()
     plt.show()
+
+class Vesta(Hestia):
+    '''Hestia but made for direct earth transfer instead.
+    (name subject to change. (e.g. find other backronym for hestia))'''
+
+
+    def __init__(self, dV_inclination: float = guess_dV_inclination, dV_rdvz: float = guess_dV_rdvz, dV_boost: float = guess_dV_boost, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
+        '''DV given in M/S!!!'''
+
+        self.min_acceleration = min_acceleration
+        '''minimum acceleration required for sizing the Ion system'''
+        # default is 9 km/s in one year.
+
+        super().__init__(dV_inclination, dV_rdvz, dV_boost, verbose, convergence_tolerance)
+
+    def size_heat_shield(self):
+        self.Area_heatshield = 0 # no heat shield
+        return;
+
+    @property
+    def a_min_ion(self): # In m/s^2
+        return self.min_acceleration
 
 
 

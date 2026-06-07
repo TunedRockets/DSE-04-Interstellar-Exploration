@@ -301,8 +301,8 @@ class Hestia():
         Preq = static_power_draw + self.Number_ions*P_ion # needed power
 
         mass, reactor_mass, radiator_mass, brayton_system_mass, thermal_power, radiator_area = size_power(Preq)
-
-        self.Mass_power_truss = mass
+        # TODO: ADD SHIELDING 1.82 TIMES REACTOR MASS IN THE REACTOR CALCS INSTEAD
+        self.Mass_power_truss = mass*1.82
         if self.verbose:
             print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
             print(f'thermal power: {thermal_power:5.1f} W')

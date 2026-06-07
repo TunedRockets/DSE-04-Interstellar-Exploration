@@ -133,6 +133,7 @@ class Hestia():
         self.dV_boost = dV_boost
         self.verbose = verbose
         self.convergence_tolerance = convergence_tolerance
+        self.boost_isp = 330 # hypergaulic type engines
 
         # the varying variables 
         self.Mass_ion = 51
@@ -291,7 +292,7 @@ class Hestia():
         '''size boost fuel tank and rest'''
 
         m1 = self.lower_stage_pl_mass + Me_boost
-        mf = dv2mf(self.dV_boost, Isp_boost, m1, l_boost)
+        mf = dv2mf(self.dV_boost, self.boost_isp, m1, l_boost)
         self.Mass_boost_fuel = mf
         if self.verbose:
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
@@ -959,6 +960,7 @@ class Vesta(Hestia):
         # default is 9 km/s in one year.
 
         super().__init__(dV_inclination, dV_rdvz, dV_boost, verbose, convergence_tolerance)
+        self.boost_isp = 400
 
     def size_heat_shield(self):
         self.Area_heatshield = 0 # no heat shield

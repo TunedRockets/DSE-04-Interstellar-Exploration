@@ -7,7 +7,7 @@ this should be broadly accurate).
 here, dv0 is the boost stage dv, dv1 is the extra required by the ions,
 and dv2 is the rendezvous burn.
 
-using the analysis suited for the 
+running this shows that earth is definitely feasible. 
 
 
 TODO: need better heat shield sizer!!! (check with Sem)
@@ -25,6 +25,8 @@ from Rendezvous_dV_requirements import find_best_point, get_ISO, interpolator_wr
 from pathlib import Path
 from Structures.holistic_mass_solver import Vesta
 from scipy.interpolate import RegularGridInterpolator
+import pickle as pkl
+import matplotlib.pyplot as plt
 
 VINF = 8.5 # + 0.577 
 MAX_MISSION_TIME = 15 # [years]
@@ -35,8 +37,11 @@ AREA_OF_INTEREST = (MAX_BOOST_DV,20,20) # Area where the mass function is define
 
 # create simple mass interpolator.
 INTERP:RegularGridInterpolator = None # type:ignore
+INTERP_PATH = Path(__file__).parent
+INTERP_FILE = "Vesta_mass_numbers"
 
 def _job(p):
+    np.seterr(all="ignore")
     dv1 = p[0]; dv2 = p[1]
     try:
         V = Vesta(0,dv2*1000,dv1*1000)
@@ -44,24 +49,40 @@ def _job(p):
         return V.lower_stage_wet_mass
     except (ArithmeticError,ValueError) as e: 
         return m.nan
-
-
+    
 def make_interp(res:int = 20):
-    '''interpolator strictly for Vesta model'''
-    xx = np.linspace(0,AREA_OF_INTEREST[0], res) # boost
-    yy = np.linspace(0,(AREA_OF_INTEREST[1] + AREA_OF_INTEREST[2]) * 3/4, res) # Ion
+    '''interpolator strictly for Vesta model, im km/s'''
+    global INTERP
+    try:
+        with open(INTERP_PATH / (INTERP_FILE + str(res)), 'rb') as file:
+            INTERP = pkl.load(file)
+            return  INTERP;
+    except(FileNotFoundError): pass
+
+
+    xx = np.linspace(0,AREA_OF_INTEREST[0]+0.1, res) # boost
+    yy = np.linspace(0,(AREA_OF_INTEREST[1] + AREA_OF_INTEREST[2]) * 3/4 + 0.1, res) # Ion
 
     xg,yg = np.meshgrid(xx,yy)
-    xg.flatten(); yg.flatten()
+    xg = xg.flatten(); yg = yg.flatten()
     pp = np.column_stack((xg,yg))
-    with mp.Pool() as p:
-        mm = tqdm(p.map(_job, pp, 4),desc="creatign interpolator")
+    
+    # with mp.Pool() as p:
+    #     print("Starting Mass interpolator")
+    #     mm = tqdm(p.imap(_job, pp, 1), desc='Creating interpolator', total=len(pp))
+    # mm = list(mm) # convert to better format
 
+    mm = []
+    for p in tqdm(pp, desc='single threaded mass calculation'):
+        mm.append(_job(p))
 
     mm = np.reshape(np.array(mm),(res,res),)
-    global INTERP
+
     INTERP = RegularGridInterpolator((xx,yy), mm)
-    return;
+    with open(INTERP_PATH / (INTERP_FILE + str(res)), 'wb') as file:
+        pkl.dump(INTERP,file)
+    return INTERP
+
 
 def earth_mass(dv0,dv1,dv2):
     '''translate dv0:boost, dv1+dv2:ion into the interpolator'''
@@ -69,12 +90,24 @@ def earth_mass(dv0,dv1,dv2):
     #     make_interp(); return earth_mass(dv0,dv1,dv2)
     # else:
     #     try: 
-    #         return INTERP(dv0,dv1+dv2)
+    #         return INTERP((dv0,dv1+dv2))
     #     except: return (dv0*5+dv1+dv2)*10_000 + 999_000
 
-    # Vesta does not want to run the power analysis :(
+    return interpolator_wrapper(0,dv0,dv1+dv2) # Vesta mass interpolator is unreliable...
 
-    return interpolator_wrapper(0,dv0,dv1+dv2)
+def test_Vesta_mass():
+
+    for _ in range(200):
+
+        dv0 = np.random.random()*AREA_OF_INTEREST[0]
+        dv1 = np.random.random()*AREA_OF_INTEREST[1]
+        V = Vesta(0,dv1,dv0)
+        V._converge()
+        vm = V.lower_stage_wet_mass
+        im = earth_mass(dv0,dv1,0)
+        print(f'accuracy: {(im-vm)/vm:%}')
+
+
 
 def study_ISO(ISO:jkat.Orbit, detect_t:float)->dict:
     '''study earth based intercept'''
@@ -224,8 +257,27 @@ def direct_earth_analysis(N_batches:int=30):
 
 if __name__ == '__main__':
 
-    make_interp()
+    # test_Vesta_mass()
+    # input()
+
+    direct_earth_analysis(10)
+
+    i = make_interp(20)
+
+    xx = np.linspace(0,5)
+    yy = np.linspace(0,20)
+    pp = []
+    for y in yy:
+        prow = []
+        for x in xx:
+            prow.append(i((x,y)))
+        pp.append(prow)
+
+    plt.imshow(pp, origin='lower', extent=(0,5,0,20))
+    plt.axis('scaled')
+    plt.show()
+
     print(earth_mass(5,7,7))
 
 
-    # direct_earth_analysis(500)
+    # direct_earth_analysis(20)

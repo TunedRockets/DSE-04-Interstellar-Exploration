@@ -15,7 +15,7 @@ mpl.use('tkagg')
 
 
 alternator_power_density = 2000 #kW / kg https://apps.dtic.mil/sti/tr/pdf/ADA640295.pdf
-radiator_areal_density = 15.0 # kg/m2
+radiator_areal_density = 7.0 # kg/m2 https://isnps.unm.edu/reports/ISNPS_Tech_Report_97.pdf
 max_reactor_temp = 1000+273.15
 max_radiator_temp = 800+273.15
 
@@ -940,7 +940,7 @@ def mass_heatmap(
 
     return best
 
-def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressure=3447*1000, verbose=False, plot=False):
+def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressure=2.5*BAR, verbose=False, plot=False):
     cycle = BraytonCycle(Helium, 0.85, 0.88, 0.90)
     best = mass_heatmap(cycle, W_elec, P1=rad_pressure, T3=T3, max_T1=max_T1, limit=5000, plot=plot, verbose=verbose)
     mass = best[0]

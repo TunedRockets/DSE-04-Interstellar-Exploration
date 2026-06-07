@@ -27,7 +27,7 @@ import jkat
 # p.cpu_affinity(list(range(0, 12)))
 # ==== consts =====
 
-static_mass = 50+100+200
+static_mass = 126.3+88.8+100+300
 '''[kg] mass of scientific payload, antenna, bus and oter non-varying things'''
 static_power_draw = 1600
 '''[w] static power draw of non-propulsion equipment'''
@@ -52,7 +52,7 @@ P_ion = 7400
 '''[w] power per ion engine'''
 F_ion = 0.235
 '''[N] thrust per ion engine'''
-T_max_inclination = 86_000*365*1.31
+T_max_inclination = 700*jkat.DAY
 '''max time spent on inclination burn'''
 R = 8.31446261815324
 M_xenon = 0.131293
@@ -62,9 +62,6 @@ propellant_margin = 2/100
 xenon_tank_pressure = 187*1e5
 xenon_tank_temp = 273.15+20
 xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
-
-T_max_inclination = 600*jkat.DAY  # changed from Andres estimate to more pessimistic value
-
 
 
 l_ion = 0.05
@@ -86,7 +83,7 @@ rho_heat = 152 # reverse engineers from parker solar probe numbers
 '''[kg/m^3] heat shield density'''
 t_heat = 0.11
 '''[m] heat shield thickness'''
-A_heat_margin = 1.1
+A_heat_margin = 1.0 # Already pretty pesimistic with the cylinders
 '''Heat shield area margin (for overhang, etc.)'''
 
 
@@ -336,10 +333,12 @@ class Hestia():
         # power truss approximated as cylinder half ariane6 fairing
         # with density of steel (average of reactor + truss)
 
-        A += A_fn(self.Mass_boost_fuel,3, 1000) # 3 m cyliner of fuel
+        A += A_fn(self.Mass_boost_fuel,3, 1300) # 3 m cyliner of fuel
         A += A_fn(self.Mass_ion_fuel,2,xenon_density) # 1 m cyliner of xenon
 
         A *= A_heat_margin # margin
+        # if A > 28:
+        #     A = 28
 
         self.Area_heatshield = A
         self.Mass_heatshield
@@ -972,27 +971,27 @@ class Vesta(Hestia):
 
 
 if __name__ == "__main__":
-    SC = Hestia(
-        dV_inclination=3000,
-        dV_rdvz=10000,
-        dV_boost=5000,
-        verbose=True,
-        convergence_tolerance=0.001
-    )
+    # SC = Hestia(
+    #     dV_inclination=3000,
+    #     dV_rdvz=10000,
+    #     dV_boost=5000,
+    #     verbose=True,
+    #     convergence_tolerance=0.001
+    # )
+    #
+    # SC._converge()
 
-    SC._converge()
-
-    resolution = 15
-    dVs_incl = np.linspace(0, 3500, resolution)
-    dVs_rdvz = np.linspace(0, 20000, resolution)
-    dVs_boost = np.linspace(0, 7500, resolution)
-    data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
+    resolution = 10
+    dVs_incl = np.linspace(1, 3500, resolution)
+    dVs_rdvz = np.linspace(1, 20000, resolution)
+    dVs_boost = np.linspace(1, 7500, resolution)
+    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
-    plot_interp_heatmap("inclination", 3000)
-    plot_interp_heatmap("rdvz", 15000)
-    plot_interp_heatmap("boost", 7500)
-    # plot_mass_database(data)
-    # plot_mass_database_2(data)
+    # plot_interp_heatmap("inclination", 3000)
+    # plot_interp_heatmap("rdvz", 15000)
+    # plot_interp_heatmap("boost", 7500)
+    plot_mass_database(data)
+    plot_mass_database_2(data)
     #
     # _test_mass_database(data, n_tests=10, tolerance=1e-2)
     # _test_interpolator_no_nans(data)

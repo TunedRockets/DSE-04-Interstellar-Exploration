@@ -305,8 +305,7 @@ class Hestia():
         Preq = static_power_draw + self.Number_ions*P_ion # needed power
 
         mass, reactor_mass, radiator_mass, brayton_system_mass, thermal_power, radiator_area = size_power(Preq)
-        # TODO: ADD SHIELDING 1.82 TIMES REACTOR MASS IN THE REACTOR CALCS INSTEAD
-        self.Mass_power_truss = mass*1.82
+        self.Mass_power_truss = mass
         if self.verbose:
             print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
             print(f'thermal power: {thermal_power:5.1f} W')
@@ -987,7 +986,7 @@ if __name__ == "__main__":
     dVs_incl = np.linspace(0, 3500, resolution)
     dVs_rdvz = np.linspace(0, 20000, resolution)
     dVs_boost = np.linspace(0, 7500, resolution)
-    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
+    data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
     plot_interp_heatmap("inclination", 3000)
     plot_interp_heatmap("rdvz", 15000)

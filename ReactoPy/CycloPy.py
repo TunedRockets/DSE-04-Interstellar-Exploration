@@ -633,8 +633,8 @@ def evaluate_system(
     )
 
     reactor = Reactor(sol["T2"],sol["T3"], sol["q_in"]*mdot, operating_pressure=sol["P2"])
-
-    m_reactor = reactor.size_all(print_true=False)
+    # TODO: Remove when applied in reactor
+    m_reactor = 1.82*reactor.size_all(print_true=False)
 
 
     total = m_comp + m_turb + m_rad + m_alternator + m_reactor

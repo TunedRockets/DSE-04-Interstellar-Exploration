@@ -971,15 +971,15 @@ class Vesta(Hestia):
 
 
 if __name__ == "__main__":
-    # SC = Hestia(
-    #     dV_inclination=3000,
-    #     dV_rdvz=10000,
-    #     dV_boost=5000,
-    #     verbose=True,
-    #     convergence_tolerance=0.001
-    # )
-    #
-    # SC._converge()
+    SC = Hestia(
+        dV_inclination=3300,
+        dV_rdvz=17000,
+        dV_boost=4000,
+        verbose=True,
+        convergence_tolerance=0.001
+    )
+
+    SC._converge()
 
     resolution = 10
     dVs_incl = np.linspace(1, 3500, resolution)

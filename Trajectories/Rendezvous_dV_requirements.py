@@ -193,7 +193,7 @@ def study_ISO(ISO:jkat.Orbit, park:jkat.Orbit, detect_t:float)->dict:
 
     return out
 
-def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int)->dict:
+def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int, default_longp=np.radians(20.00))->dict:
 
     np.seterr(all="ignore")
     ISO, detect_t, g_type = ISOtuple
@@ -203,7 +203,10 @@ def job(ISOtuple:tuple[jkat.Orbit, float, str], longp_num:int)->dict:
         'time_until_periapsis':(ISO.tp - detect_t)/DAY,
             "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
             "ISO_excess_velocity":ISO.vinf}
-    longps = np.linspace(-m.pi, m.pi, longp_num)
+    if longp_num==0:
+        longps=np.array(([default_longp]))
+    else:
+        longps = np.linspace(-m.pi, m.pi, longp_num)
     for longp in longps:
         name = f"{m.degrees(longp):3.1f}"
         out1 = study_ISO(ISO,get_parking(longp),detect_t)
@@ -389,7 +392,7 @@ def we_am_going_insane():
     N = 350
     Paim = 0.9 # probability aim
     # df = get_data(1)
-    df = study_batch_multi(N_batches=30)
+    df = study_batch_multi(N_batches=60)
     # for i in range(10):
     #     print(f"batch: {i}")
     #     df2 = study_batch_multi()

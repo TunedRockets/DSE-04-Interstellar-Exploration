@@ -199,18 +199,64 @@ def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park
             dv0 = res["dv0"]
             dv1 = res["dv1"]
             dv2 = res["dv2"]
-            # print(dv0)
-            return max(0, (dv0-dv0_budget)) + max(0, (dv1-dv1_budget)) + max(0, (dv2-dv2_budget))
 
-        except:
-            return m.inf
+            return (
+                    max(0, dv0 - dv0_budget)
+                    + max(0, dv1 - dv1_budget)
+                    + max(0, dv2 - dv2_budget)
+            )
 
-    t_solution = minimizer_1d(w,peri, max_time, escape_value=0.001)
-    res = F(t_solution)
-    # print((w(t_solution)==0))
-    # print(w(t_solution))
-    # print(res)
-    return (w(t_solution)<0.001), res
+        except Exception:
+            return np.inf
+
+    # ------------------------------------------------------------------
+    # Phase 1: coarse search
+    # ------------------------------------------------------------------
+
+    N_SCAN = 300
+
+    times = np.linspace(peri, max_time, N_SCAN)
+
+    best_t = times[0]
+    best_w = w(best_t)
+
+    if best_w < 0.1:
+        return True, F(best_t)
+
+    for t in times[1:]:
+        wt = w(t)
+
+        if wt < 0.1:
+            return True, F(t)
+
+        if wt < best_w:
+            best_w = wt
+            best_t = t
+
+    # every sample failed
+    if not np.isfinite(best_w):
+        return False, {
+            "dv0": np.inf,
+            "dv1": np.inf,
+            "dv2": np.inf,
+            "ts": np.nan,
+            "te": np.nan,
+        }
+
+    dt = (max_time - peri) / N_SCAN
+
+    left = max(peri, best_t - 5 * dt)
+    right = min(max_time, best_t + 5 * dt)
+
+    res = minimize_scalar(
+        w,
+        bounds=(left, right),
+        method="bounded",
+    )
+
+    t_solution = res.x
+
+    return w(t_solution) < 0.1, F(t_solution)
 
 
 def get_prob_of_success(

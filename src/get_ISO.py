@@ -5,17 +5,46 @@ for further analysis, interface is the get_ISO function, rest is supporting func
 '''
 
 from lib.Synthetic_population_of_Interstellar_Objects.synthetic_population import synthetic_population
-from .orbit import Orbit
-from .utilities import SGP_SUN, AU, YEAR, root_finder_bisection
-from .examples import Earth
+from jkat import Orbit
+from jkat.utils import SUN_MU, AU, YEAR, root_finder_bisection, pe2p
+from jkat import Earth
 import numpy as np
 import math as m
 from tqdm import tqdm
 from typing import Callable
+from functools import partial
+from multiprocessing import Pool
+import pickle
+from pathlib import Path
 
 LSST_sensitivity_magnitude = 24.38
+# LSST_sensitivity_magnitude = 28
 
-def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,str]]:
+
+
+def job(obtuple, gen_type, lsst)->tuple[Orbit,float,str]|None:
+    np.seterr(all="ignore")
+    q,e,i,raan,argp = obtuple
+    p = pe2p(q*AU,e)
+    ob = Orbit(p,e,i,raan,argp,0,SUN_MU)
+    # shuffle times:
+    ob.tp = np.random.rand()*YEAR*10
+    # figure out detection:
+    try:
+        if gen_type == 'sun': # debug, always let through
+            d_time = -m.inf
+        else:
+            H,gen_type = _generate_abs_magnitude(gen_type=gen_type)
+            d_time = _detection_time(ob, H, lsst)
+    except (ArithmeticError, ValueError):
+        # wasn't detected. skip
+        return;
+
+    return (ob, d_time, gen_type)
+
+
+
+def get_ISO(T:float=0, rm:float=10, gen_type:str='', N_batches:int = 20)->list[tuple[Orbit, float,str]]:
     '''Use Marčeta's model for ISO generation to create a batch of synthetic ISOs. 
 
     :param T: Time passed to the synthetic_population model. 
@@ -46,32 +75,57 @@ def get_ISO(T:float=0, rm:float=10, gen_type:str='')->list[tuple[Orbit, float,st
     vd = np.deg2rad(7) # vertex deviation [rad]
     va = 0 # asymmetric drift [m/s]
     R_reff = 696_340_000 # reference radius of sun [m]
+    F = partial(job, gen_type=gen_type, lsst=LSST_sensitivity_magnitude)
 
     # q (periapsis) is in AU, rest is radians
-    q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
-    rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
+    get = partial(synthetic_population, rm=rm, n0=n0, v_min=v_min, v_max=v_max, u_Sun=u_sun, v_Sun=v_sun, w_Sun=w_sun,
+                  sigma_vx=sigma_vx,sigma_vy=sigma_vy,sigma_vz=sigma_vz, vd=vd, va=va, R_reff=R_reff)
+    # q, e, theta, inc, RAAN, arg_p = synthetic_population(T,
+    # rm, n0, v_min, v_max, u_sun, v_sun, w_sun, sigma_vx, sigma_vy, sigma_vz, va, vd, R_reff)
+    with Pool() as p:
+        q=[];e=[];inc=[];RAAN=[];arg_p=[]
+        isores = tqdm(p.imap_unordered(get, np.zeros(N_batches)),total=N_batches, desc='Generating Marčeta ISOs')
+        for i in isores:
+            q.extend(i[0]);e.extend(i[1]) # theta.extend(i[2])
+            inc.extend(i[3]);RAAN.extend(i[4]);arg_p.extend(i[5])
 
-    # translate q to p:
-    p = q*(1+e) * AU
-    oobb = []
-    for i in tqdm(range(len(q)), desc="Converting Marčeta ISOs to Keplerian orbits and determining detection time"):
-        ob = Orbit(p[i],e[i],inc[i],RAAN[i],arg_p[i],0,SGP_SUN)
-        # shuffle times:
-        ob.t_p = np.random.rand()*YEAR
-        # figure out detection:
-        try:
-            if gen_type == 'sun': # debug, always let through
-                d_time = -m.inf
-            else:
-                H,gen_type = _generate_abs_magnitude(gen_type=gen_type)
-                d_time = _detection_time(ob, H, LSST_sensitivity_magnitude)
-        except (ArithmeticError, ValueError):
-            # wasn't detected. skip
-            continue
-
-        oobb.append((ob, d_time, gen_type))
-    print(f"\t{len(oobb)}/{len(p)} orbits were detected and passed on to analysis")
+        obtuples = zip(q,e,inc,RAAN,arg_p)
+    
+    
+        res = filter(None,tqdm(p.imap_unordered(F, obtuples), desc="Detecting ISOs from Marčeta", total=len(q)))
+        oobb = list(res)
+    
+    
+    print(f"\t{len(oobb)}/{len(q)} orbits were detected and passed on to analysis")
     return oobb
+
+PICKLE_NAME = "ISOlist"
+PATH_TO_DATA = Path(__file__).parent.parent / "data" / PICKLE_NAME
+
+
+def get_cached_ISOs(extra_batches:int = 0)->list[tuple[Orbit, float, str]]:
+    '''get a cached list of ISOs and generate more ISOs if requested'''
+    try:
+        with open(PATH_TO_DATA, 'rb') as file:
+            data = pickle.load(file)
+    except (FileNotFoundError):
+        data = []
+
+    if extra_batches > 0:
+        for i in range(extra_batches):
+            print('============================================')
+            print(f"Generating batch {i+1} of {extra_batches}:")
+            print('============================================')
+            data.extend(get_ISO())
+            print(f"current length: {len(data)}")
+        # save data:
+        with open(PATH_TO_DATA, 'wb') as file:
+            pickle.dump(data, file)
+    return data
+
+
+
+
 
 generation_types = ['omuamua', 'atlas-borisov', 'sun']
 def _generate_abs_magnitude(gen_type:str='')->tuple[Callable[[float],float],str]:
@@ -125,8 +179,8 @@ def _HG_magnitude(ob:Orbit, time:float, absolute_magnitude:float)->float:
     B2 = 1.218
     G = 0.15
 
-    r_e = Earth.time_to_rv(time)[0]
-    r_ob = ob.time_to_rv(time)[0]
+    r_e = Earth.t2rvec(time)
+    r_ob = ob.t2rvec(time)
     r_delta = r_ob - r_e
     au_delta = np.linalg.norm(r_delta)/AU
     au_ob = np.linalg.norm(r_ob)/AU
@@ -153,12 +207,12 @@ def _detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensit
     '''
 
     # excess magnitude (negative means detected)
-    F = lambda t: _HG_magnitude(ob,t,absolute_magnitude(ob.polar_equation(ob.time_to_theta(t)))) - sensitivity
+    F = lambda t: _HG_magnitude(ob,t,absolute_magnitude(ob.r(ob.f(t)))) - sensitivity
 
-    enter_system = ob.crosses_altitude(5*AU)
-    if enter_system is None: raise ArithmeticError("does not enter inner system")
-    e_time = ob.theta_to_time(-enter_system)
-    p_time = ob.time_to_theta(0)
+    enter_system = ob.cross_radius(5*AU)
+    if m.isnan(enter_system): raise ArithmeticError("does not enter inner system")
+    e_time = ob.t(-enter_system)
+    p_time = ob.f(0)
     
     # already detected?
     if F(e_time) < 0:
@@ -167,9 +221,9 @@ def _detection_time(ob:Orbit, absolute_magnitude:Callable[[float],float], sensit
         return root_finder_bisection(F,e2_time, e_time, tolerance=1) # look in outer system
     # else find detection time:
     F_low = F(p_time)
-    if not (cross_earth:=ob.crosses_altitude(AU)) is None: # check when it crosses earth
-        x1_time = ob.theta_to_time(-cross_earth)
-        x2_time = ob.time_to_theta(cross_earth)
+    if not (cross_earth:=ob.cross_radius(AU)) is None: # check when it crosses earth
+        x1_time = ob.t(-cross_earth)
+        x2_time = ob.t(cross_earth)
         x1F = F(x1_time)
         x2F = F(x2_time)
         if F_low > 0 and x1F < 0:

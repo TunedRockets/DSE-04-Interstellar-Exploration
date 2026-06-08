@@ -1,0 +1,347 @@
+
+import jkat
+
+from Structures.holistic_mass_solver import MassInterpolator
+from typing import Callable
+
+import math as m
+import numpy as np
+from scipy.optimize import minimize_scalar, minimize
+
+M = MassInterpolator()
+interp = M.interp
+
+
+def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
+    '''wrapper to ensure it works, INPUT IS IN KM/S'''
+    try:
+        m = interp(np.array([max(dv0*1000,1),dv2*1000,dv1*1000]))[0]
+        if not np.isfinite(m): raise ValueError("bad interpolator result")
+        return m
+    except(ValueError): return (dv1*5 + dv2 + dv0*7)*10_000 + 170_000
+
+
+
+def mad_optim(ISO:jkat.Orbit, max_time:float, detect_t:float, vinf:float):
+
+    def F(t):
+        try:
+            '''manually for own weighting'''
+            t1 = t[0]; t2 = t[1]
+            r1, v1 = jkat.Earth.t2vectors(t1)
+            r2, v2 = ISO.t2vectors(t2)
+            try: vl1,vl2 = jkat.trajectories.lambert(r1,r2,t2-t1,ISO.mu, True)
+            except: vl1=vl2=np.array([np.inf,np.inf,np.inf])
+            try: va1, va2 = jkat.trajectories.lambert(r1,r2, t2-t1, ISO.mu, False)
+            except: va1=va2=np.array([np.inf,np.inf,np.inf])
+            dvl1 = np.linalg.norm(v1-vl1) - vinf
+            dvl1 = max(dvl1,0)
+            dvl2 = np.linalg.norm(v2-vl2)
+            lmass = interpolator_wrapper(0,dvl1,dvl2) #type: ignore
+
+            dva1 = np.linalg.norm(v1-va1) - vinf
+            dva1 = max(dva1,0)
+            dva2 = np.linalg.norm(v2-va2)
+            amass = interpolator_wrapper(0,dva1,dva2)#type: ignore
+            if lmass < amass:
+                return {
+                "ts": t1,
+                "te": t2,
+                'dv0': 0,
+                "dv1": dvl1,
+                "dv2": dvl2,
+                'r': np.linalg.norm(r2),
+                'mass': lmass
+            }
+            else: return {
+                "ts": t1,
+                "te": t2,
+                'dv0': 0,
+                "dv1": dva1,
+                "dv2": dva2,
+                'r': np.linalg.norm(r2),
+                'mass': amass
+            }
+        except: return {'dv0':m.inf, 'dv1': m.inf, 'dv2': m.inf, 'mass': m.inf}
+    
+    def w(t): 
+        try: return F(t)['mass']
+        except(ValueError, ArithmeticError): return m.inf
+
+    x0 = np.array(((ISO.tp + ISO.tp + jkat.YEAR)/2, (ISO.tp + jkat.YEAR + ISO.tp + 2*jkat.YEAR)/2))
+    topt = minimize(w, x0, bounds=((detect_t,max_time), (detect_t, max_time)))
+    if topt.success: return F(topt.x)
+    else: return {}
+    
+
+def helio_optim(park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float):
+    '''find the optimal trajectory for the heliocentric Orberth manoeuvre'''
+    # interpolator = MassInterpolator()
+
+    # # find apoapsis after detection:
+    apo = park.t(m.pi)
+    while apo > detect_t: apo -= park.T
+    while apo < detect_t: apo += park.T
+
+
+
+    # # find periapsis after that:
+    peri = park.tp # find periapsis after ISO tp
+    while peri < apo: peri += park.T
+
+    rp, vp = park.vectors(0) # parking orbit periapsis
+    def F(t):
+        ri,vi = ISO.t2vectors(t)
+        vl1,vl2 = jkat.trajectories.lambert(rp, ri, t-peri,park.mu)
+        dv2 = np.linalg.norm(vl2-vi)
+
+        # construct rotation:
+
+        z = vl1.dot(rp)/rp.dot(rp) * rp
+        vproj = vl1 - z
+        vt = np.linalg.norm(vp) * vproj/np.linalg.norm(vproj) # same magnitude as vp
+        rotated = jkat.orbit_from_rv(rp,vt,park.mu)
+        dv0 = park.vvec(m.pi) - rotated.vvec(m.pi)
+
+        dv1 = vl1-vt
+
+        assert np.linalg.norm(rotated.rvec(0) - rp) < 1 # same periapsis
+        assert np.linalg.norm(rotated.rvec(m.pi) - park.rvec(m.pi)) < 1 # same apoapsis
+        assert abs(vt.dot(rp)) < 1e-5 # v is strictly tangential
+
+
+        radial_angle = m.pi/2 - m.acos(
+            rp.dot(dv1) / (np.linalg.norm(dv1) * np.linalg.norm(rp))
+        )
+        radial_burn = dv1.dot(rp)/rp.dot(rp) * rp
+
+
+        dv1 = np.linalg.norm(dv1)
+
+        return {
+        "ts": peri,
+        "te": t,
+        'dv0': np.linalg.norm(dv0),
+        "dv1": dv1,
+        "dv2": dv2,
+        'r': np.linalg.norm(ri),
+        'radial': radial_angle,
+        'rad_burn': np.linalg.norm(radial_burn),
+        'ob': rotated
+    }
+    def w(t):
+        try:
+            res = F(t)
+            return interpolator_wrapper(res['dv0'],res['dv1'],res['dv2'])
+        except (ValueError, ArithmeticError, AssertionError): return m.inf
+
+
+    t_opt = minimize_scalar(w,bounds=(peri, max_time)).x # type:ignore
+    res = w(t_opt)
+    res = F(t_opt)
+    res['mass'] = interpolator_wrapper(res['dv0'],res['dv1'],res['dv2']) # add mass
+    return res
+
+def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park:jkat.Orbit, ISO:jkat.Orbit, max_time:float, detect_t:float):
+    '''Finds if the ISO is reachable within the available delta V budgets (km/s)'''
+
+    # find apoapsis after detection:
+    apo = park.t(m.pi)
+    while apo < detect_t: apo += park.T
+
+    # find periapsis after that:
+    peri = park.tp  # find periapsis after ISO tp
+    while peri < apo: peri += park.T
+
+    rp, vp = park.vectors(0)  # parking orbit periapsis
+
+    def F(t):
+        ri, vi = ISO.t2vectors(t)
+        vl1, vl2 = jkat.trajectories.lambert(rp, ri, t - peri, park.mu)
+        dv2 = np.linalg.norm(vl2 - vi)
+
+        # construct rotation:
+
+        z = vl1.dot(rp) / rp.dot(rp) * rp
+        vproj = vl1 - z
+        vt = np.linalg.norm(vp) * vproj / np.linalg.norm(vproj)  # same magnitude as vp
+        rotated = jkat.orbit_from_rv(rp, vt, park.mu)
+        dv0 = park.vvec(m.pi) - rotated.vvec(m.pi)
+
+        dv1 = vl1 - vt
+
+        assert np.linalg.norm(rotated.rvec(0) - rp) < 1  # same periapsis
+        assert np.linalg.norm(rotated.rvec(m.pi) - park.rvec(m.pi)) < 1  # same apoapsis
+        assert abs(vt.dot(rp)) < 1e-5  # v is strictly tangential
+
+        radial_angle = m.pi / 2 - m.acos(
+            rp.dot(dv1) / (np.linalg.norm(dv1) * np.linalg.norm(rp))
+        )
+        radial_burn = dv1.dot(rp) / rp.dot(rp) * rp
+
+        dv1 = np.linalg.norm(dv1)
+
+        return {
+            "ts": peri,
+            "te": t,
+            'dv0': np.linalg.norm(dv0),
+            "dv1": dv1,
+            "dv2": dv2,
+            'r': np.linalg.norm(ri),
+            'radial': radial_angle,
+            'rad_burn': np.linalg.norm(radial_burn),
+            'ob': rotated
+        }
+
+    def w(t):
+        try:
+            res = F(t)
+            dv0 = res["dv0"]
+            dv1 = res["dv1"]
+            dv2 = res["dv2"]
+
+            return (
+                    max(0, dv0 - dv0_budget)
+                    + max(0, dv1 - dv1_budget)
+                    + max(0, dv2 - dv2_budget)
+            )
+
+        except Exception:
+            return np.inf
+
+    # ------------------------------------------------------------------
+    # Phase 1: coarse search
+    # ------------------------------------------------------------------
+
+    N_SCAN = 300
+
+    times = np.linspace(peri, max_time, N_SCAN)
+
+    best_t = times[0]
+    best_w = w(best_t)
+
+    if best_w < 0.001:
+        return True, F(best_t)
+
+    for t in times[1:]:
+        wt = w(t)
+
+        if wt < 0.001:
+            return True, F(t)
+
+        if wt < best_w:
+            best_w = wt
+            best_t = t
+
+    # every sample failed
+    if not np.isfinite(best_w):
+        return False, {
+            "dv0": np.inf,
+            "dv1": np.inf,
+            "dv2": np.inf,
+            "ts": np.nan,
+            "te": np.nan,
+        }
+
+    dt = (max_time - peri) / N_SCAN
+
+    left = max(peri, best_t - 5 * dt)
+    right = min(max_time, best_t + 5 * dt)
+
+    res = minimize_scalar(
+        w,
+        bounds=(left, right),
+        method="bounded",
+    )
+
+    t_solution = res.x
+
+    return w(t_solution) < 0.001, F(t_solution)
+
+#
+# def get_prob_of_success(
+#     dv0_budget: float,
+#     dv1_budget: float,
+#     dv2_budget: float,
+#     park: jkat.Orbit,
+#     ISOs: list[tuple[jkat.Orbit, float, str]],
+#     max_time: float,
+#     conv_chec_window=3000,
+#     tolerance=0.05/100,
+#     min_posible=10
+# ):
+#     posibles = 0
+#     analyzed = 0
+#     probabilities = []
+#
+#     converged_mean = None
+#
+#     for ISO, detect_t, *_ in ISOs:
+#         analyzed += 1
+#         posible = False
+#         try:
+#             posible, _ = check_if_possible(
+#                 dv0_budget,
+#                 dv1_budget,
+#                 dv2_budget,
+#                 park=park,
+#                 ISO=ISO,
+#                 max_time=max_time,
+#                 detect_t=detect_t,
+#             )
+#         except:
+#             pass
+#
+#         if posible:
+#             posibles += 1
+#
+#         probability = posibles / analyzed
+#         print()
+#         print(f"{posibles} / {analyzed} posible posibles found")
+#         print(f"Probability of posible posible: {probability*100:.2f}%")
+#         probabilities.append(probability)
+#
+#         if len(probabilities) >= conv_chec_window:
+#             window = probabilities[-conv_chec_window:]
+#             std = np.std(window)
+#             print(f"Standard deviation of posible posible: {std*100:.2f}%")
+#             if std < tolerance and posibles > min_posible:
+#                 converged_mean = np.mean(window)
+#                 break
+#
+#     if converged_mean is None:
+#         window = probabilities[-conv_chec_window:]
+#         converged_mean = np.mean(window)
+#
+#     return converged_mean
+
+
+
+
+
+
+
+#
+# def rotate_to_match(ob:jkat.Orbit, target:jkat.Orbit)->tuple[float, np.ndarray, jkat.Orbit]:
+#
+#     htgt = target.hvec
+#     hob = ob.hvec
+#     eob = ob.evec
+#
+#     # project:
+#     z = eob*htgt.dot(eob)/eob.dot(eob)
+#     htgt = htgt - z
+#
+#     # figure out angle
+#     angle = m.acos(htgt.dot(hob)/(np.linalg.norm(htgt)*np.linalg.norm(hob)))
+#
+#     #
+#     if np.cross(hob,htgt).dot(eob) > 0:
+#         angle *= -1
+#
+#     return angle, *jkat.trajectories.orbit_rotation(ob,angle,f=m.pi)
+
+
+
+
+

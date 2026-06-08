@@ -1041,9 +1041,9 @@ class Vesta(Hestia):
         self.Mass_boost = Me_boost + self.Mass_boost_fuel*l_boost
         # boost is done
 
-        ion_extra = injection_dv*self.ion_penalty
+        self.ion_extra = injection_dv*self.ion_penalty
 
-        ion_dv = self.dV_rdvz + ion_extra
+        ion_dv = self.dV_rdvz + self.ion_extra
 
         # only consider upper stage
         F_need = self.upper_stage_wet_mass*self.a_min_ion
@@ -1056,7 +1056,7 @@ class Vesta(Hestia):
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
 
         if self.verbose:
-            print(f"DV: boost dv is: {boost_dv/1000:4.3f} km/s, Ion dv is {ion_extra/1000:4.3f} + {self.dV_rdvz/1000:4.3f} km/s")
+            print(f"DV: boost dv is: {boost_dv/1000:4.3f} km/s, Ion dv is {self.ion_extra/1000:4.3f} + {self.dV_rdvz/1000:4.3f} km/s")
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
             print(f"ion engine number: {self.Number_ions}"  )
             print(f"Xenon fuel: {self.Mass_ion_fuel} kg")

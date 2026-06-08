@@ -254,6 +254,19 @@ if __name__ == "__main__":
     # TODO: PLOT MASS VS ALLOWED DV BOOST
     V._converge()
     print(V)
+    masses = []
+    ion_dv = []
+    allowable_boosts = np.linspace(0, 7000, 100)
+
+    for boost in allowable_boosts:
+        V = Vesta(14_730, 4_153, boost)
+        V._converge()
+        ion_dv.append(V.ion_extra)
+        masses.append(V.lower_stage_wet_mass)
+
+    plt.plot(allowable_boosts, masses)
+    plt.plot(allowable_boosts, ion_dv)
+    plt.show()
 
     resolution = 100
     dVs_inj = np.linspace(0, 7500+8500+2000, resolution)

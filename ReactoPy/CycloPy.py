@@ -986,7 +986,7 @@ if __name__ == "__main__":
 
     best = mass_heatmap(
         engine,
-        W_elec=46000,
+        W_elec=16000,
         P1=2.7 * BAR,
         T3=max_reactor_temp,
         max_T1=max_radiator_temp,

@@ -127,6 +127,8 @@ class Hestia():
             dV_boost:float=guess_dV_boost,
             verbose=False,
             convergence_tolerance=1e-8,
+            min_acceleration:float=0,
+            boost_included_in_acceleration:bool = True
     ):
         self.dV_inclination = dV_inclination
         self.dV_rdvz = dV_rdvz
@@ -152,6 +154,13 @@ class Hestia():
         '''power provided by the nuke truss'''
         self.Number_ions = 1
         '''Number of ion engines'''
+
+        self.min_acceleration = min_acceleration
+        '''minimum acceleration required for sizing the Ion system'''
+
+        self.boost_included_in_acceleration = boost_included_in_acceleration
+        '''if acceleration requirements should be calculated with boost stage attached'''
+
 
     def __repr__(self) -> str:
         return (
@@ -259,10 +268,10 @@ class Hestia():
     def rdvz_burn_time(self):
         '''pessemistic estimate of burn time'''
         return self.dV_rdvz/(self.Number_ions*F_ion/self.upper_stage_wet_mass)
-    
+
     @property
     def a_min_ion(self):
-        return self.dV_inclination/T_max_inclination
+        return max(self.dV_inclination/T_max_inclination, self.min_acceleration)
     '''[m/s^2] minimum acceleration of the ion engines'''
 
 
@@ -270,7 +279,11 @@ class Hestia():
         '''size the ion system and figure out number of engines and power draw'''
 
         # get no. engines and their mass:
-        F_need = self.lower_stage_wet_mass*self.a_min_ion
+        if self.boost_included_in_acceleration:
+            F_need = self.lower_stage_wet_mass*self.a_min_ion
+        else:
+            F_need = self.upper_stage_wet_mass*self.a_min_ion
+
         self.Number_ions = m.ceil(F_need/F_ion)
         # set new ion mass:
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
@@ -281,7 +294,6 @@ class Hestia():
         m_plane = dv2mf(self.dV_inclination, Isp_ion, self.lower_stage_dry_mass + ((1+l_ion) * m_rdzv) + self.Number_ions * Me_ion, l_ion)
 
         mf = m_plane + m_rdzv
-        mf = (1+propellant_margin)*mf
         self.Mass_ion_fuel = mf
         ion_fuel_tank_volume = mf/xenon_density
         if self.verbose:
@@ -294,6 +306,7 @@ class Hestia():
         m1 = self.lower_stage_pl_mass + Me_boost
         mf = dv2mf(self.dV_boost, self.boost_isp, m1, l_boost)
         self.Mass_boost_fuel = mf
+        self.Mass_boost = Me_boost + (self.Mass_boost_fuel*l_boost  )
         if self.verbose:
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
 
@@ -342,7 +355,6 @@ class Hestia():
         #     A = 28
 
         self.Area_heatshield = A
-        self.Mass_heatshield
         if self.verbose:
             print(f'heat shield area is: {A:3.2f} m^2 with a mass of {self.Mass_heatshield:6.1f} kg')
 
@@ -952,23 +964,122 @@ class Vesta(Hestia):
     (name subject to change. (e.g. find other backronym for hestia))'''
 
 
-    def __init__(self, dV_inclination: float = guess_dV_inclination, dV_rdvz: float = guess_dV_rdvz, dV_boost: float = guess_dV_boost, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
+    def __init__(self, dV_injection:float, dV_rdvz:float, allowed_dv_boost:float, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
         '''DV given in M/S!!!'''
+
+        
+        self.dV_injection = dV_injection
+        self.dV_rdvz = dV_rdvz
+        self.verbose = verbose
+        self.convergence_tolerance = convergence_tolerance
+        self.boost_isp = 375 # helios kick stage
+        # the varying variables 
+        self.Mass_ion = 51
+        '''the ion engines and tanks (not fuel)'''
+        self.Mass_ion_fuel = 200
+        '''fuel mass of xenon'''
+        self.Mass_ion_fuel_4_boost = 200
+        '''extra fuel mass defered to ion for the injection'''
+        self.Mass_boost = 106
+        '''the boost stage, engines and tanks (not heat shield, or fuel)'''
+        self.Mass_boost_fuel = 200
+        '''fuel mass of MON/MMH or w/e we're using'''
+        self.Mass_power_truss = 58
+        '''mass of nuke, truss, and radiators'''
+        self.Power_provided = 0
+        '''power provided by the nuke truss'''
+        self.Number_ions = 1
+        '''Number of ion engines'''
+        self.allowed_dv_boost = allowed_dv_boost
+        '''boost dv added to the launcher at injection'''
+
+
 
         self.min_acceleration = min_acceleration
         '''minimum acceleration required for sizing the Ion system'''
-        # default is 9 km/s in one year.
 
-        super().__init__(dV_inclination, dV_rdvz, dV_boost, verbose, convergence_tolerance)
-        self.boost_isp = 400
+        self.boost_included_in_acceleration = False
+        '''if acceleration requirements should be calculated with boost stage attached'''
+
 
     def size_heat_shield(self):
-        self.Area_heatshield = 0 # no heat shield
-        return;
+        pass # not used
 
     @property
-    def a_min_ion(self): # In m/s^2
-        return self.min_acceleration
+    def vinf(self):
+        return 8 # change for C3 function
+    
+
+
+    def size_prop_system(self):
+        '''new sizer for direct earth vesta propulsion'''
+        # get no. engines and their mass:
+
+
+        # for the injection:
+        ion_dv = self.dV_injection - self.vinf
+
+        # take into account boost:
+        
+        boost_dv = max(self.allowed_dv_boost, ion_dv)
+        ion_dv -= boost_dv
+
+        # boost mass:
+        mf_boost = dv2mf(boost_dv,self.boost_isp, self.lower_stage_pl_mass, l_boost)
+        self.Mass_boost_fuel = mf_boost
+        self.Mass_boost = Me_boost + self.Mass_boost_fuel*l_boost
+        # boost is done
+
+        ion_dv += self.dV_rdvz
+
+        # only consider upper stage
+        F_need = self.upper_stage_wet_mass*self.a_min_ion
+
+        self.Number_ions = m.ceil(F_need/F_ion)
+
+        mf_ion = dv2mf(ion_dv, Isp_ion, self.lower_stage_pl_mass + self.Number_ions*Me_ion, l_ion)
+
+        self.Mass_ion_fuel = mf_ion
+        self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
+
+        if self.verbose:
+            print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
+            print(f"ion engine number: {self.Number_ions}"  )
+            print(f"Xenon fuel: {self.Mass_ion_fuel} kg")
+
+
+        
+
+    def size_ion_system(self):
+        pass
+
+    def size_boost_system(self):
+        pass
+
+
+
+
+
+
+
+    def __repr__(self) -> str:
+        return (
+            '--- Vesta configuration: ---\n'
+            f'payload mass: {self.upper_stage_pl_mass:6.1f} kg\n'
+            f'ion dry mass: {self.upper_stage_dry_mass:6.1f} kg\n'
+            f'ion wet mass: {self.upper_stage_wet_mass:6.1f} kg\n'
+            '---\n'
+            f'boost sys mass: {self.lower_stage_pl_mass:6.1f} kg\n'
+            f'boost dry mass: {self.lower_stage_dry_mass:6.1f} kg\n'
+            f'boost wet mass: {self.lower_stage_wet_mass:6.1f} kg\n'
+            '---\n'
+            f'{self.Number_ions} ion engines\n'
+            f'rendezvous burn time: {self.rdvz_burn_time/86_000:3.2f} days\n'
+            f'{self.Power_provided:6.1f} W used from reactor with mass {self.Mass_power_truss:6.1f} kg\n'
+        )
+
+
+
 
 
 

@@ -426,3 +426,6 @@ E:best mass:  523991 kg,success chance: 91.89%, delta vees: (8.5+)  4.000, 12.73
 E:best mass:    6683 kg,success chance: 91.21%, delta vees: (8.5+)  4.000, 11.955 (/2.0),  2.741 km/s, ISOs generated:  57/1733
 E:best mass:    9426 kg,success chance: 91.44%, delta vees: (8.5+)  5.000, 10.140 (/2.0),  2.665 km/s, ISOs generated:  76/1715
 E:best mass: 1593210 kg,success chance: 90.78%, delta vees: (8.5+)  5.000, 18.121 (/2.0), 16.300 km/s, ISOs generated:   8/884
+E:best mass:    7966 kg,success chance: 92.23%, delta vees: (8.5+)  5.000,  1.323 (/2.0),  2.341 km/s, ISOs generated: 102/825  
+E:best mass:    5419 kg,success chance: 90.73%, delta vees: (8.5+)  5.000,  4.720 (/2.0),  2.834 km/s, ISOs generated: 286/2510 
+E:best mass:    5352 kg,success chance: 90.00%, delta vees: (8.5+)  5.000,  2.781 (/2.0),  4.256 km/s, ISOs generated: 1191/8539 

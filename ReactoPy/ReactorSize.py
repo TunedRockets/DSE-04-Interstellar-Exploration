@@ -21,7 +21,7 @@ class Reactor:
         burnup=0.15,        # fraction of fuel burned at EoM
         lifetime_s = 315360000 * 2, # operational period before refuel (s); default = 20 year
         operating_pressure = 2e6, # Pa helium pressure
-        power_density=11e6,  # W/m^3 volumetric power density Prometheus
+        power_density=10.4e6,  # W/m^3 volumetric power density Prometheus
         uranium_pebble_fraction = 0.95, # UO2 pellets
         allowable_stress = 146e6, # from ASME Table 1B NO6617
         helium_data_path = "data/helium_prop.csv"
@@ -32,8 +32,10 @@ class Reactor:
         self.burnup            = burnup
         self.lifetime_s        = lifetime_s
         self.coolant_inlet_temp = coolant_inlet_temp
-        self.power_density     = power_density
         self.operating_pressure = operating_pressure
+        if power_density=="int":
+            self.power_density = self._powerden_interpolate()
+        self.power_density     = power_density
         self.uranium_pebble_fraction = uranium_pebble_fraction
         self.allowable_stress = allowable_stress
 
@@ -51,6 +53,7 @@ class Reactor:
         self.reflector_thickness = 0.0, # Thickness of reflector blades
         self.barrel_thickness = 0.0 # kg of barrel
         self.core_barrel_gap = 0.0 # gas gap between core (reflector) and barrel
+        self.reactor_mass = 0.0
         self.total_mass = 0.0
 
 
@@ -104,6 +107,13 @@ class Reactor:
 
     #     return cp_interp, rho_interp
 
+    def _powerden_interpolate(self):
+        """
+        interpolates for power density based on the two prometheus points base case and high power.
+        source desmos and dittus-boelter
+        """
+        
+        return 3.62032*self.operating_pressure**0.49
 
     # ------------------------------------------------------------------
     def size_fuel(self):
@@ -313,23 +323,33 @@ class Reactor:
         # rho_steel   =  7675   # kg/m3 Using 2.25Cr:1Mo steel for now, using density from the HTR Modul 200 from http://large.stanford.edu/courses/2016/ph241/tew2/docs/3310868.pdf
         rho_steel   =  8360 # kg/m3 Inconel-617 https://www.aerospacemetals.com/wp-content/uploads/2023/08/Special-Metals-INCONEL%C2%AE-Alloy-617.pdf
         m_vessel    = V_vessel * rho_steel
-        print("Outer Diameter:", 2*r_outer)
-        print("Height:", h_cyl+r_outer*2)
 
-        return {"wall_thickness_m": t, "vessel_mass_kg": m_vessel}
+        return {"outer_diameter_m": 2*r_outer, "height_m": h_cyl+r_outer*2, "wall_thickness_m": t, "vessel_mass_kg": m_vessel}
 
     # -----------------------------------------------------------------------------------------------------------------
     def size_shield(self):
         """
         CONES
+
+        all other data from Prometheus
         """
+        shield_thickness = 5.8 * self.core_geometry["cylinder_volume_m3"]
+        angle = 12 * np.pi/180
+        r2 = 0.7
+        h2 = r2 / np.tan(angle)
+        h1 = h2 - shield_thickness
+        r1 = h1 * np.tan(angle)
+        shield_volume = 1/3*np.pi*r2**2*h2 -1/3*np.pi*r1**2*h1
 
-        rho_shield = 0
-        return None
+        rho_shield = 2510 # kg/m3 from sheets
+        shield_mass = shield_volume * rho_shield
+        return {"top_diameter_m" : r1*2, "bottom_diameter_m": r2*2, "shield_thickness_m": shield_thickness, "shield_mass_kg" : shield_mass} 
+    
 
-    # ------------------------------------------------------------------
-    def size_all(self, print_true=False):
-        """Run the full sizing chain and print a summary."""
+    def size_reactor(self):
+        """
+        basically everything except the shield (and brayton)
+        """
         fuel    = self.size_fuel()
         core    = self.size_core()
         # coolant = self.size_coolant()
@@ -337,8 +357,18 @@ class Reactor:
         reflector = self.size_reflector()
         barrel = self.size_core_barrel()
         vessel = self.size_pressure_vessel()
-        total_mass = fuel["total_fuel_kg"] + reflector["reflector_mass_kg"] + barrel["barrel_mass_kg"] + vessel["vessel_mass_kg"]
-        total_mass *= 1.1 # Margin for the stuff I missed rn
+        reactor_mass = fuel["total_fuel_kg"] + reflector["reflector_mass_kg"] + barrel["barrel_mass_kg"] + vessel["vessel_mass_kg"]
+        reactor_mass *= 1.1 # Margin for the stuff I missed rn
+        self.reactor_mass = reactor_mass
+        return fuel, core, rods, reflector, barrel, vessel, reactor_mass
+
+
+    # ------------------------------------------------------------------
+    def size_all(self, print_true=False):
+        """Run the full sizing chain and print a summary."""
+        fuel, core, rods, reflector, barrel, vessel, reactor_mass = self.size_reactor()
+        shield = self.size_shield()
+        total_mass = reactor_mass + shield["shield_mass_kg"]
         self.total_mass = total_mass
 
         if print_true:
@@ -379,11 +409,16 @@ class Reactor:
             print(f"  Pressure vessel thickness   : {vessel['wall_thickness_m']:.4f} m")
             print(f"  Vessel mass    : {vessel['vessel_mass_kg']:.2f} kg")
             print()
+            print(f"  -- Shield --")
+            print(f"  Shield thickness   : {shield['shield_thickness_m']:.4f} m")
+            print(f"  Shield mass    : {shield['shield_mass_kg']:.2f} kg")
+            print()
             print(f"  -- Total Mass (0.1 Margin) --")
             print(f"  Total mass    : {total_mass:.2f} kg")
             print()
             print("=" * 55)
 
+        return total_mass
 
 def uranium_frac_vs_fuel_mass():
     ufrac = np.arange(0.04,0.8,0.1)
@@ -399,8 +434,18 @@ def main():
     reactorquestionmark = Reactor(1050, 1273, 190000)
     reactorquestionmark.size_all()
     haleu = Reactor(1050, 1273, 190000, enrichment=0.2, power_density=5.8e6)
-    haleu.size_all(print_true=True)
-    print(haleu.total_mass)
+    haleu.size_all()
+    reactoring = Reactor(1050, 1273, 190000, operating_pressure=4e6, power_density=10.4e6)
+    reactoring.size_all(print_true=True)
+    reactor_small = Reactor(1050, 1273, 54000, operating_pressure=2e6, power_density=7.4e6)
+    reactor_small.size_all(print_true=True)
+    print(reactor_small.reactor_mass * 1.85)
+    reactor_small_hp = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density=10.4e6)
+    reactor_small_hp.size_all(print_true=True)
+    print(reactor_small_hp.reactor_mass * 1.85)
+    reactor_haleu = Reactor(1050, 1273, 54000, enrichment=0.2, operating_pressure=2e6, power_density=5.8e6)
+    reactor_haleu.size_all(print_true=True)
+    print(reactor_haleu.reactor_mass * 1.85)
 
 
 if __name__ == "__main__":

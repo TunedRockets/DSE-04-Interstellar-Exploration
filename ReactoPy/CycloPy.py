@@ -660,7 +660,7 @@ def mass_heatmap(
         max_P2=None,
         res=120,
         limit=1000.0,
-        plot=True,
+        plot=False,
         plot_mode="2d",   # "2d" or "3d"
         verbose=False,
         mass_budget=None):
@@ -668,7 +668,7 @@ def mass_heatmap(
         min_P2 = 1.01*P1
 
     if max_P2 is None:
-        max_P2 = 3*P1
+        max_P2 = 10*P1
 
     sizer = BraytonSizing(engine)
 
@@ -935,6 +935,7 @@ def mass_heatmap(
         print(f"Alternator mass: {m_alternator:.2f} kg")
         print(f"Reactor mass: {m_reactor:.2f} kg")
         print(f"Radiator mass: {mr:.2f} kg")
+        print(f"Radiator area: {mr/radiator_areal_density:.2f} m2")
         print(f"TOTAL MASS: {best[0]:.2f} kg")
 
     return best
@@ -988,11 +989,11 @@ if __name__ == "__main__":
     best = mass_heatmap(
         engine,
         W_elec=16000,
-        P1=2.7 * BAR,
+        P1=18*BAR,
         T3=max_reactor_temp,
         max_T1=max_radiator_temp,
-        # plot=False,
-        plot_mode="2d",
+        plot=True,
+        plot_mode="3d",
         verbose=True,
         # mass_budget=300
     )
@@ -1000,7 +1001,7 @@ if __name__ == "__main__":
     for low_pressure in low_pressures:
         best = mass_heatmap(
             engine,
-            W_elec=46000,
+            W_elec=16000,
             P1=low_pressure * BAR,
             T3=max_reactor_temp,
             max_T1=max_radiator_temp,

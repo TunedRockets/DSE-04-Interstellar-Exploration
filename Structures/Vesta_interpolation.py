@@ -250,10 +250,15 @@ def plot_mass_heatmap(interpolator,
 
 
 if __name__ == "__main__":
+    V = Vesta(14_730, 4_153, 7000)
+    # TODO: PLOT MASS VS ALLOWED DV BOOST
+    V._converge()
+    print(V)
+
     resolution = 100
     dVs_inj = np.linspace(0, 7500+8500+2000, resolution)
     dVs_rdvz = np.linspace(0, 25000, resolution)
-    data = generate_mass_database(dVs_inj, dVs_rdvz)
+    # data = generate_mass_database(dVs_inj, dVs_rdvz)
     db = load_mass_database()
 
     interp = MassInterpolator()

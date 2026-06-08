@@ -965,7 +965,7 @@ class Vesta(Hestia):
     (name subject to change. (e.g. find other backronym for hestia))'''
 
 
-    def __init__(self, dV_injection:float, dV_rdvz:float, allowed_dv_boost:float, ion_penalty:float=2, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
+    def __init__(self, dV_injection:float, dV_rdvz:float, allowed_dv_boost:float, ion_penalty:float=2, verbose=True, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
         '''DV given in M/S!!!'''
 
         
@@ -1013,7 +1013,10 @@ class Vesta(Hestia):
 
     @property
     def vinf(self):
-        return get_vinf(Ariane64_Launcher, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)[0]
+        v_inf, best_kickstage = get_vinf(Ariane64_Launcher, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
+        if self.verbose:
+            print("Best kickstage: ", best_kickstage)
+        return v_inf
     
 
 

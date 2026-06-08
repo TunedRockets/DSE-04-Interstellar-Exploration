@@ -113,8 +113,10 @@ class Reactor:
         interpolates for power density based on the two prometheus points base case and high power.
         source desmos and dittus-boelter
         """
+        pressure_MPa = self.operating_pressure/1e6
+        powerden_MW = 3.62032*self.operating_pressure**0.49
         
-        return 3.62032*self.operating_pressure**0.49
+        return powerden_MW*1e6
 
     # ------------------------------------------------------------------
     def size_fuel(self):

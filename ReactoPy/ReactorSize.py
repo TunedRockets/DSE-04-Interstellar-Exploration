@@ -35,7 +35,8 @@ class Reactor:
         self.operating_pressure = operating_pressure
         if power_density=="int":
             self.power_density = self._powerden_interpolate()
-        self.power_density     = power_density
+        else:
+            self.power_density     = power_density
         self.uranium_pebble_fraction = uranium_pebble_fraction
         self.allowable_stress = allowable_stress
 
@@ -323,8 +324,6 @@ class Reactor:
         # rho_steel   =  7675   # kg/m3 Using 2.25Cr:1Mo steel for now, using density from the HTR Modul 200 from http://large.stanford.edu/courses/2016/ph241/tew2/docs/3310868.pdf
         rho_steel   =  8360 # kg/m3 Inconel-617 https://www.aerospacemetals.com/wp-content/uploads/2023/08/Special-Metals-INCONEL%C2%AE-Alloy-617.pdf
         m_vessel    = V_vessel * rho_steel
-        # print("Outer Diameter:", 2*r_outer)
-        # print("Height:", h_cyl+r_outer*2)
 
         return {"outer_diameter_m": 2*r_outer, "height_m": h_cyl+r_outer*2, "wall_thickness_m": t, "vessel_mass_kg": m_vessel}
 
@@ -419,6 +418,7 @@ class Reactor:
             print(f"  Total mass    : {total_mass:.2f} kg")
             print()
             print("=" * 55)
+
         return total_mass
 
 def uranium_frac_vs_fuel_mass():

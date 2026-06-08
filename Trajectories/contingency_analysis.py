@@ -92,6 +92,12 @@ def earth_mass(dv0,dv1,dv2):
     #     try: 
     #         return INTERP((dv0,dv1+dv2))
     #     except: return (dv0*5+dv1+dv2)*10_000 + 999_000
+    if (dv0 > AREA_OF_INTEREST[0] or dv1+dv2 > AREA_OF_INTEREST[1]): return (dv0*5+dv1+dv2)*10_000 + 999_000
+
+    V = Vesta(0,(dv2+dv1)*1000,dv0*1000)
+    V._converge()
+    return V.lower_stage_wet_mass # so quick !
+
 
     return interpolator_wrapper(0,dv0,dv1+dv2) # Vesta mass interpolator is unreliable...
 
@@ -105,7 +111,8 @@ def _test_Vesta_mass():
         V._converge()
         vm = V.lower_stage_wet_mass
         im = earth_mass(dv0,dv1,0)
-        print(f'accuracy: {(im-vm)/vm:%}')
+        altm = earth_mass(dv1,dv0,0)
+        print(f'accuracy: {(im-vm)/vm:%},\t alternate: accuracy: {(altm-vm)/vm:%}')
 
 
 
@@ -165,10 +172,29 @@ def study_ISO(ISO:jkat.Orbit, detect_t:float)->dict:
         try: return F(t)['mass']
         except(ValueError, ArithmeticError): return m.inf
 
-    x0 = np.array(((ISO.tp + ISO.tp + jkat.YEAR)/2, (ISO.tp + jkat.YEAR + ISO.tp + 2*jkat.YEAR)/2))
+
+    # prescan for minima:
+    x0 = prescan_opt(
+        w,
+        np.linspace(ISO.tp, ISO.tp + 2*jkat.YEAR,10),
+        np.linspace(ISO.tp, ISO.tp+MAX_MISSION_TIME*jkat.YEAR, 10)
+    )
+    # x0 = np.array(((ISO.tp + ISO.tp + jkat.YEAR)/2, (ISO.tp + jkat.YEAR + ISO.tp + 2*jkat.YEAR)/2))
     topt = minimize(w, x0, bounds=((detect_t,detect_t + MAX_MISSION_TIME*jkat.YEAR), (detect_t, detect_t + MAX_MISSION_TIME*jkat.YEAR)))
     if topt.success: return F(topt.x)
     else: return {}
+
+def prescan_opt(F, xx, yy):
+    '''prescan for a sorta global minima of the function'''
+
+    xg, yg = np.meshgrid(xx,yy)
+    xg = xg.flatten(); yg = yg.flatten();
+    ww = []
+    for i in range(len(xg)):
+        ww.append(F((xg[i],yg[i])))
+    idx = np.array(ww).argmin()
+    return (xg[idx],yg[idx])
+
 
 
 def job(ISOtuple:tuple[jkat.Orbit, float, str])->dict:
@@ -259,23 +285,32 @@ if __name__ == '__main__':
 
     # _test_Vesta_mass()
     # input()
+    # H = Hestia(0,18*1000,5*1000, min_acceleration=(7000/(jkat.YEAR)), boost_included_in_acceleration=False)
+    # H._converge()
+    # print(H)
+    # # input()
 
-    direct_earth_analysis(10)
+    V = Vesta(14*1000,10*1000, 3*1000, min_acceleration=(7000/jkat.YEAR), verbose=True, ion_penalty=2)
+    V._converge()
+    print(V)
+    input()
 
-    i = make_interp(20)
+    direct_earth_analysis(100)
 
-    xx = np.linspace(0,5)
-    yy = np.linspace(0,20)
-    pp = []
-    for y in yy:
-        prow = []
-        for x in xx:
-            prow.append(i((x,y)))
-        pp.append(prow)
+    # i = make_interp(20)
 
-    plt.imshow(pp, origin='lower', extent=(0,5,0,20))
-    plt.axis('scaled')
-    plt.show()
+    # xx = np.linspace(0,5)
+    # yy = np.linspace(0,20)
+    # pp = []
+    # for y in yy:
+    #     prow = []
+    #     for x in xx:
+    #         prow.append(i((x,y)))
+    #     pp.append(prow)
+
+    # plt.imshow(pp, origin='lower', extent=(0,5,0,20))
+    # plt.axis('scaled')
+    # plt.show()
 
     print(earth_mass(5,7,7))
 

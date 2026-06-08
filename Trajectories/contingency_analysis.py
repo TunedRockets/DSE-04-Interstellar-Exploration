@@ -214,7 +214,7 @@ def job(ISOtuple:tuple[jkat.Orbit, float, str])->dict:
 
 def study_batch_earth(gen_type:str='', N_batches:int=20)->pd.DataFrame:
     '''multithreaded analysis'''
-    
+    print("Gettig ISOs...")
     ISOs = get_ISO(gen_type=gen_type, N_batches=N_batches)
     #for each ISO get row:
     resl = []

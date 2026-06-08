@@ -17,7 +17,8 @@ from multiprocessing import Pool
 import os
 from pathlib import Path
 import jkat
-from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launcher, Helios
+from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launcher, Helios, Star63, VegaC_Zefiro9, \
+    VegaC_AVUM_plus, Orion38
 
 # import psutil
 #
@@ -1012,7 +1013,7 @@ class Vesta(Hestia):
 
     @property
     def vinf(self):
-        return get_vinf(Ariane64_Launcher, Helios, self.lower_stage_wet_mass)
+        return get_vinf(Ariane64_Launcher, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)[0]
     
 
 

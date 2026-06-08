@@ -28,6 +28,7 @@ from Structures.holistic_mass_solver import Vesta
 from scipy.interpolate import RegularGridInterpolator
 import pickle as pkl
 import matplotlib.pyplot as plt
+import os
 
 MAX_MISSION_TIME = 15 # [years]
 MAX_BOOST_DV = 5 # [km/s]
@@ -153,7 +154,7 @@ def job(ISOtuple:tuple[jkat.Orbit, float, str])->dict:
 
 def study_batch_earth(gen_type:str='', N_batches:int=20)->pd.DataFrame:
     '''multithreaded analysis'''
-    print("Gettig ISOs...")
+    print("Getting ISOs...")
     ISOs = get_ISO(gen_type=gen_type, N_batches=N_batches)
     #for each ISO get row:
     resl = []
@@ -162,6 +163,45 @@ def study_batch_earth(gen_type:str='', N_batches:int=20)->pd.DataFrame:
         res = tqdm(p.imap_unordered(job, ISOs), desc=f"Studying ISOs, (from earth)", total=len(ISOs))
         resl = list(res)
     return pd.DataFrame(resl)
+
+
+
+PATH_TO_DATA = Path(__file__).parent.parent / "data" 
+PICKLE_NAME = "EISOdata"
+USER_NAME = os.getlogin()
+
+def get_data_earth(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
+    '''Get the gathered data on ISOs, 
+    using the direct earth method. generated fields are:
+    "detection_r","periapsis","magnitude_generation_method",'time_until_periapsis',"parameter",
+    "e", "i", "RAAN", "arg_p", "t_p", "ISO_excess_velocity"
+
+    as well as:
+    "ts", "te", 'dvi', "dvr", 'r', 'mass'
+    '''
+
+    # generate new if applicable:
+    if extra_batches > 0:
+        # load my data:
+        try:
+            data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / (PICKLE_NAME + USER_NAME))
+        except (FileNotFoundError):
+            data = pd.DataFrame()
+        new = [data]
+        new.append(study_batch_earth(gen_type, extra_batches))
+        data = pd.concat(new,ignore_index=True)
+        # save result to my data:
+        data.to_pickle(PATH_TO_DATA / (PICKLE_NAME + USER_NAME))
+
+    # load all data
+    datas = os.listdir(PATH_TO_DATA)
+    ldat = []
+    for dat in datas:
+        if dat.startswith(PICKLE_NAME):
+            ldat.append(pd.read_pickle(PATH_TO_DATA / dat))
+    mdata = pd.concat(ldat) if len(ldat) > 0 else pd.DataFrame()
+
+    return mdata
 
 
 def bounding_box_2d(points, C):
@@ -221,7 +261,7 @@ def direct_earth_analysis(N_batches:int=30):
     N = 350
     Paim = 0.9 # probability aim
 
-    df = study_batch_earth(N_batches=N_batches)
+    df = get_data_earth(extra_batches=N_batches)
 
     print("interesting fraction:")
     dfi = df[df["dvi"] <= AREA_OF_INTEREST[0]]
@@ -264,7 +304,7 @@ def direct_earth_analysis(N_batches:int=30):
     with open(path, 'a') as file:
         file.write(s + '\n')
         print(s)
-    return
+    return dvi, dvr
 
 
 
@@ -276,12 +316,16 @@ if __name__ == '__main__':
 
 
     # input()
-    V = Vesta(14.73*1000, 4.153*1000, 2*1000, verbose=True)
+    # a = 9000 / (jkat.YEAR)
+    # V = Vesta(14.73*1000, 4.153*1000, 0, verbose=True, min_acceleration=a)
+    # V._converge()
+    # print(V)
+    # input()
+
+    dvi, dvr = direct_earth_analysis(20)
+    V = Vesta(dvi*1000, dvr*1000, 5000, verbose=False)
     V._converge()
     print(V)
-    input()
-
-    direct_earth_analysis(200)
 
     # i = make_interp(20)
 

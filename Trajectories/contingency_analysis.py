@@ -21,18 +21,17 @@ import math as m
 import multiprocessing as mp
 from tqdm import tqdm
 from scipy.optimize import minimize
-from Rendezvous_dV_requirements import find_best_point, get_ISO, interpolator_wrapper, _under, Hestia
+from Rendezvous_dV_requirements import get_ISO, interpolator_wrapper, _under, Hestia, _argymax
 from pathlib import Path
 from Structures.holistic_mass_solver import Vesta
 from scipy.interpolate import RegularGridInterpolator
 import pickle as pkl
 import matplotlib.pyplot as plt
 
-VINF = 8.5 # + 0.577
 MAX_MISSION_TIME = 15 # [years]
 MAX_BOOST_DV = 5 # [km/s]
-LOW_THRUST_PENALTY = 2 # extra cost for low thrust (made up number)
-AREA_OF_INTEREST = (MAX_BOOST_DV,20,20) # Area where the mass function is defined
+ION_PENALTY = 2
+AREA_OF_INTEREST = (20,20) # Area where the mass function is defined
 
 
 # create simple mass interpolator.
@@ -40,51 +39,51 @@ INTERP:RegularGridInterpolator = None # type:ignore
 INTERP_PATH = Path(__file__).parent
 INTERP_FILE = "Vesta_mass_numbers"
 
-def _job(p):
-    np.seterr(all="ignore")
-    dv1 = p[0]; dv2 = p[1]
-    try:
-        V = Vesta(0,dv2*1000,dv1*1000)
-        V._converge()
-        return V.lower_stage_wet_mass
-    except (ArithmeticError,ValueError) as e: 
-        return m.nan
+# def _job(p):
+#     np.seterr(all="ignore")
+#     dv1 = p[0]; dv2 = p[1]
+#     try:
+#         V = Vesta(0,dv2*1000,dv1*1000)
+#         V._converge()
+#         return V.lower_stage_wet_mass
+#     except (ArithmeticError,ValueError) as e: 
+#         return m.nan
     
-def make_interp(res:int = 20):
-    '''interpolator strictly for Vesta model, im km/s'''
-    global INTERP
-    try:
-        with open(INTERP_PATH / (INTERP_FILE + str(res)), 'rb') as file:
-            INTERP = pkl.load(file)
-            return  INTERP;
-    except(FileNotFoundError): pass
+# def make_interp(res:int = 20):
+#     '''interpolator strictly for Vesta model, im km/s'''
+#     global INTERP
+#     try:
+#         with open(INTERP_PATH / (INTERP_FILE + str(res)), 'rb') as file:
+#             INTERP = pkl.load(file)
+#             return  INTERP;
+#     except(FileNotFoundError): pass
 
 
-    xx = np.linspace(0,AREA_OF_INTEREST[0]+0.1, res) # boost
-    yy = np.linspace(0,(AREA_OF_INTEREST[1] + AREA_OF_INTEREST[2]) * 3/4 + 0.1, res) # Ion
+#     xx = np.linspace(0,AREA_OF_INTEREST[0]+0.1, res) # boost
+#     yy = np.linspace(0,(AREA_OF_INTEREST[1] + AREA_OF_INTEREST[2]) * 3/4 + 0.1, res) # Ion
 
-    xg,yg = np.meshgrid(xx,yy)
-    xg = xg.flatten(); yg = yg.flatten()
-    pp = np.column_stack((xg,yg))
+#     xg,yg = np.meshgrid(xx,yy)
+#     xg = xg.flatten(); yg = yg.flatten()
+#     pp = np.column_stack((xg,yg))
     
-    # with mp.Pool() as p:
-    #     print("Starting Mass interpolator")
-    #     mm = tqdm(p.imap(_job, pp, 1), desc='Creating interpolator', total=len(pp))
-    # mm = list(mm) # convert to better format
+#     # with mp.Pool() as p:
+#     #     print("Starting Mass interpolator")
+#     #     mm = tqdm(p.imap(_job, pp, 1), desc='Creating interpolator', total=len(pp))
+#     # mm = list(mm) # convert to better format
 
-    mm = []
-    for p in tqdm(pp, desc='single threaded mass calculation'):
-        mm.append(_job(p))
+#     mm = []
+#     for p in tqdm(pp, desc='single threaded mass calculation'):
+#         mm.append(_job(p))
 
-    mm = np.reshape(np.array(mm),(res,res),)
+#     mm = np.reshape(np.array(mm),(res,res),)
 
-    INTERP = RegularGridInterpolator((xx,yy), mm)
-    with open(INTERP_PATH / (INTERP_FILE + str(res)), 'wb') as file:
-        pkl.dump(INTERP,file)
-    return INTERP
+#     INTERP = RegularGridInterpolator((xx,yy), mm)
+#     with open(INTERP_PATH / (INTERP_FILE + str(res)), 'wb') as file:
+#         pkl.dump(INTERP,file)
+#     return INTERP
 
 
-def earth_mass(dv0,dv1,dv2):
+def earth_mass(dvi,dvr):
     '''translate dv0:boost, dv1+dv2:ion into the interpolator'''
     # if INTERP is None:
     #     make_interp(); return earth_mass(dv0,dv1,dv2)
@@ -92,27 +91,27 @@ def earth_mass(dv0,dv1,dv2):
     #     try: 
     #         return INTERP((dv0,dv1+dv2))
     #     except: return (dv0*5+dv1+dv2)*10_000 + 999_000
-    if (dv0 > AREA_OF_INTEREST[0] or dv1+dv2 > AREA_OF_INTEREST[1]): return (dv0*5+dv1+dv2)*10_000 + 999_000
+    if (dvi > AREA_OF_INTEREST[0] or dvr > AREA_OF_INTEREST[1]): return (dvi*3+dvr)*10_000 + 999_000
 
-    V = Vesta(0,(dv2+dv1)*1000,dv0*1000)
+    V = Vesta(dvi*1000, dvr*1000, MAX_BOOST_DV, ION_PENALTY)
     V._converge()
     return V.lower_stage_wet_mass # so quick !
 
 
     return interpolator_wrapper(0,dv0,dv1+dv2) # Vesta mass interpolator is unreliable...
 
-def _test_Vesta_mass():
+# def _test_Vesta_mass():
 
-    for _ in range(200):
+#     for _ in range(200):
 
-        dv0 = np.random.random()*AREA_OF_INTEREST[0]
-        dv1 = np.random.random()*AREA_OF_INTEREST[1]
-        V = Vesta(0,dv1,dv0)
-        V._converge()
-        vm = V.lower_stage_wet_mass
-        im = earth_mass(dv0,dv1,0)
-        altm = earth_mass(dv1,dv0,0)
-        print(f'accuracy: {(im-vm)/vm:%},\t alternate: accuracy: {(altm-vm)/vm:%}')
+#         dv0 = np.random.random()*AREA_OF_INTEREST[0]
+#         dv1 = np.random.random()*AREA_OF_INTEREST[1]
+#         V = Vesta(0,dv1,dv0)
+#         V._converge()
+#         vm = V.lower_stage_wet_mass
+#         im = earth_mass(dv0,dv1,0)
+#         altm = earth_mass(dv1,dv0,0)
+#         print(f'accuracy: {(im-vm)/vm:%},\t alternate: accuracy: {(altm-vm)/vm:%}')
 
 
 
@@ -128,45 +127,37 @@ def study_ISO(ISO:jkat.Orbit, detect_t:float)->dict:
             except: vl1=vl2=np.array([np.inf,np.inf,np.inf])
             try: va1, va2 = jkat.trajectories.lambert(r1,r2, t2-t1, ISO.mu, False)
             except: va1=va2=np.array([np.inf,np.inf,np.inf])
-            dvl1 = np.linalg.norm(v1-vl1) - VINF
+            dvl1 = np.linalg.norm(v1-vl1)
             dvl1 = max(dvl1,0)
             dvl2 = np.linalg.norm(v2-vl2)
 
-            dva1 = np.linalg.norm(v1-va1) - VINF
+            dva1 = np.linalg.norm(v1-va1)
             dva1 = max(dva1,0)
             dva2 = np.linalg.norm(v2-va2)
 
             # Balance out burns, here dv0 is boost, dv1 is low_thrust as part of initial
             # and dv2 is rendezvous
-            def massfn(v1,v2):
-                '''give maximum of MAX_BOOST to v1, rest to v2, which matches using impulsive + low thrust'''
-                if v1 > MAX_BOOST_DV:
-                    v2 += (v1 - MAX_BOOST_DV)*LOW_THRUST_PENALTY
-                    v1 = MAX_BOOST_DV
-                return earth_mass(v1,0,v2) # don't need to split up before sending it to function
             
-            lmass = massfn(dvl1, dvl2)
-            amass = massfn(dva1,dva2)
+            lmass = earth_mass(dvl1, dvl2)
+            amass = earth_mass(dva1,dva2)
             if lmass < amass:
                 return {
                 "ts": t1,
                 "te": t2,
-                'dv0': min(dvl1, MAX_BOOST_DV),
-                "dv1": max((dvl1 - MAX_BOOST_DV)*LOW_THRUST_PENALTY, 0),
-                "dv2": dvl2,
+                'dvi': dvl1,
+                "dvr": dvl2,
                 'r': np.linalg.norm(r2),
                 'mass': lmass
             }
             else: return {
                 "ts": t1,
                 "te": t2,
-                'dv0': min(dva1, MAX_BOOST_DV),
-                "dv1": max((dva1 - MAX_BOOST_DV)*LOW_THRUST_PENALTY, 0),
-                "dv2": dva2,
+                'dvi': dva1,
+                "dvr": dva2,
                 'r': np.linalg.norm(r2),
                 'mass': amass
             }
-        except: return {'dv0':m.inf, 'dv1': m.inf, 'dv2': m.inf, 'mass': m.inf}
+        except: return {'dvi':m.inf, 'dvr': m.inf, 'mass': m.inf}
     
     def w(t): 
         try: return F(t)['mass']
@@ -225,7 +216,62 @@ def study_batch_earth(gen_type:str='', N_batches:int=20)->pd.DataFrame:
     return pd.DataFrame(resl)
 
 
+def bounding_box_2d(points, C):
 
+    if len(points) < C: return [] # no corner here...
+
+    points = points[np.argsort(points[:,0])] # sort by x
+    interior = list(points[:C]) # points inside the fence
+    maxy = _argymax(interior) # max y index
+    corners = [] # list of corners (the thing we want)
+
+    # first point is special case:
+    pf = points[C-1]
+    corners.append(np.array((pf[0],interior[maxy][1])))
+
+    for i in range(C,len(points)):
+        p = points[i]
+        if (p == pivot).all() and p[1] > interior[maxy][1]:
+            return [] #pivot outside, so no new points
+        if p[1] > interior[maxy][1]: continue # outside the fence
+        interior.pop(maxy) # get rid of highest
+        interior.append(p)
+        maxy = _argymax(interior) # max y index
+        if (i >= pivot_idx): # only add if after the pivot, since otherwise better already exists
+            corners.append(np.array((p[0],interior[maxy][1])))
+
+    corners = np.hstack((corners,z*np.ones((len(corners),1))))
+    return list(corners)
+
+
+def find_best_point(df:pd.DataFrame, N:int, P:float=0.9, AOI:tuple[float,float]=AREA_OF_INTEREST, mass_fn=interpolator_wrapper)->tuple[float,float,float,float]:
+
+    count = len(df)
+    Pi = 1 - (1-P)**(1/N) # needed individual probability
+    needed = m.ceil(count*Pi)
+    
+
+    df = df[df["dvi"] <= AOI[0]]
+    df = df[df["dvr"] <= AOI[1]]
+
+    ISO_points = df[['dvi', 'dvr']].to_numpy()
+    point_list = _bounding_box_solver(ISO_points, needed)
+    if len(point_list) == 0: 
+        print(f"No point meets probability threshold of {P:.0%}, using best odds possible")
+        point_list = [np.array((
+        np.max(ISO_points[:,0]),
+        np.max(ISO_points[:,1]),
+        np.max(ISO_points[:,2]),
+        ))]
+
+    best_point = point_list[0]
+    best_mass = np.inf
+    for point in tqdm(point_list, desc="Finding optimal Point"):
+        mass = mass_fn(point[0], point[1], point[2])
+        if mass < best_mass:
+            best_point = point; best_mass = mass
+    
+    return best_point[0], best_point[1], best_point[2], best_mass
 
 def direct_earth_analysis(N_batches:int=30):
     '''same as before but now direct from earth'''
@@ -235,10 +281,9 @@ def direct_earth_analysis(N_batches:int=30):
     df = study_batch_earth(N_batches=N_batches)
 
     print("interesting fraction:")
-    dfi = df[df["dv0"] <= AREA_OF_INTEREST[0]]
-    dfi = dfi[dfi["dv1"] <= AREA_OF_INTEREST[1]]
-    dfi = dfi[dfi["dv2"] <= AREA_OF_INTEREST[2]]
-    print(dfi[['dv0','dv1','dv2','mass']])
+    dfi = df[df["dvi"] <= AREA_OF_INTEREST[0]]
+    dfi = dfi[dfi["dvr"] <= AREA_OF_INTEREST[1]]
+    print(dfi[['dvi','dvr','mass']])
     count = len(dfi)
 
     print(f" {count} / {len(df)} = {count/len(df)}")
@@ -254,7 +299,7 @@ def direct_earth_analysis(N_batches:int=30):
         # get accurate mass:
         if v0 > AREA_OF_INTEREST[0] or v1 > AREA_OF_INTEREST[1] or v2 > AREA_OF_INTEREST[2]:
             try:
-                H = Vesta(v0*1000, v2*1000, v1*1000, False,0.001, )
+                H = Vesta()
                 H._converge()
                 m = H.lower_stage_wet_mass
                 changed = True

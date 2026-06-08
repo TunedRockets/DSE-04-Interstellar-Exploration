@@ -3,8 +3,8 @@ import numpy as np
 from jkat.utils import longp
 import math as m
 
-from Structures.holistic_mass_solver import dV_rdvz
-from Trajectories.Rendezvous_dV_requirements import MAX_MISSION_TIME, LONGP_NUM
+from Structures.holistic_mass_solver import guess_dV_rdvz, MassInterpolator
+from Trajectories.Rendezvous_dV_requirements import MAX_MISSION_TIME
 from src.helio_optim import *
 from Rendezvous_dV_requirements import get_parking
 import os
@@ -22,15 +22,16 @@ AU = jk.AU
 DAY = jk.DAY
 YEAR = jk.YEAR
 
-dV_inclination_b = 3.500
-dV_oberth_b = 4.000
-dV_rendezvous_b = 13.000
+dV_inclination_b = 3.300 # km/s
+dV_oberth_b = 4.500 # km/s
+dV_rendezvous_b = 17.000 # km/s
 dv_budget = (dV_inclination_b, dV_oberth_b, dV_rendezvous_b)
 longp_num = 50
 
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data"
 PICKLE_NAME = "Possible_ISOs_with_Budget"
+# PICKLE_NAME = "SuperTargeted_Possible_ISOs_with_Budget"
 
 def budget_suffix(dv_budget: tuple[float, float, float]) -> str:
     return f"_inc{dv_budget[0]:.3f}_ob{dv_budget[1]:.3f}_ren{dv_budget[2]:.3f}"
@@ -127,7 +128,7 @@ def job(ISOtuple, longps, dv_budget):
 
 def study_batch_multi(dv_budget, longps, gen_type=''):
 
-    ISOs = get_ISO()
+    ISOs = get_ISO(N_batches=20)
     F = partial(job, longps=longps, dv_budget=dv_budget)
 
     with mp.Pool() as p:
@@ -196,12 +197,26 @@ def get_data(longps, extra_batches: int = 0, gen_type: str = "") -> pd.DataFrame
 import matplotlib.pyplot as plt
 
 
-def plot_reachability_vs_longitude(df, threshold_pct=0.76/100):
+def plot_reachability_vs_longitude(df, P=0.9, N=10*35):
 
     grouped = df.groupby("longp")["h_possible"].mean() * 100
 
+    overall_P = 1 - (1 -(grouped/100)) ** N
+
+
+    best_long = np.degrees(overall_P.idxmax())
+    best_P = overall_P.max()
+
+    print(f"Best longitude: {best_long:.2f}°")
+    print(f"Overall success probability: {(best_P*100):.2f}%")
+    print(f"Individual success probability: {grouped.max():.2f}%")
+
+    threshold_pct = 1 - (1-P)**(1/N) # needed individual probability
+    # print(1 - (1 - threshold_pct) ** N)
+
     angles = grouped.index.values
-    values = grouped.values
+    values = overall_P.values * 100
+    # values = grouped.values * 100
 
     # close the loop for polar plot
     angles = np.append(angles, angles[0])
@@ -209,18 +224,20 @@ def plot_reachability_vs_longitude(df, threshold_pct=0.76/100):
 
     fig = plt.figure(figsize=(7,7))
     ax = fig.add_subplot(111, projection="polar")
-
+    # ax = fig.add_subplot(111)
     ax.plot(angles, values, marker="o")
     ax.fill(angles, values, alpha=0.2)
 
-    ax.axhline(threshold_pct * 100, linestyle="--")
+    ax.axhline(P * 100, linestyle="--")
+    ax.axhline(100, linestyle="-")
+    ax.axvline(-1.449, 0, 1, linestyle="-")
 
     ax.set_title("Reachability vs Parking Longitude")
     plt.show()
 def run_in_background():
     '''run forever generating new datapoints'''
     while True:
-        df = get_data(1)
+        df = get_data(longps, extra_batches=1)
         print("Current # of rows:")
         print(len(df))
         print('---------\n')
@@ -249,8 +266,11 @@ def _test_check_if_possible():
 if __name__ == "__main__":
 
     # _test_check_if_possible()
+    # longps = np.linspace(1.63, 1.7, longp_num)
     longps = np.linspace(-np.pi, np.pi, longp_num)
     df = get_data(longps, extra_batches=0)
+    mass = interpolator_wrapper(dv_budget[0], dv_budget[1], dv_budget[2])
+
     print()
     print("Full data frame: ")
     print()
@@ -262,5 +282,8 @@ if __name__ == "__main__":
     print()
     print(dfpos)
     print()
-    plot_reachability_vs_longitude(df)
-    # run_in_background()
+    print(f"Spacecraft mass: {mass} kg")
+    plot_reachability_vs_longitude(df, P=0.9, N=35*10)
+
+
+    run_in_background()

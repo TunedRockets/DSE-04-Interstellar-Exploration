@@ -27,7 +27,7 @@ import jkat
 # p.cpu_affinity(list(range(0, 12)))
 # ==== consts =====
 
-static_mass = 50+100+200
+static_mass = 126.3+88.8+100+300
 '''[kg] mass of scientific payload, antenna, bus and oter non-varying things'''
 static_power_draw = 1600
 '''[w] static power draw of non-propulsion equipment'''
@@ -37,14 +37,14 @@ static_area = (2.2**2)*m.pi + 2*2
 # ion system: (http://large.stanford.edu/courses/2025/ph240/tuckey1/docs/nasa-nov17.pdf)
 Isp_ion = 4220
 '''[s] ion drive isp'''
-dV_inclination = 3000
+guess_dV_inclination = 3000
 
 
 '''[m/s] dv for the inclination change maneuver'''
-dV_rdvz = 17_000
+guess_dV_rdvz = 17_000
 
 '''[m/s] dv for the rendezvous'''
-dV_ion = dV_rdvz + dV_inclination
+guess_dV_ion = guess_dV_rdvz + guess_dV_inclination
 '''[m/s] total dv required by ion system'''
 Me_ion = 15 + 36 # NEXT thruster mass
 '''[kg] ion engine mass'''
@@ -52,7 +52,7 @@ P_ion = 7400
 '''[w] power per ion engine'''
 F_ion = 0.235
 '''[N] thrust per ion engine'''
-T_max_inclination = 86_000*365*1.31
+T_max_inclination = 700*jkat.DAY
 '''max time spent on inclination burn'''
 R = 8.31446261815324
 M_xenon = 0.131293
@@ -63,20 +63,16 @@ xenon_tank_pressure = 187*1e5
 xenon_tank_temp = 273.15+20
 xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
 
-T_max_inclination = 600*jkat.DAY  # changed from Andres estimate to more pessimistic value
 
-
-a_min_ion = dV_inclination/T_max_inclination
-'''[m/s^2] minimum acceleration of the ion engines'''
 l_ion = 0.05
 '''[-] ion tank mass fraction'''
 
 # boost system:
 Isp_boost = 330
 '''[s] boost drive isp'''
-dV_boost = 4_000
-
+guess_dV_boost = 4_000
 '''[m/s] total dv required by boost system'''
+
 Me_boost = 100
 '''[kg] boost engine mass'''
 l_boost = 0.05
@@ -87,7 +83,7 @@ rho_heat = 152 # reverse engineers from parker solar probe numbers
 '''[kg/m^3] heat shield density'''
 t_heat = 0.11
 '''[m] heat shield thickness'''
-A_heat_margin = 1.1
+A_heat_margin = 1.0 # Already pretty pesimistic with the cylinders
 '''Heat shield area margin (for overhang, etc.)'''
 
 
@@ -118,7 +114,7 @@ def dv2mf(dV:float, isp:float, m1:float, l:float)->float:
     mf = m1*(e-1)/(1+l-l*e) # fuel mass
     return mf
 
-@staticmethod
+
 class Hestia():
     '''this is the design to configure, as a class,
     each variable has a method to set itself, which is run through
@@ -126,17 +122,18 @@ class Hestia():
 
     def __init__(
             self,
-            dV_inclination=dV_inclination,
-            dV_rdvz=dV_rdvz,
-            dV_boost=dV_boost,
+            dV_inclination:float=guess_dV_inclination,
+            dV_rdvz:float=guess_dV_rdvz,
+            dV_boost:float=guess_dV_boost,
             verbose=False,
-            convergence_tolerance=1e-8
+            convergence_tolerance=1e-8,
     ):
         self.dV_inclination = dV_inclination
         self.dV_rdvz = dV_rdvz
         self.dV_boost = dV_boost
         self.verbose = verbose
         self.convergence_tolerance = convergence_tolerance
+        self.boost_isp = 330 # hypergaulic type engines
 
         # the varying variables 
         self.Mass_ion = 51
@@ -262,13 +259,18 @@ class Hestia():
     def rdvz_burn_time(self):
         '''pessemistic estimate of burn time'''
         return self.dV_rdvz/(self.Number_ions*F_ion/self.upper_stage_wet_mass)
+    
+    @property
+    def a_min_ion(self):
+        return self.dV_inclination/T_max_inclination
+    '''[m/s^2] minimum acceleration of the ion engines'''
 
 
     def size_ion_system(self):
         '''size the ion system and figure out number of engines and power draw'''
 
         # get no. engines and their mass:
-        F_need = self.lower_stage_wet_mass*a_min_ion
+        F_need = self.lower_stage_wet_mass*self.a_min_ion
         self.Number_ions = m.ceil(F_need/F_ion)
         # set new ion mass:
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
@@ -290,7 +292,7 @@ class Hestia():
         '''size boost fuel tank and rest'''
 
         m1 = self.lower_stage_pl_mass + Me_boost
-        mf = dv2mf(self.dV_boost, Isp_boost, m1, l_boost)
+        mf = dv2mf(self.dV_boost, self.boost_isp, m1, l_boost)
         self.Mass_boost_fuel = mf
         if self.verbose:
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
@@ -301,12 +303,13 @@ class Hestia():
         Preq = static_power_draw + self.Number_ions*P_ion # needed power
 
         mass, reactor_mass, radiator_mass, brayton_system_mass, thermal_power, radiator_area = size_power(Preq)
-
         self.Mass_power_truss = mass
         if self.verbose:
             print(f'reactor truss weight: {self.Mass_power_truss:5.1f} kg, generating: {Preq:5.1f} W')
             print(f'thermal power: {thermal_power:5.1f} W')
+            print(f'electric power: {Preq:5.1f} W')
             print(f'radiator mass: {radiator_mass:5.1f} kg')
+            print(f'reactor mass: {reactor_mass:5.1f} kg')
             print(f'radiator area: {radiator_mass/areal_density:5.1f} m2')
 
         self.Power_provided = Preq
@@ -331,10 +334,12 @@ class Hestia():
         # power truss approximated as cylinder half ariane6 fairing
         # with density of steel (average of reactor + truss)
 
-        A += A_fn(self.Mass_boost_fuel,3, 1000) # 3 m cyliner of fuel
+        A += A_fn(self.Mass_boost_fuel,3, 1300) # 3 m cyliner of fuel
         A += A_fn(self.Mass_ion_fuel,2,xenon_density) # 1 m cyliner of xenon
 
         A *= A_heat_margin # margin
+        # if A > 28:
+        #     A = 28
 
         self.Area_heatshield = A
         self.Mass_heatshield
@@ -579,8 +584,6 @@ def plot_mass_database_2(data):
 
     fig.show()
 
-
-
 from scipy.interpolate import RegularGridInterpolator
 import pickle
 
@@ -655,10 +658,7 @@ class MassInterpolator:
         val = self.interp(point)
         return float(np.asarray(val).squeeze())
 
-
 import random
-
-
 
 def _test_mass_database(
         data,
@@ -827,8 +827,6 @@ def _test_all_grid_points(data):
 
     print("PASSED: all grid points")
 
-
-
 def plot_interp_heatmap(
     fixed_axis,
     fixed_value,
@@ -949,30 +947,53 @@ def plot_interp_heatmap(
     plt.tight_layout()
     plt.show()
 
+class Vesta(Hestia):
+    '''Hestia but made for direct earth transfer instead.
+    (name subject to change. (e.g. find other backronym for hestia))'''
+
+
+    def __init__(self, dV_inclination: float = guess_dV_inclination, dV_rdvz: float = guess_dV_rdvz, dV_boost: float = guess_dV_boost, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
+        '''DV given in M/S!!!'''
+
+        self.min_acceleration = min_acceleration
+        '''minimum acceleration required for sizing the Ion system'''
+        # default is 9 km/s in one year.
+
+        super().__init__(dV_inclination, dV_rdvz, dV_boost, verbose, convergence_tolerance)
+        self.boost_isp = 400
+
+    def size_heat_shield(self):
+        self.Area_heatshield = 0 # no heat shield
+        return;
+
+    @property
+    def a_min_ion(self): # In m/s^2
+        return self.min_acceleration
+
 
 
 if __name__ == "__main__":
-    # SC = Hestia(
-    #     dV_inclination=3000,
-    #     dV_rdvz=10000,
-    #     dV_boost=7000,
-    #     verbose=True,
-    #     convergence_tolerance=0.001
-    # )
-    #
-    # SC._converge()
+    SC = Hestia(
+        dV_inclination=3300,
+        dV_rdvz=17000,
+        dV_boost=4000,
+        verbose=True,
+        convergence_tolerance=0.001
+    )
 
-    resolution = 15
-    dVs_incl = np.linspace(0, 3500, resolution)
-    dVs_rdvz = np.linspace(0, 20000, resolution)
-    dVs_boost = np.linspace(0, 7500, resolution)
+    SC._converge()
+
+    resolution = 10
+    dVs_incl = np.linspace(1, 3500, resolution)
+    dVs_rdvz = np.linspace(1, 20000, resolution)
+    dVs_boost = np.linspace(1, 7500, resolution)
     # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
     data = load_mass_database()
-    plot_interp_heatmap("inclination", 3000)
-    plot_interp_heatmap("rdvz", 15000)
-    plot_interp_heatmap("boost", 7500)
-    # plot_mass_database(data)
-    # plot_mass_database_2(data)
+    # plot_interp_heatmap("inclination", 3000)
+    # plot_interp_heatmap("rdvz", 15000)
+    # plot_interp_heatmap("boost", 7500)
+    plot_mass_database(data)
+    plot_mass_database_2(data)
     #
     # _test_mass_database(data, n_tests=10, tolerance=1e-2)
     # _test_interpolator_no_nans(data)

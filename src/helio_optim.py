@@ -1,6 +1,5 @@
 
 import jkat
-from sympy.stats.rv import probability
 
 from Structures.holistic_mass_solver import MassInterpolator
 from typing import Callable
@@ -16,7 +15,7 @@ interp = M.interp
 def interpolator_wrapper(dv0:float,dv1:float,dv2:float)->float:
     '''wrapper to ensure it works, INPUT IS IN KM/S'''
     try:
-        m = interp(np.array([dv0*1000,dv2*1000,dv1*1000]))[0]
+        m = interp(np.array([max(dv0*1000,1),dv2*1000,dv1*1000]))[0]
         if not np.isfinite(m): raise ValueError("bad interpolator result")
         return m
     except(ValueError): return (dv1*5 + dv2 + dv0*7)*10_000 + 170_000
@@ -200,75 +199,121 @@ def check_if_possible(dv0_budget:float, dv1_budget:float, dv2_budget:float, park
             dv0 = res["dv0"]
             dv1 = res["dv1"]
             dv2 = res["dv2"]
-            # print(dv0)
-            return max(0, (dv0-dv0_budget)) + max(0, (dv1-dv1_budget)) + max(0, (dv2-dv2_budget))
 
-        except:
-            return m.inf
-
-    t_solution = minimizer_1d(w,peri, max_time, escape_value=0.001)
-    res = F(t_solution)
-    # print((w(t_solution)==0))
-    # print(w(t_solution))
-    # print(res)
-    return (w(t_solution)<0.001), res
-
-
-def get_prob_of_success(
-    dv0_budget: float,
-    dv1_budget: float,
-    dv2_budget: float,
-    park: jkat.Orbit,
-    ISOs: list[tuple[jkat.Orbit, float, str]],
-    max_time: float,
-    conv_chec_window=3000,
-    tolerance=0.05/100,
-    min_posible=10
-):
-    posibles = 0
-    analyzed = 0
-    probabilities = []
-
-    converged_mean = None
-
-    for ISO, detect_t, *_ in ISOs:
-        analyzed += 1
-        posible = False
-        try:
-            posible, _ = check_if_possible(
-                dv0_budget,
-                dv1_budget,
-                dv2_budget,
-                park=park,
-                ISO=ISO,
-                max_time=max_time,
-                detect_t=detect_t,
+            return (
+                    max(0, dv0 - dv0_budget)
+                    + max(0, dv1 - dv1_budget)
+                    + max(0, dv2 - dv2_budget)
             )
-        except:
-            pass
 
-        if posible:
-            posibles += 1
+        except Exception:
+            return np.inf
 
-        probability = posibles / analyzed
-        print()
-        print(f"{posibles} / {analyzed} posible posibles found")
-        print(f"Probability of posible posible: {probability*100:.2f}%")
-        probabilities.append(probability)
+    # ------------------------------------------------------------------
+    # Phase 1: coarse search
+    # ------------------------------------------------------------------
 
-        if len(probabilities) >= conv_chec_window:
-            window = probabilities[-conv_chec_window:]
-            std = np.std(window)
-            print(f"Standard deviation of posible posible: {std*100:.2f}%")
-            if std < tolerance and posible > min_posible:
-                converged_mean = np.mean(window)
-                break
+    N_SCAN = 300
 
-    if converged_mean is None:
-        window = probabilities[-conv_chec_window:]
-        converged_mean = np.mean(window)
+    times = np.linspace(peri, max_time, N_SCAN)
 
-    return converged_mean
+    best_t = times[0]
+    best_w = w(best_t)
+
+    if best_w < 0.001:
+        return True, F(best_t)
+
+    for t in times[1:]:
+        wt = w(t)
+
+        if wt < 0.001:
+            return True, F(t)
+
+        if wt < best_w:
+            best_w = wt
+            best_t = t
+
+    # every sample failed
+    if not np.isfinite(best_w):
+        return False, {
+            "dv0": np.inf,
+            "dv1": np.inf,
+            "dv2": np.inf,
+            "ts": np.nan,
+            "te": np.nan,
+        }
+
+    dt = (max_time - peri) / N_SCAN
+
+    left = max(peri, best_t - 5 * dt)
+    right = min(max_time, best_t + 5 * dt)
+
+    res = minimize_scalar(
+        w,
+        bounds=(left, right),
+        method="bounded",
+    )
+
+    t_solution = res.x
+
+    return w(t_solution) < 0.001, F(t_solution)
+
+#
+# def get_prob_of_success(
+#     dv0_budget: float,
+#     dv1_budget: float,
+#     dv2_budget: float,
+#     park: jkat.Orbit,
+#     ISOs: list[tuple[jkat.Orbit, float, str]],
+#     max_time: float,
+#     conv_chec_window=3000,
+#     tolerance=0.05/100,
+#     min_posible=10
+# ):
+#     posibles = 0
+#     analyzed = 0
+#     probabilities = []
+#
+#     converged_mean = None
+#
+#     for ISO, detect_t, *_ in ISOs:
+#         analyzed += 1
+#         posible = False
+#         try:
+#             posible, _ = check_if_possible(
+#                 dv0_budget,
+#                 dv1_budget,
+#                 dv2_budget,
+#                 park=park,
+#                 ISO=ISO,
+#                 max_time=max_time,
+#                 detect_t=detect_t,
+#             )
+#         except:
+#             pass
+#
+#         if posible:
+#             posibles += 1
+#
+#         probability = posibles / analyzed
+#         print()
+#         print(f"{posibles} / {analyzed} posible posibles found")
+#         print(f"Probability of posible posible: {probability*100:.2f}%")
+#         probabilities.append(probability)
+#
+#         if len(probabilities) >= conv_chec_window:
+#             window = probabilities[-conv_chec_window:]
+#             std = np.std(window)
+#             print(f"Standard deviation of posible posible: {std*100:.2f}%")
+#             if std < tolerance and posibles > min_posible:
+#                 converged_mean = np.mean(window)
+#                 break
+#
+#     if converged_mean is None:
+#         window = probabilities[-conv_chec_window:]
+#         converged_mean = np.mean(window)
+#
+#     return converged_mean
 
 
 
@@ -276,44 +321,27 @@ def get_prob_of_success(
 
 
 
+#
+# def rotate_to_match(ob:jkat.Orbit, target:jkat.Orbit)->tuple[float, np.ndarray, jkat.Orbit]:
+#
+#     htgt = target.hvec
+#     hob = ob.hvec
+#     eob = ob.evec
+#
+#     # project:
+#     z = eob*htgt.dot(eob)/eob.dot(eob)
+#     htgt = htgt - z
+#
+#     # figure out angle
+#     angle = m.acos(htgt.dot(hob)/(np.linalg.norm(htgt)*np.linalg.norm(hob)))
+#
+#     #
+#     if np.cross(hob,htgt).dot(eob) > 0:
+#         angle *= -1
+#
+#     return angle, *jkat.trajectories.orbit_rotation(ob,angle,f=m.pi)
 
-def rotate_to_match(ob:jkat.Orbit, target:jkat.Orbit)->tuple[float, np.ndarray, jkat.Orbit]:
-
-    htgt = target.hvec
-    hob = ob.hvec
-    eob = ob.evec
-
-    # project:
-    z = eob*htgt.dot(eob)/eob.dot(eob)
-    htgt = htgt - z
-
-    # figure out angle
-    angle = m.acos(htgt.dot(hob)/(np.linalg.norm(htgt)*np.linalg.norm(hob)))
-
-    #
-    if np.cross(hob,htgt).dot(eob) > 0:
-        angle *= -1
-
-    return angle, *jkat.trajectories.orbit_rotation(ob,angle,f=m.pi)
 
 
-
-def minimizer_1d(f:Callable, a:float, b:float, tol:float = 1e-4, escape_value:float|None = None)->float:
-
-    invphi = (m.sqrt(5) - 1) / 2  #
-
-    # golden section search:
-    while b - a > tol:
-        c = b - (b - a) * invphi
-        d = a + (b - a) * invphi
-        fc = f(c); fd = f(d)
-        if escape_value is not None:
-            if fc<escape_value: break
-        if fc < fd or fd==np.inf:
-            b = d
-        else:  # f(c) > f(d) to find the maximum
-            a = c
-
-    return (b + a) / 2
 
 

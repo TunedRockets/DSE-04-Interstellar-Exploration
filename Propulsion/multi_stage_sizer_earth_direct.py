@@ -675,95 +675,101 @@ def size_spacecraft(
 # PLOTTING
 # ============================================================
 def plot_launcher_wetmass_feasibility(
-    bus_mass_range,
+    wet_mass_range,
     launchers,
     kickstages,
-    total_dv,
-    rdvz_dv,
+    required_vinf,
     vertical_wetmass=None,
     vertical_label=None,
     vertical_color="red"
 ):
-    """
-    Similar to plot_launcher_busmass_feasibility(),
-    but x-axis is spacecraft TOTAL WET MASS.
-
-    Parameters
-    ----------
-    vertical_wetmass : float or None
-        Optional wet mass value [kg] where a vertical
-        reference line will be drawn.
-
-    vertical_label : str or None
-        Optional label for the vertical line.
-
-    vertical_color : str
-        Matplotlib color for the vertical line.
-    """
 
     launcher_names = [name for _, name in launchers]
-
     kickstage_names = [name for _, name in kickstages]
 
     kickstage_name_map = {
         stage_obj: name
         for stage_obj, name in kickstages
+        if stage_obj is not None
     }
 
     # =========================================================
     # STORAGE
     # =========================================================
+
     availability = {}
 
-    wet_masses = np.zeros(len(bus_mass_range))
+    wet_masses = np.asarray(wet_mass_range)
 
     for lname in launcher_names:
 
         availability[(lname, "Direct")] = np.zeros(
-            len(bus_mass_range),
+            len(wet_masses),
             dtype=bool
         )
 
         for ks in kickstage_names:
-
             availability[(lname, ks)] = np.zeros(
-                len(bus_mass_range),
+                len(wet_masses),
                 dtype=bool
             )
 
     # =========================================================
-    # EVALUATION
+    # FEASIBILITY EVALUATION
     # =========================================================
-    for j, bus_mass in enumerate(bus_mass_range):
 
-        result = size_spacecraft(
-            bus_mass,
-            launchers,
-            kickstages,
-            total_dv,
-            rdvz_dv,
-            verbose=False
-        )
+    for j, wet_mass in enumerate(wet_masses):
 
-        wet_masses[j] = result["wet_mass"]
+        for launcher, lname in launchers:
 
-        for v in result["viable_combinations"]:
+            # -------------------------------------------------
+            # DIRECT INJECTION
+            # -------------------------------------------------
 
-            lname = v["launcher_name"]
+            direct_vinf = launcher.get_vinf_performance(
+                wet_mass
+            )
 
-            if v["kickstage"] is None:
+            if direct_vinf >= required_vinf:
 
                 availability[(lname, "Direct")][j] = True
 
-            else:
+            # -------------------------------------------------
+            # KICKSTAGES
+            # -------------------------------------------------
 
-                ks = kickstage_name_map[v["kickstage"]]
+            for kick, ks_name in kickstages:
 
-                availability[(lname, ks)][j] = True
+                if kick is None:
+                    continue
+
+                # must fit into launcher payload capability
+
+                if wet_mass + kick.total_mass > launcher.LEO_payload:
+                    continue
+
+                launcher_vinf = launcher.get_vinf_performance(
+                    wet_mass + kick.total_mass
+                )
+
+                kick_dv = kick.get_total_dv(
+                    wet_mass
+                )
+
+                total_vinf = combine_vinf_and_dv(
+                    launcher_vinf,
+                    kick_dv,
+                    launcher.ref_escape_velocity
+                )
+
+                if total_vinf >= required_vinf:
+
+                    availability[(lname, ks_name)][j] = True
 
     # =========================================================
     # SORT BY WET MASS
     # =========================================================
+
     sort_idx = np.argsort(wet_masses)
 
     wet_masses = wet_masses[sort_idx]
@@ -774,6 +780,7 @@ def plot_launcher_wetmass_feasibility(
     # =========================================================
     # COLORS
     # =========================================================
+
     cmap = plt.get_cmap("tab20")
 
     mode_colors = {
@@ -786,6 +793,7 @@ def plot_launcher_wetmass_feasibility(
     # =========================================================
     # PLOT
     # =========================================================
+
     fig, ax = plt.subplots(figsize=(15, 8))
 
     launcher_height = 0.8
@@ -801,8 +809,9 @@ def plot_launcher_wetmass_feasibility(
         direct = availability[(lname, "Direct")]
 
         # =====================================================
-        # 1. KICKSTAGES
+        # KICKSTAGES
         # =====================================================
+
         for m, ks in enumerate(kickstage_names):
 
             y = base_y + m * subbar_height
@@ -845,8 +854,9 @@ def plot_launcher_wetmass_feasibility(
                     start = None
 
         # =====================================================
-        # 2. DIRECT
+        # DIRECT INJECTION
         # =====================================================
+
         start = None
 
         for j, val in enumerate(direct):
@@ -871,7 +881,8 @@ def plot_launcher_wetmass_feasibility(
 
                 ax.broken_barh(
                     [(x0, x1 - x0)],
-                    (i - launcher_height / 2, launcher_height),
+                    (i - launcher_height / 2,
+                     launcher_height),
                     facecolors="#006400",
                     alpha=0.9,
                     zorder=10
@@ -882,6 +893,7 @@ def plot_launcher_wetmass_feasibility(
     # =========================================================
     # OPTIONAL VERTICAL LINE
     # =========================================================
+
     if vertical_wetmass is not None:
 
         ax.axvline(
@@ -894,7 +906,7 @@ def plot_launcher_wetmass_feasibility(
         if vertical_label is not None:
 
             ax.text(
-                vertical_wetmass+100,
+                vertical_wetmass + 100,
                 len(launchers) - 0.3,
                 vertical_label,
                 rotation=90,
@@ -906,15 +918,16 @@ def plot_launcher_wetmass_feasibility(
     # =========================================================
     # LABELS
     # =========================================================
+
     ax.set_yticks(range(len(launcher_names)))
     ax.set_yticklabels(launcher_names)
 
     ax.set_xlabel("Spacecraft Wet Mass [kg]")
     ax.set_ylabel("Launcher")
 
-    # ax.set_title(
-    #     "Launcher / Kickstage Feasibility vs Spacecraft Wet Mass"
-    # )
+    ax.set_title(
+        f"Launcher Feasibility (Required $V_\\infty$ = {required_vinf:.0f} m/s)"
+    )
 
     ax.grid(
         True,
@@ -926,15 +939,23 @@ def plot_launcher_wetmass_feasibility(
     # =========================================================
     # LEGEND
     # =========================================================
+
     legend_handles = [
-        Patch(color="#006400", label="Direct Injection")
+        Patch(
+            color="#006400",
+            label="Direct Injection"
+        )
     ]
 
-
     for ks in kickstage_names:
+
         if ks != "":
+
             legend_handles.append(
-                Patch(color=mode_colors[ks], label=ks)
+                Patch(
+                    color=mode_colors[ks],
+                    label=ks
+                )
             )
 
     ax.legend(
@@ -951,49 +972,6 @@ def plot_launcher_wetmass_feasibility(
         -0.5,
         len(launchers) - 0.5
     )
-
-    plt.tight_layout()
-    plt.show()
-
-def plot_available_launchers_vs_bus_mass(
-    bus_mass_range,
-    launchers,
-    kickstages,
-    total_dv,
-    rdvz_dv
-):
-
-    counts = []
-    payload_masses = []
-
-    for bus_mass in bus_mass_range:
-
-        result = size_spacecraft(
-            bus_mass,
-            launchers,
-            kickstages,
-            total_dv,
-            rdvz_dv,
-            verbose=False
-        )
-
-        counts.append(
-            len(result["viable_combinations"])
-        )
-        payload_masses.append(result["payload_mass"])
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    ax.plot(payload_masses, counts)
-
-    ax.set_xlabel("Payload Mass [kg]")
-    ax.set_ylabel("Number of Viable Launchers")
-
-    ax.set_title(
-        "Launcher Availability vs Spacecraft Payload Mass"
-    )
-
-    ax.grid(True)
 
     plt.tight_layout()
     plt.show()
@@ -1413,7 +1391,7 @@ if __name__ == "__main__":
 
 
     total_dv = 19_300
-    insert_dv = 14_800
+    insert_dv = 8500+5000
     # rdvz_dv = 19_300 - insert_dv
     rdvz_dv = total_dv - insert_dv
     total_dv=insert_dv+rdvz_dv
@@ -1421,7 +1399,7 @@ if __name__ == "__main__":
 
     print("Rendezvous Delta V", rdvz_dv)
 
-    bus_mass_range = np.linspace(0, 5000, 1000)
+    # bus_mass_range = np.linspace(0, 5000, 1000)
     # plot_available_launchers_vs_bus_mass(
     #     bus_mass_range,
     #     launchers,
@@ -1440,12 +1418,11 @@ if __name__ == "__main__":
     # )
 
     plot_launcher_wetmass_feasibility(
-        bus_mass_range,
+        np.linspace(1, 10000, 1000),
         launchers,
         kickstages,
-        total_dv,
-        rdvz_dv,
-        vertical_wetmass=702.3,
+        9500,
+        vertical_wetmass=5352,
         vertical_color='black',
         # vertical_label='Updated Mass Budget'
     )

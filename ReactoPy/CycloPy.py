@@ -3,9 +3,11 @@ import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 from Power.powerinsizeout import reactor_thermal
 from matplotlib.patches import Patch
+from ReactoPy.ReactorSize import Reactor
+from functools import cache
 
-# import matplotlib as mpl
-# mpl.use('tkagg')
+import matplotlib as mpl
+mpl.use('tkagg')
 # Sources:
 
 # https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/Sort_107145.pdf
@@ -13,7 +15,7 @@ from matplotlib.patches import Patch
 
 
 alternator_power_density = 2000 #kW / kg https://apps.dtic.mil/sti/tr/pdf/ADA640295.pdf
-radiator_areal_density = 15.0 # kg/m2
+radiator_areal_density = 7.0 # kg/m2 https://isnps.unm.edu/reports/ISNPS_Tech_Report_97.pdf
 max_reactor_temp = 1000+273.15
 max_radiator_temp = 800+273.15
 
@@ -630,9 +632,10 @@ def evaluate_system(
         sol["T1"]
     )
 
-    reactor_mass, fuel_mass = reactor_thermal(sol['q_in']*mdot)
+    reactor = Reactor(sol["T2"],sol["T3"], sol["q_in"]*mdot, operating_pressure=sol["P2"])
+    # TODO: Remove when applied in reactor
+    m_reactor = 1.82*reactor.size_all(print_true=False)
 
-    m_reactor = reactor_mass + fuel_mass
 
     total = m_comp + m_turb + m_rad + m_alternator + m_reactor
 
@@ -657,7 +660,7 @@ def mass_heatmap(
         min_P2=None,
         max_P2=None,
         res=120,
-        limit=1000.0,
+        limit=5000.0,
         plot=True,
         plot_mode="2d",   # "2d" or "3d"
         verbose=False,
@@ -937,7 +940,7 @@ def mass_heatmap(
 
     return best
 
-def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressure=3447*1000, verbose=False, plot=False):
+def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressure=2.5*BAR, verbose=False, plot=False):
     cycle = BraytonCycle(Helium, 0.85, 0.88, 0.90)
     best = mass_heatmap(cycle, W_elec, P1=rad_pressure, T3=T3, max_T1=max_T1, limit=5000, plot=plot, verbose=verbose)
     mass = best[0]
@@ -955,7 +958,7 @@ def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressu
 # =========================================================
 if __name__ == "__main__":
 
-    TSDiagramTest()
+    # TSDiagramTest()
 
     # engine = BraytonCycle(Helium, 0.85, 0.88, 0.90)
 
@@ -976,11 +979,23 @@ if __name__ == "__main__":
 
     engine = BraytonCycle(Helium, 0.85, 0.88, 0.90)
 
-    low_pressures = np.linspace(1, 40, 30)
+    low_pressures = np.linspace(1, 5, 30)
     masses = []
-    iss_radiator_pressure = 3447 * 1000  # Pa
+    # iss_radiator_pressure = 3447 * 1000  # Pa
 
     high_pressures = []
+
+    best = mass_heatmap(
+        engine,
+        W_elec=46000,
+        P1=2.7 * BAR,
+        T3=max_reactor_temp,
+        max_T1=max_radiator_temp,
+        # plot=False,
+        plot_mode="3d",
+        verbose=True,
+        # mass_budget=300
+    )
 
     for low_pressure in low_pressures:
         best = mass_heatmap(
@@ -989,8 +1004,8 @@ if __name__ == "__main__":
             P1=low_pressure * BAR,
             T3=max_reactor_temp,
             max_T1=max_radiator_temp,
-            # plot=False,
-            # plot_mode="3d",
+            plot=False,
+            # plot_mode="2d",
             # mass_budget=300
         )
         print(f"LP Pressure: {low_pressure:.2f} bar")
@@ -1001,18 +1016,18 @@ if __name__ == "__main__":
 
     high_pressures = np.array(high_pressures)
     # Convert ISS radiator pressure to bar
-    iss_radiator_pressure_bar = iss_radiator_pressure / BAR
+    # iss_radiator_pressure_bar = iss_radiator_pressure / BAR
 
     # Plot
     plt.figure()
     plt.plot(high_pressures, masses, marker='x', label='Reactor System Pressure')
     plt.plot(low_pressures, masses, marker='o', label='Radiator System Pressure')
-    plt.axvline(
-        x=iss_radiator_pressure_bar,
-        color='r',
-        linestyle='--',
-        label=f'ISS radiator ({iss_radiator_pressure_bar:.2f} bar)'
-    )
+    # plt.axvline(
+    #     x=iss_radiator_pressure_bar,
+    #     color='r',
+    #     linestyle='--',
+    #     label=f'ISS radiator ({iss_radiator_pressure_bar:.2f} bar)'
+    # )
 
     plt.xlabel("Pressure (bar)")
     plt.ylabel("Mass")

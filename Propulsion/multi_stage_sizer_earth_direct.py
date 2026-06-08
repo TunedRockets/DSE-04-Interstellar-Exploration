@@ -405,30 +405,45 @@ class Launcher():
         ax.set_ylabel("Payload Mass [kg]")
         ax.set_xlabel("C3 [m²/s²]")
         ax.grid(True)
-def get_vinf(launcher, kickstage, payload_mass):
+def get_vinf(launcher, kickstages, payload_mass):
     """
     Returns total achievable v_inf [m/s]
     for a payload mass.
     """
+    best_vinf = 0
+    best_kickstage = None
+    for kickstage in kickstages:
+        if kickstage is None:
+            v_inf = launcher.get_vinf_performance(payload_mass)
+            if v_inf > best_vinf:
+                best_vinf = v_inf
+                best_kickstage = kickstage
+                continue
 
-    if kickstage is None:
-        return launcher.get_vinf_performance(payload_mass)
+        # must fit in launcher
+        if payload_mass + kickstage.total_mass > launcher.LEO_payload:
+            v_inf = 0.0
+            if v_inf > best_vinf:
+                best_vinf = v_inf
+                best_kickstage = kickstage
+                continue
 
-    # must fit in launcher
-    if payload_mass + kickstage.total_mass > launcher.LEO_payload:
-        return 0.0
+        launcher_vinf = launcher.get_vinf_performance(
+            payload_mass + kickstage.total_mass
+        )
 
-    launcher_vinf = launcher.get_vinf_performance(
-        payload_mass + kickstage.total_mass
-    )
+        kick_dv = kickstage.get_total_dv(payload_mass)
 
-    kick_dv = kickstage.get_total_dv(payload_mass)
+        v_inf = combine_vinf_and_dv(
+            launcher_vinf,
+            kick_dv,
+            launcher.ref_escape_velocity
+        )
+        if v_inf > best_vinf:
+            best_vinf = v_inf
+            best_kickstage = kickstage
+    return best_vinf, best_kickstage
 
-    return combine_vinf_and_dv(
-        launcher_vinf,
-        kick_dv,
-        launcher.ref_escape_velocity
-    )
 
 def get_payload_for_vinf(
     launcher,

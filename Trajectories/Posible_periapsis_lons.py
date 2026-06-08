@@ -4,7 +4,7 @@ from jkat.utils import longp
 import math as m
 
 from Structures.holistic_mass_solver import guess_dV_rdvz, MassInterpolator
-from Trajectories.Rendezvous_dV_requirements import MAX_MISSION_TIME, LONGP_NUM
+from Trajectories.Rendezvous_dV_requirements import MAX_MISSION_TIME
 from src.helio_optim import *
 from Rendezvous_dV_requirements import get_parking
 import os
@@ -22,15 +22,16 @@ AU = jk.AU
 DAY = jk.DAY
 YEAR = jk.YEAR
 
-dV_inclination_b = 3.300
-dV_oberth_b = 4.500
-dV_rendezvous_b = 17.000
+dV_inclination_b = 3.300 # km/s
+dV_oberth_b = 4.500 # km/s
+dV_rendezvous_b = 17.000 # km/s
 dv_budget = (dV_inclination_b, dV_oberth_b, dV_rendezvous_b)
 longp_num = 50
 
 
 PATH_TO_DATA = Path(__file__).parent.parent / "data"
 PICKLE_NAME = "Possible_ISOs_with_Budget"
+# PICKLE_NAME = "SuperTargeted_Possible_ISOs_with_Budget"
 
 def budget_suffix(dv_budget: tuple[float, float, float]) -> str:
     return f"_inc{dv_budget[0]:.3f}_ob{dv_budget[1]:.3f}_ren{dv_budget[2]:.3f}"
@@ -223,12 +224,13 @@ def plot_reachability_vs_longitude(df, P=0.9, N=10*35):
 
     fig = plt.figure(figsize=(7,7))
     ax = fig.add_subplot(111, projection="polar")
-
+    # ax = fig.add_subplot(111)
     ax.plot(angles, values, marker="o")
     ax.fill(angles, values, alpha=0.2)
 
     ax.axhline(P * 100, linestyle="--")
     ax.axhline(100, linestyle="-")
+    ax.axvline(-1.449, 0, 1, linestyle="-")
 
     ax.set_title("Reachability vs Parking Longitude")
     plt.show()
@@ -264,6 +266,7 @@ def _test_check_if_possible():
 if __name__ == "__main__":
 
     # _test_check_if_possible()
+    # longps = np.linspace(1.63, 1.7, longp_num)
     longps = np.linspace(-np.pi, np.pi, longp_num)
     df = get_data(longps, extra_batches=0)
     mass = interpolator_wrapper(dv_budget[0], dv_budget[1], dv_budget[2])

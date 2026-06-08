@@ -250,7 +250,7 @@ def plot_mass_heatmap(interpolator,
 
 
 if __name__ == "__main__":
-    resolution = 25
+    resolution = 100
     dVs_inj = np.linspace(0, 7500+8500+2000, resolution)
     dVs_rdvz = np.linspace(0, 25000, resolution)
     data = generate_mass_database(dVs_inj, dVs_rdvz)

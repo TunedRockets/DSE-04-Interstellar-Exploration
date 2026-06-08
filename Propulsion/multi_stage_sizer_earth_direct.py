@@ -405,7 +405,59 @@ class Launcher():
         ax.set_ylabel("Payload Mass [kg]")
         ax.set_xlabel("C3 [m²/s²]")
         ax.grid(True)
+def get_vinf(launcher, kickstage, payload_mass):
+    """
+    Returns total achievable v_inf [m/s]
+    for a payload mass.
+    """
 
+    if kickstage is None:
+        return launcher.get_vinf_performance(payload_mass)
+
+    # must fit in launcher
+    if payload_mass + kickstage.total_mass > launcher.LEO_payload:
+        return 0.0
+
+    launcher_vinf = launcher.get_vinf_performance(
+        payload_mass + kickstage.total_mass
+    )
+
+    kick_dv = kickstage.get_total_dv(payload_mass)
+
+    return combine_vinf_and_dv(
+        launcher_vinf,
+        kick_dv,
+        launcher.ref_escape_velocity
+    )
+
+def get_payload_for_vinf(
+    launcher,
+    kickstage,
+    target_vinf,
+    tol=1e-3
+):
+
+    low = 0.0
+
+    high = (
+        launcher.LEO_payload
+        if kickstage is None
+        else launcher.LEO_payload - kickstage.total_mass
+    )
+
+    if get_vinf(launcher, kickstage, low) < target_vinf:
+        return None
+
+    while high - low > tol:
+
+        mid = 0.5 * (low + high)
+
+        if get_vinf(launcher, kickstage, mid) > target_vinf:
+            low = mid
+        else:
+            high = mid
+
+    return low
 
 # ============================================================
 # REFERENCE STAGES
@@ -1328,35 +1380,35 @@ def plot_vinf_comparison(
 if __name__ == "__main__":
     launchers = [
 
-        (VegaC_Launcher, "Vega C"),
-
-        (Ariane62_Launcher, "Ariane 62"),
-
-        (Falcon9,
-         "Falcon 9"),
+        # (VegaC_Launcher, "Vega C"),
+        #
+        # (Ariane62_Launcher, "Ariane 62"),
+        #
+        # (Falcon9,
+        #  "Falcon 9"),
 
         (Ariane64_Launcher, "Ariane 64"),
 
-        (Starship_SuperHeavy,
-         "Starship + Super Heavy"),
+        # (Starship_SuperHeavy,
+        #  "Starship + Super Heavy"),
+        #
+        # (FalconHeavy_Reusable,
+        #  "Falcon Heavy (Reusable)"),
+        #
+        # (Vulcan,
+        #  "Vulcan Centaur"),
+        #
+        # (NewGlennLauncher,
+        #  "New Glenn"),
 
-        (FalconHeavy_Reusable,
-         "Falcon Heavy (Reusable)"),
-
-        (Vulcan,
-         "Vulcan Centaur"),
-
-        (NewGlennLauncher,
-         "New Glenn"),
-
-        (FalconHeavy_Expendable,
-         "Falcon Heavy (Expendable)"),
-
-        (SLS_Block1_ICPS,
-         "SLS Block 1 (ICPS)"),
-
-        (SLS_CentaurV,
-         "SLS + Centaur V"),
+        # (FalconHeavy_Expendable,
+        #  "Falcon Heavy (Expendable)"),
+        #
+        # (SLS_Block1_ICPS,
+        #  "SLS Block 1 (ICPS)"),
+        #
+        # (SLS_CentaurV,
+        #  "SLS + Centaur V"),
     ]
 
     kickstages = [

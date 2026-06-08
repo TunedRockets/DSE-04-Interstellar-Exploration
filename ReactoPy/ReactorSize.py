@@ -114,7 +114,7 @@ class Reactor:
         source desmos and dittus-boelter
         """
         pressure_MPa = self.operating_pressure/1e6
-        powerden_MW = 5.25167*pressure_MPa**0.49
+        powerden_MW = 5.24980203666*pressure_MPa**^0.490307894714
         
         return powerden_MW*1e6
 

@@ -25,15 +25,15 @@ max_radiator_temp = 800+273.15
 # =========================================================
 class IdealGas:
     def __init__(self, R, gamma):
-        self.R = R
+        self.R = R # Specigic R J/(kg*K)
         self.gamma = gamma
         self.cp = gamma * R / (gamma - 1)
         self.cv = R / (gamma - 1)
 
 # Example gasses
 
-Helium = IdealGas(2077, 5/3)
-Xenon = IdealGas(63.3, 5/3)
+Helium = IdealGas(2077, 5/3) # Specigic R
+Xenon = IdealGas(63.3, 5/3) # Specigic R
 Nitrogen = IdealGas(296.8, 1.4)
 
 # Constants
@@ -152,7 +152,7 @@ class BraytonCycle:
         self.gas = gas
         self.cp = gas.cp
         self.gamma = gas.gamma
-        self.R = gas.R
+        self.R = gas.R # specific to the gas
 
         self.eta_c = eta_c
         self.eta_t_hp = eta_t_hp

@@ -28,7 +28,7 @@ from scipy.interpolate import RegularGridInterpolator
 import pickle as pkl
 import matplotlib.pyplot as plt
 
-VINF = 8.5 # + 0.577 
+VINF = 8.5 # + 0.577
 MAX_MISSION_TIME = 15 # [years]
 MAX_BOOST_DV = 5 # [km/s]
 LOW_THRUST_PENALTY = 2 # extra cost for low thrust (made up number)
@@ -95,7 +95,7 @@ def earth_mass(dv0,dv1,dv2):
 
     return interpolator_wrapper(0,dv0,dv1+dv2) # Vesta mass interpolator is unreliable...
 
-def test_Vesta_mass():
+def _test_Vesta_mass():
 
     for _ in range(200):
 
@@ -257,7 +257,7 @@ def direct_earth_analysis(N_batches:int=30):
 
 if __name__ == '__main__':
 
-    # test_Vesta_mass()
+    # _test_Vesta_mass()
     # input()
 
     direct_earth_analysis(10)

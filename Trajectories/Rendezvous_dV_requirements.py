@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent.resolve()))
 import jkat
 from jkat import AU, YEAR, DAY
 from src.get_ISO import get_ISO, get_cached_ISOs
-from src.helio_optim import helio_optim, interpolator_wrapper, mad_optim, get_prob_of_success
+from src.helio_optim import helio_optim, interpolator_wrapper, mad_optim
 import matplotlib.pyplot as plt
 import numpy as np
 import math as m

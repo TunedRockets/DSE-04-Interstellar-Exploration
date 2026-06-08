@@ -17,7 +17,7 @@ from multiprocessing import Pool
 import os
 from pathlib import Path
 import jkat
-
+from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launcher, Helios
 
 # import psutil
 #
@@ -204,8 +204,8 @@ class Hestia():
         if self.verbose:
             print("\n====== New iteration =====\n")
         mydir = dir(self)
-        myfuncs = [fn for fn in mydir if callable(getattr(self, fn))]
-        myfuncs = [fn for fn in myfuncs if fn.startswith('size')]
+        myfuncs = [fn for fn in mydir if fn.startswith('size')]
+        myfuncs = [fn for fn in myfuncs if callable(getattr(self, fn))]
         for fn in myfuncs: # all the sizing funcs
             fn_call = getattr(self,fn)
             fn_call() # call function
@@ -964,7 +964,7 @@ class Vesta(Hestia):
     (name subject to change. (e.g. find other backronym for hestia))'''
 
 
-    def __init__(self, dV_injection:float, dV_rdvz:float, allowed_dv_boost:float, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
+    def __init__(self, dV_injection:float, dV_rdvz:float, allowed_dv_boost:float, ion_penalty:float=2, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
         '''DV given in M/S!!!'''
 
         
@@ -992,6 +992,11 @@ class Vesta(Hestia):
         '''Number of ion engines'''
         self.allowed_dv_boost = allowed_dv_boost
         '''boost dv added to the launcher at injection'''
+        self.ion_penalty = ion_penalty
+        '''extra cost of the ion stage dv numbers'''
+
+        self.Area_heatshield = 0 # not used
+        self.dV_inclination = 0 # not used
 
 
 
@@ -1007,7 +1012,7 @@ class Vesta(Hestia):
 
     @property
     def vinf(self):
-        return 8 # change for C3 function
+        return get_vinf(Ariane64_Launcher, Helios, self.lower_stage_wet_mass)
     
 
 
@@ -1017,12 +1022,14 @@ class Vesta(Hestia):
 
 
         # for the injection:
-        ion_dv = self.dV_injection - self.vinf
+        vinf = self.vinf
+        injection_dv = max(0, (self.dV_injection - vinf))
 
         # take into account boost:
+
         
-        boost_dv = max(self.allowed_dv_boost, ion_dv)
-        ion_dv -= boost_dv
+        boost_dv = min(self.allowed_dv_boost, injection_dv)
+        injection_dv -= boost_dv
 
         # boost mass:
         mf_boost = dv2mf(boost_dv,self.boost_isp, self.lower_stage_pl_mass, l_boost)
@@ -1030,7 +1037,9 @@ class Vesta(Hestia):
         self.Mass_boost = Me_boost + self.Mass_boost_fuel*l_boost
         # boost is done
 
-        ion_dv += self.dV_rdvz
+        ion_extra = injection_dv*self.ion_penalty
+
+        ion_dv = self.dV_rdvz + ion_extra
 
         # only consider upper stage
         F_need = self.upper_stage_wet_mass*self.a_min_ion
@@ -1043,11 +1052,10 @@ class Vesta(Hestia):
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
 
         if self.verbose:
+            print(f"DV: boost dv is: {boost_dv/1000:4.3f} km/s, Ion dv is {ion_extra/1000:4.3f} + {self.dV_rdvz/1000:4.3f} km/s")
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
             print(f"ion engine number: {self.Number_ions}"  )
             print(f"Xenon fuel: {self.Mass_ion_fuel} kg")
-
-
         
 
     def size_ion_system(self):
@@ -1055,9 +1063,6 @@ class Vesta(Hestia):
 
     def size_boost_system(self):
         pass
-
-
-
 
 
 

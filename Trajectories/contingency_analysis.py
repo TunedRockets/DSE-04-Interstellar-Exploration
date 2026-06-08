@@ -285,12 +285,12 @@ if __name__ == '__main__':
 
     # _test_Vesta_mass()
     # input()
-    H = Hestia(0,8*1000,5*1000, min_acceleration=(7000/(jkat.YEAR)), boost_included_in_acceleration=False)
-    H._converge()
-    print(H)
+    # H = Hestia(0,18*1000,5*1000, min_acceleration=(7000/(jkat.YEAR)), boost_included_in_acceleration=False)
+    # H._converge()
+    # print(H)
     # # input()
 
-    V = Vesta(0,8*1000,5*1000, min_acceleration=(7000/jkat.YEAR))
+    V = Vesta(14*1000,10*1000, 3*1000, min_acceleration=(7000/jkat.YEAR), verbose=True, ion_penalty=2)
     V._converge()
     print(V)
     input()

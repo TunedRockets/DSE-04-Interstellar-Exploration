@@ -10,9 +10,9 @@ from tqdm import tqdm
 import matplotlib as mpl
 # mpl.use('TkAgg')
 import matplotlib.pyplot as plt
-from proper_earth_rdvz_sizer import *
+from Propulsion.proper_earth_rdvz_sizer import *
 
-from multi_stage_sizer_earth_flyby import VegaC_Launcher
+# from Propulsion.multi_stage_sizer_earth_flyby import VegaC_Launcher
 
 # ============================================================
 #                         CONSTANTS

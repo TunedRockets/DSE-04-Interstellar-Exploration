@@ -632,9 +632,8 @@ def evaluate_system(
         sol["T1"]
     )
 
-    reactor = Reactor(sol["T2"],sol["T3"], sol["q_in"]*mdot, operating_pressure=sol["P2"])
-    # TODO: Remove when applied in reactor
-    m_reactor = 1.82*reactor.size_all(print_true=False)
+    reactor = Reactor(sol["T2"],sol["T3"], sol["q_in"]*mdot, operating_pressure=sol["P2"], power_density="int")
+    m_reactor = reactor.size_all(print_true=False)
 
 
     total = m_comp + m_turb + m_rad + m_alternator + m_reactor
@@ -660,7 +659,7 @@ def mass_heatmap(
         min_P2=None,
         max_P2=None,
         res=120,
-        limit=5000.0,
+        limit=1000.0,
         plot=True,
         plot_mode="2d",   # "2d" or "3d"
         verbose=False,
@@ -980,20 +979,20 @@ if __name__ == "__main__":
 
     engine = BraytonCycle(Helium, 0.85, 0.88, 0.90)
 
-    low_pressures = np.linspace(1, 5, 30)
+    low_pressures = np.linspace(1, 40, 30)
     masses = []
-    # iss_radiator_pressure = 3447 * 1000  # Pa
+    iss_radiator_pressure = 3447 * 1000  # Pa
 
     high_pressures = []
 
     best = mass_heatmap(
         engine,
-        W_elec=46000,
+        W_elec=16000,
         P1=2.7 * BAR,
         T3=max_reactor_temp,
         max_T1=max_radiator_temp,
         # plot=False,
-        plot_mode="3d",
+        plot_mode="2d",
         verbose=True,
         # mass_budget=300
     )
@@ -1017,18 +1016,18 @@ if __name__ == "__main__":
 
     high_pressures = np.array(high_pressures)
     # Convert ISS radiator pressure to bar
-    # iss_radiator_pressure_bar = iss_radiator_pressure / BAR
+    iss_radiator_pressure_bar = iss_radiator_pressure / BAR
 
     # Plot
     plt.figure()
     plt.plot(high_pressures, masses, marker='x', label='Reactor System Pressure')
     plt.plot(low_pressures, masses, marker='o', label='Radiator System Pressure')
-    # plt.axvline(
-    #     x=iss_radiator_pressure_bar,
-    #     color='r',
-    #     linestyle='--',
-    #     label=f'ISS radiator ({iss_radiator_pressure_bar:.2f} bar)'
-    # )
+    plt.axvline(
+        x=iss_radiator_pressure_bar,
+        color='r',
+        linestyle='--',
+        label=f'ISS radiator ({iss_radiator_pressure_bar:.2f} bar)'
+    )
 
     plt.xlabel("Pressure (bar)")
     plt.ylabel("Mass")

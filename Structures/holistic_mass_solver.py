@@ -111,10 +111,17 @@ areal_density = radiator_areal_density           # kg/m^2
 def dv2mf(dV:float, isp:float, m1:float, l:float)->float:
     '''dv [in km/s], specific impulse, non-tank-mass, 
     structural mass fraction to fuel mass'''
+    l += propellant_margin
     ve = 9.80665 * isp
     e = m.exp(dV/ve)
-    mf = m1*(e-1)/(1+l-l*e)*(1+propellant_margin) # fuel mass
+    mf = m1*(e-1)/(1+l-l*e) # fuel mass
+
+
+
     return mf
+
+
+
 
 
 class Hestia():
@@ -1090,7 +1097,7 @@ class Vesta(Hestia):
 
     @property
     def ion_dv(self):
-        return Isp_ion*9.81/1000 * m.log(self.upper_stage_wet_mass/self.upper_stage_dry_mass) 
+        return Isp_ion*9.81 * m.log(self.upper_stage_wet_mass/self.upper_stage_dry_mass) 
 
 
     def __repr__(self) -> str:

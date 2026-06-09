@@ -69,6 +69,30 @@ def under2(df:pd.DataFrame, v_inf, v_ion)->int:
     yy = yy[yy<= v_ion]
     return len(yy)
 
+def under3(df:pd.DataFrame, V:Vesta)->int:
+
+    v_inf = V.vinf/1000
+    v_ion = V.ion_dv/1000
+
+    xx = df[['dvi', 'dvr']].to_numpy()
+    xx = xx - np.column_stack((np.ones(len(xx))*v_inf, np.zeros(len(xx))))
+    yy = np.minimum(0,xx[:,0])*ION_PENALTY + xx[:,1]
+    yy = yy[yy<= v_ion]
+    return len(yy)
+
+def vesta_success_chance(V:Vesta, P:float, N:int, AOI:tuple[float,float]=AREA_OF_INTEREST):
+    df = get_data_earth()
+    count = len(df)
+    C = under3(df,V)
+
+    # remake probability:
+    Pi = C/count
+    Pu = 1 - (1-Pi)**N
+    return Pu
+
+
+
+
 def study_ISO(ISO:jkat.Orbit, detect_t:float)->dict:
     '''study earth based intercept'''
     def F(t):
@@ -329,14 +353,16 @@ if __name__ == '__main__':
     # plt.scatter(xx[:,0],xx[:,1], c=cc)
     # plt.colorbar()
     # plt.xlabel('dvi'); plt.ylabel('dvr')
-    direct_earth_analysis(0)
+    # direct_earth_analysis(0)
     # plt.show()
 
     # # input()
     a = 9000 / (jkat.YEAR)
-    V = Vesta(14.7*1000, 8.9*1000, 0, verbose=True, min_acceleration=0, min_engines=2, ion_penalty=2)
-    # V = Vesta(16.1*1000, 3.2*1000, 0, verbose=True, min_acceleration=0, min_engines=4, ion_penalty=2)
+    # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=False, min_acceleration=0, min_engines=2, ion_penalty=2)
+    V = Vesta(16.1*1000, 3.2*1000, 0, verbose=False, min_acceleration=0, min_engines=4, ion_penalty=2)
     V._converge()
+    print(f'{vesta_success_chance(V,0.9,350):%}')
+
     print(V)
     input()
     while True:

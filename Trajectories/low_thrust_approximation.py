@@ -96,7 +96,7 @@ def lt_single(r0vec:np.ndarray, rtgtvec:np.ndarray,
         return r,v
 
     # initial impulsive setup:
-    v1,v2 = lambert(r0vec,rtgtvec,t,mu)
+    v1,v2 = lambert(r0vec,rtgtvec,t,mu, prograde=True)
     dv = v1 - v0vec
     dv_applied = dv/norm(dv) * min(initial_impulse,norm(dv))
     residual = dv - dv_applied
@@ -108,7 +108,7 @@ def lt_single(r0vec:np.ndarray, rtgtvec:np.ndarray,
     t -= dt
     
     # "low" thrust:
-    v1,v2 = lambert(p,rtgtvec, t, mu)
+    v1,v2 = lambert(p,rtgtvec, t, mu, prograde=True)
     dv1 = norm(v1-v)
     dv2 = norm(v2 - vtgtvec)
 
@@ -142,7 +142,17 @@ def single_cost_analysis(row:pd.Series, acceleration:float, impulse:float)->dict
 
 if __name__ == "__main__":
 
-    df = get_data_earth(50)
+
+
+    df = get_data_earth()
+    
+    r = df['r'].to_numpy()/jkat.AU
+    plt.hist(r)
+    plt.show()
+    
+    
+    input()
+    
     df = df[df['dvi'] < 14.73]
     df = df[df['dvr'] < 5]
     print(f"{len(df)=}")
@@ -154,8 +164,14 @@ if __name__ == "__main__":
         row = df.iloc[i]
         try:
             res = single_cost_analysis(row, a, 14.73 - 5.754/2) # impulse from run of Vesta
-            rel.append(res['relative'])
-            abso.append(res['absolute'])
+            relv = res['relative']
+            absv = res['absolute']
+            if relv > 10:
+                print(f"outlier detected: {relv=}, {absv=}")
+                continue
+
+            rel.append(relv)
+            abso.append(absv)
         except ArithmeticError: failed +=1
 
     print(f'{failed=}')

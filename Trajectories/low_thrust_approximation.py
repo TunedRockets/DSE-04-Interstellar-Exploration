@@ -147,20 +147,20 @@ if __name__ == "__main__":
     df = get_data_earth()
   
     
-    df = df[df['dvi'] <= 16.093]
-    df = df[df['dvr'] <= 3.196]
+    df = df[df['dvi'] <= 14]
+    df = df[df['dvr'] <= 9]
     print(f"{len(df)=}")
     rel = []
     abso = []
     failed = 0
-    a = 3200 / (125*jkat.DAY * 3/4)
+    a = 6173.698105731037 / (436*jkat.DAY)
     for i in range(len(df)):
         row = df.iloc[i]
         try:
             res = single_cost_analysis(row, a, 12) # impulse from run of Vesta
             relv = res['relative']
             absv = res['absolute']
-            if relv > 10:
+            if relv > 4:
                 print(f"outlier detected: {relv=}, {absv=}")
                 continue
 

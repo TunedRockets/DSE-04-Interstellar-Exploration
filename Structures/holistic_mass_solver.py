@@ -970,7 +970,13 @@ class Vesta(Hestia):
     (name subject to change. (e.g. find other backronym for hestia))'''
 
 
-    def __init__(self, dV_injection:float, dV_rdvz:float, allowed_dv_boost:float, ion_penalty:float=2, verbose=True, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
+    def __init__(self, dV_injection:float, 
+                 dV_rdvz:float, 
+                 allowed_dv_boost:float, 
+                 ion_penalty:float=2, 
+                 verbose=True, convergence_tolerance=1e-8, 
+                 min_acceleration:float=0.0002854,
+                 min_engines:int = 2):
         '''DV given in M/S!!!'''
 
         
@@ -1008,6 +1014,9 @@ class Vesta(Hestia):
 
         self.min_acceleration = min_acceleration
         '''minimum acceleration required for sizing the Ion system'''
+
+        self.min_engines = min_engines
+        '''minimum number of engines allowed'''
 
         self.boost_included_in_acceleration = False
         '''if acceleration requirements should be calculated with boost stage attached'''
@@ -1058,6 +1067,7 @@ class Vesta(Hestia):
         F_need = self.upper_stage_wet_mass*self.a_min_ion
 
         self.Number_ions = m.ceil(F_need/F_ion)
+        self.Number_ions = max(self.Number_ions, self.min_engines)
 
         mf_ion = dv2mf(ion_dv, Isp_ion, self.lower_stage_pl_mass + self.Number_ions*Me_ion, l_ion)
 
@@ -1082,6 +1092,7 @@ class Vesta(Hestia):
 
 
     def __repr__(self) -> str:
+        ion_bt = (self.dV_injection - self.vinf)*self.ion_penalty / (self.Number_ions * F_ion / self.upper_stage_wet_mass)
         return (
             '--- Vesta configuration: ---\n'
             f'payload mass: {self.upper_stage_pl_mass:6.1f} kg\n'
@@ -1094,6 +1105,7 @@ class Vesta(Hestia):
             '---\n'
             f'{self.Number_ions} ion engines\n'
             f'rendezvous burn time: {self.rdvz_burn_time/86_000:3.2f} days\n'
+            f'ion injection burn time: {ion_bt/86_000:3.2f} days\n'
             f'{self.Power_provided:6.1f} W used from reactor with mass {self.Mass_power_truss:6.1f} kg\n'
             f'injection V_inf: {self.vinf}, with ion dv: {(self.dV_injection - self.vinf)*self.ion_penalty}'
             f' + {self.dV_rdvz} m/s\n'

@@ -526,22 +526,41 @@ if __name__ == '__main__':
 
     # print(V)
     # input()
-    V = Vesta(9*1000,0, verbose=False, launcher=Ariane64_Launcher)
+    V = Vesta(10*1000,0, verbose=False, launcher=Ariane64_Launcher)
     V._converge()
     print(V)
+    input()
+    
+    def save_res(df, string):
+        with open(Path(__file__).parent / "result.txt") as file:
+            file.write(string + '\n')
+            file.write(f'{chance_working(df):%}\n')
 
-    df = study_storage(11.5,9)
-    print(f'{chance_working(df ):%}')
-    print(f'{len(df[df["ion_res"] >=0])}/{len(df)}')
-    plt.hist(df['ion_res'],range=(-100,10),bins=200)
-    plt.show()
+    df = study_storage(11.2,10) # ariane 64 attempt 1
+    save_res(df, '11.2 and 10 (attempt 1)')
+    df = study_storage(11.5,8.9) # ariane 64 attempt 2
+    save_res(df, '11.5 and 8.9 (attempt 2)')
+    df = study_storage(11.55,8.7) # ariane 64 attempt 3
+    save_res(df, '11.55 and 8.7 (attempt 3)')
+    df = study_storage(11.4,9.3) # ariane 64 attempt 4
+    save_res(df, '11.4 and 9.3 (attempt 4)')
+    df = study_storage(11.3,9.7) # ariane 64 attempt 5
+    save_res(df, '11.3 and 9.7 (attempt 5)')
+    
+    
+    
+    print(''.join(['done!\n' for _ in range(20)]))
+    # print(f'{chance_working(df ):%}')
+    # print(f'{len(df[df["ion_res"] >=0])}/{len(df)}')
+    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
+    # plt.show()
 
-    run_conv(11.5,9, 350)
+    # run_conv(11.5,9, 350)
 
-    df = study_batch_possible(11.5, 9,50)
-    print(f'{chance_working(df ):%}')
-    plt.hist(df['ion_res'],range=(-100,10),bins=200)
-    plt.show()
+    # df = study_batch_possible(11.5, 9,50)
+    # print(f'{chance_working(df ):%}')
+    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
+    # plt.show()
 
 
    

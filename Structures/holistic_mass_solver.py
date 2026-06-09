@@ -27,8 +27,8 @@ from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launche
 # # P-cores only (typical mapping for 13650HX)
 # p.cpu_affinity(list(range(0, 12)))
 # ==== consts =====
-
-static_mass = 126.3+88.8+100+300
+# 126.3 payload, 88.8 lander, 100 aocs+TT&C, 300 structures, 15+36 extra engine
+static_mass = 126.3+88.8+100+300+(15+36)
 '''[kg] mass of scientific payload, antenna, bus and oter non-varying things'''
 static_power_draw = 1600
 '''[w] static power draw of non-propulsion equipment'''
@@ -65,7 +65,7 @@ xenon_tank_temp = 273.15+20
 xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
 
 
-l_ion = 0.05
+l_ion = 0.12
 '''[-] ion tank mass fraction'''
 
 # boost system:

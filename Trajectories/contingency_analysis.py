@@ -33,7 +33,7 @@ import os
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 0 # [km/s]
 ION_PENALTY = 2
-AREA_OF_INTEREST = (15,15) # Area where the mass function is defined
+AREA_OF_INTEREST = (16,17) # Area where the mass function is defined
 
 
 # create simple mass interpolator.
@@ -342,15 +342,17 @@ def direct_earth_analysis(N_batches:int=30):
 if __name__ == '__main__':
 
 
-    
+    # direct_earth_analysis(30)
+    # input()
 
     # # input()
-    a = 9000 / (jkat.YEAR)
+    a = 9000 / (jkat.YEAR*2)
     # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=False, min_acceleration=0, min_engines=2, ion_penalty=2)
-    V = Vesta(10*1000, 3.2*1000, 0, verbose=False, min_acceleration=0, min_engines=4, ion_penalty=2)
+    V = Vesta(14*1000, 6*1000, 0, verbose=False, min_acceleration=a, min_engines=4, ion_penalty=2)
     V._converge()
 
     print(V)
+    input()
     print(f'{vesta_success_chance(V,0.9,350):%}')
 
     

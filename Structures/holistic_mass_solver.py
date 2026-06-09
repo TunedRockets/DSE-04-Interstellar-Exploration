@@ -1034,7 +1034,7 @@ class Vesta(Hestia):
 
     @property
     def vinf(self):
-        v_inf, best_kickstage = get_vinf(Ariane64_Launcher, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
+        v_inf, best_kickstage = get_vinf(FalconHeavy_Expendable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
         if self.verbose:
             print("Best kickstage: ", best_kickstage)
         return v_inf

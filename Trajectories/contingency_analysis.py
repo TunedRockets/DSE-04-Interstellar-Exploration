@@ -30,8 +30,8 @@ import pickle as pkl
 import matplotlib.pyplot as plt
 import os
 
-MAX_MISSION_TIME = 15 # [years]
-MAX_BOOST_DV = 5 # [km/s]
+MAX_MISSION_TIME = 10 # [years]
+MAX_BOOST_DV = 0 # [km/s]
 ION_PENALTY = 2
 AREA_OF_INTEREST = (20,20) # Area where the mass function is defined
 

@@ -604,7 +604,7 @@ def size_spacecraft(
                 if m+kick.total_mass > launcher.LEO_payload:
                     continue
 
-                v_inf_launcher = launcher.get_vinf_performance(
+                v_inf_launcher = launcher.get_dv_performance(
                     m + kick.total_mass
                 )
 
@@ -618,7 +618,7 @@ def size_spacecraft(
 
             else:
 
-                total_vinf = launcher.get_vinf_performance(m)
+                total_vinf = launcher.get_dv_performance(m)
 
             margin = total_vinf - needed_excess_dv
 
@@ -1255,7 +1255,7 @@ def plot_vinf_comparison(
                 # ------------------------------------------------
                 if kick is None:
 
-                    vinf = launcher.get_vinf_performance(m)
+                    vinf = launcher.get_dv_performance(m)
 
                 # ------------------------------------------------
                 # WITH KICKSTAGE
@@ -1267,7 +1267,7 @@ def plot_vinf_comparison(
                         vinf_vals.append(np.nan)
                         continue
 
-                    launcher_vinf = launcher.get_vinf_performance(
+                    launcher_vinf = launcher.get_dv_performance(
                         m + kick.total_mass
                     )
 

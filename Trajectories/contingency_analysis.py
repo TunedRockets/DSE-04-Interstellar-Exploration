@@ -33,12 +33,12 @@ import os
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 0 # [km/s]
 ION_PENALTY = 2
-AREA_OF_INTEREST = (17,16) # Area where the mass function is defined
+AREA_OF_INTEREST = (15,15) # Area where the mass function is defined
 
 
 # create simple mass interpolator.
 INTERP:RegularGridInterpolator = None # type:ignore
-INTERP_PATH = path = Path(__file__).parent.parent / "Structures" / "mass_database_vesta.pkl"
+INTERP_PATH = path = Path(__file__).parent.parent / "Structures" / "mass_database_vesta_FH_Exp.pkl"
 
 
 
@@ -76,7 +76,7 @@ def under3(df:pd.DataFrame, V:Vesta)->int:
 
     xx = df[['dvi', 'dvr']].to_numpy()
     xx = xx - np.column_stack((np.ones(len(xx))*v_inf, np.zeros(len(xx))))
-    yy = np.minimum(0,xx[:,0])*ION_PENALTY + xx[:,1]
+    yy = np.maximum(0,xx[:,0])*ION_PENALTY + xx[:,1]
     yy = yy[yy<= v_ion]
     return len(yy)
 
@@ -342,28 +342,18 @@ def direct_earth_analysis(N_batches:int=30):
 if __name__ == '__main__':
 
 
-    # print(earth_mass(5,7))
-
-    # df = get_data_earth()
-
-    # df = df[df["dvi"] <= AREA_OF_INTEREST[0]]
-    # df = df[df["dvr"] <= AREA_OF_INTEREST[1]]
-    # xx = df[['dvi','dvr']].to_numpy()
-    # cc = df['mass'].to_numpy()
-    # plt.scatter(xx[:,0],xx[:,1], c=cc)
-    # plt.colorbar()
-    # plt.xlabel('dvi'); plt.ylabel('dvr')
-    # direct_earth_analysis(0)
-    # plt.show()
+    
 
     # # input()
     a = 9000 / (jkat.YEAR)
     # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=False, min_acceleration=0, min_engines=2, ion_penalty=2)
-    V = Vesta(16.1*1000, 3.2*1000, 0, verbose=False, min_acceleration=0, min_engines=4, ion_penalty=2)
+    V = Vesta(10*1000, 3.2*1000, 0, verbose=False, min_acceleration=0, min_engines=4, ion_penalty=2)
     V._converge()
-    print(f'{vesta_success_chance(V,0.9,350):%}')
 
     print(V)
+    print(f'{vesta_success_chance(V,0.9,350):%}')
+
+    
     input()
     while True:
         dvi, dvr = direct_earth_analysis(300)

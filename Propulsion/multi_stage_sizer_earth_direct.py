@@ -252,8 +252,10 @@ class Launcher():
         self,
         LEO_payload,
         UpperStage,
-        LEO_payload_altitude=200_000
+        LEO_payload_altitude=200_000,
+        orbital_refill=False
     ):
+        self.orbital_refill = orbital_refill
 
         self.LEO_payload = LEO_payload
         self.UpperStage = UpperStage
@@ -273,9 +275,13 @@ class Launcher():
             self.LEO_payload - payload_mass,
             self.UpperStage.max_prop_mass
         )
+        if remaining_prop_mass==self.UpperStage.max_prop_mass:
+            print("Max prop mass reached, upper stage was not used for leo")
+        if self.orbital_refill:
+            remaining_prop_mass = self.UpperStage.max_prop_mass
 
         if remaining_prop_mass <= 0:
-            return 0.0
+            return np.nan
 
         dv = self.UpperStage.get_remaining_dv(
             remaining_prop_mass,
@@ -425,7 +431,7 @@ def get_vinf(launcher, kickstages, payload_mass):
 
             # Skip impossible masses
             if payload_mass + kick.total_mass > launcher.LEO_payload:
-                v_inf=0
+                v_inf=np.nan
             else:
 
                 launcher_vinf = launcher.get_vinf_performance(
@@ -631,7 +637,8 @@ SLS_Block1_ICPS = Launcher(
 
 Starship_SuperHeavy = Launcher(
     LEO_payload=150_000,
-    UpperStage=StarshipUpper
+    UpperStage=StarshipUpper,
+    orbital_refill=True
 )
 
 Vulcan = Launcher(
@@ -1432,12 +1439,12 @@ if __name__ == "__main__":
         #
         # (Falcon9,
         #  "Falcon 9"),
-
-        (Ariane64_Launcher, "Ariane 64"),
-
+        #
+        # (Ariane64_Launcher, "Ariane 64"),
+        #
         # (Starship_SuperHeavy,
         #  "Starship + Super Heavy"),
-        #
+
         (FalconHeavy_Reusable,
          "Falcon Heavy (Reusable)"),
         #
@@ -1446,7 +1453,7 @@ if __name__ == "__main__":
         #
         # (NewGlennLauncher,
         #  "New Glenn"),
-
+        #
         # (FalconHeavy_Expendable,
         #  "Falcon Heavy (Expendable)"),
         #
@@ -1494,18 +1501,24 @@ if __name__ == "__main__":
 
         (ESC_A),
 
-        (Helios)
+        (ESCB),
+
+        (Helios),
+
+        CentaurV,
+
+        SLS_ICPS
     ]
 
     fig, ax = plt.subplots(figsize=(9, 6))
 
-    payload_range = np.linspace(0, 2000, 1000)
+    payload_range = np.linspace(0, 10000, 1000)
 
     plot_get_vinf(FalconHeavy_Reusable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Reusable")
     plot_get_vinf(FalconHeavy_Expendable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Expendable")
     plot_get_vinf(Ariane64_Launcher, kickstages_simple, payload_range, ax=ax, label="Ariane 64")
-    plot_get_vinf(SLS_CentaurV, kickstages_simple, payload_range, ax=ax, label="SLS CV")
-    plot_get_vinf(SLS_Block1_ICPS, kickstages_simple, payload_range, ax=ax, label="SLS Block 1")
+    # plot_get_vinf(SLS_CentaurV, kickstages_simple, payload_range, ax=ax, label="SLS CV")
+    # plot_get_vinf(SLS_Block1_ICPS, kickstages_simple, payload_range, ax=ax, label="SLS Block 1")
     plot_get_vinf(Vulcan, kickstages_simple, payload_range, ax=ax, label="Vulcan")
     # plot_get_vinf(Starship_SuperHeavy, kickstages_simple, payload_range, ax=ax, label="Starship SuperHeavy")
     # plot_get_vinf(VegaC_Launcher, kickstages_simple, payload_range, ax=ax, label="Vega C")
@@ -1555,7 +1568,7 @@ if __name__ == "__main__":
         np.linspace(1, 10000, 1000),
         launchers,
         kickstages,
-        9500,
+        8500,
         vertical_wetmass=5352,
         vertical_color='black',
         # vertical_label='Updated Mass Budget'

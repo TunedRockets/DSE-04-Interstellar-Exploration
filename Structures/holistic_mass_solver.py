@@ -1068,6 +1068,7 @@ class Vesta(Hestia):
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
             print(f"ion engine number: {self.Number_ions}"  )
             print(f"Xenon fuel: {self.Mass_ion_fuel} kg")
+            print(f"vinf from launcher: {self.vinf}")
         
 
     def size_ion_system(self):
@@ -1093,6 +1094,8 @@ class Vesta(Hestia):
             f'{self.Number_ions} ion engines\n'
             f'rendezvous burn time: {self.rdvz_burn_time/86_000:3.2f} days\n'
             f'{self.Power_provided:6.1f} W used from reactor with mass {self.Mass_power_truss:6.1f} kg\n'
+            f'injection V_inf: {self.vinf}, with ion dv: {(self.dV_injection - self.vinf)*self.ion_penalty}'
+            f' + {self.dV_rdvz} m/s\n'
         )
 
 

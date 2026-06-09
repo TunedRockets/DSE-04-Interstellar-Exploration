@@ -524,28 +524,35 @@ if __name__ == '__main__':
     # V._converge()
     from Propulsion.multi_stage_sizer_earth_direct import Ariane64_Launcher
 
+    def save_res(df, string):
+        with open(Path(__file__).parent / "result.txt", 'a') as file:
+            file.write(string + '\n')
+            file.write(f'{chance_working(df):%}\n\n')
+
+    def do(vinf, vion):
+        run_conv(vinf,vion,350)
+        df = study_storage(vinf,vion, 0) # ariane 64 attempt 1
+        save_res(df, f'{vinf:.2f} and {vion:.2f}:')
+
     # print(V)
-    # input()
-    V = Vesta(10*1000,0, verbose=False, launcher=Ariane64_Launcher)
+    # # input()
+    V = Vesta(8.5*1000,0, verbose=False, launcher=Ariane64_Launcher)
+    # V = Vesta(10*1000,0, verbose=False)
     V._converge()
     print(V)
+    # df = study_storage(12,10)
+    # print(f'{chance_working(df):%}\n')
+    # save_res(df, 'test')
     input()
-    
-    def save_res(df, string):
-        with open(Path(__file__).parent / "result.txt") as file:
-            file.write(string + '\n')
-            file.write(f'{chance_working(df):%}\n')
+        
 
-    df = study_storage(11.2,10) # ariane 64 attempt 1
-    save_res(df, '11.2 and 10 (attempt 1)')
-    df = study_storage(11.5,8.9) # ariane 64 attempt 2
-    save_res(df, '11.5 and 8.9 (attempt 2)')
-    df = study_storage(11.55,8.7) # ariane 64 attempt 3
-    save_res(df, '11.55 and 8.7 (attempt 3)')
-    df = study_storage(11.4,9.3) # ariane 64 attempt 4
-    save_res(df, '11.4 and 9.3 (attempt 4)')
-    df = study_storage(11.3,9.7) # ariane 64 attempt 5
-    save_res(df, '11.3 and 9.7 (attempt 5)')
+    # do(11.2,10) # ariane 64 attempt 1 not
+    do(11.5,8.9) # ariane 64 attempt 2 Works (check twice)
+    # do(11.55,8.7) # ariane 64 attempt 3 definitely not
+    do(11.6, 8.5) # ariane 64 attempt 3.5
+    do(11.4,9.3) # ariane 64 attempt 4
+    do(11.3,9.7) # ariane 64 attempt 5
+    do(12,10) # falcon heavy (again just to be sure)
     
     
     

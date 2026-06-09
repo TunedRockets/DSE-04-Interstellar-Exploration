@@ -37,8 +37,8 @@ def _single_run(args):
     return i, j, total_mass
 
 # from concurrent.futures import ProcessPoolExecutor, as_completed
-
-def generate_mass_database(dVs_inj, dVs_rdvz):
+path = Path(__file__).parent / "mass_database_vesta.pkl"
+def generate_mass_database(dVs_inj, dVs_rdvz, path=path):
 
     jobs = [
         (i, j, dv_inj, dv_rdvz)
@@ -68,7 +68,6 @@ def generate_mass_database(dVs_inj, dVs_rdvz):
         "dV_rdvz": dVs_rdvz,
         "mass": masses,
     }
-    path = Path(__file__).parent / "mass_database_vesta.pkl"
     with open(path, "wb") as f:
         pickle.dump(data, f)
 
@@ -413,32 +412,33 @@ def _test_all_grid_points(data):
 
 
 if __name__ == "__main__":
-    V = Vesta(14_730, 4_153, 7000)
-    V._converge()
-    print(V)
-    masses = []
-    ion_dv = []
-    allowable_boosts = np.linspace(0, 7000, 100)
+    # V = Vesta(14_730, 4_153, 7000)
+    # V._converge()
+    # print(V)
+    # masses = []
+    # ion_dv = []
+    # allowable_boosts = np.linspace(0, 7000, 100)
+    #
+    # for boost in allowable_boosts:
+    #     V = Vesta(14_730, 4_153, boost)
+    #     V._converge()
+    #     ion_dv.append(V.ion_extra)
+    #     masses.append(V.lower_stage_wet_mass)
 
-    for boost in allowable_boosts:
-        V = Vesta(14_730, 4_153, boost)
-        V._converge()
-        ion_dv.append(V.ion_extra)
-        masses.append(V.lower_stage_wet_mass)
-
-    plt.plot(allowable_boosts, masses)
-    plt.plot(allowable_boosts, ion_dv)
-    plt.show()
+    # plt.plot(allowable_boosts, masses)
+    # plt.plot(allowable_boosts, ion_dv)
+    # plt.show()
 
     resolution = 50
     dVs_inj = np.linspace(0, 7500+8500+2000, resolution)
     dVs_rdvz = np.linspace(0, 25000, resolution)
-    data = generate_mass_database(dVs_inj, dVs_rdvz)
-    db = load_mass_database()
+    path = Path(__file__).parent / "mass_database_vesta_Ariane64.pkl"
+    data = generate_mass_database(dVs_inj, dVs_rdvz,path=path)
+    db = load_mass_database(filename=path)
 
-    interp = MassInterpolator()
+    interp = MassInterpolator(filename=path)
 
-    _test_mass_database(db)
+    # _test_mass_database(db)
     # _test_interpolator_no_nans(db)
     # _test_all_grid_points(db)
 

@@ -12,7 +12,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from Propulsion.proper_earth_rdvz_sizer import *
 
-# from Propulsion.multi_stage_sizer_earth_flyby import VegaC_Launcher
+from Propulsion.multi_stage_sizer_earth_flyby import VegaC_Launcher
 
 # ============================================================
 #                         CONSTANTS
@@ -40,17 +40,16 @@ escape_velocity = np.sqrt(2 * mu_earth / r_LEO)
 # ============================================================
 
 def dv_to_vinf(dv, v_circ, v_esc):
-    """
-    Convert impulsive periapsis burn delta-v from circular orbit
-    into resulting hyperbolic excess velocity.
-    """
-
     v_post = v_circ + dv
 
-    if v_post <= v_esc:
-        return 0.0
+    # specific orbital energy at periapsis
+    eps = 0.5 * v_post ** 2 - 0.5 * v_esc ** 2
 
-    return np.sqrt(v_post**2 - v_esc**2)
+    # convert to v_inf (allow negative energy to carry as "deficit")
+    if eps <= 0:
+        return -np.sqrt(-2 * eps)  # signed "deficit"
+
+    return np.sqrt(2 * eps)
 
 
 def vinf_to_required_dv(vinf, v_circ, v_esc):
@@ -62,15 +61,14 @@ def vinf_to_required_dv(vinf, v_circ, v_esc):
 
 
 def combine_vinf_and_dv(vinf_initial, dv, v_esc):
-    """
-    Apply impulsive periapsis burn onto existing hyperbolic trajectory.
-    """
-
-    v_peri_initial = np.sqrt(vinf_initial**2 + v_esc**2)
+    # convert back to periapsis velocity space
+    v_peri_initial = np.sqrt(vinf_initial**2 + v_esc**2) if vinf_initial >= 0 else 0.0
 
     v_peri_final = v_peri_initial + dv
 
-    return np.sqrt(v_peri_final**2 - v_esc**2)
+    eps = 0.5 * v_peri_final**2 - 0.5 * v_esc**2
+
+    return np.sign(eps) * np.sqrt(abs(2 * eps))
 
 
 # ============================================================
@@ -412,38 +410,71 @@ def get_vinf(launcher, kickstages, payload_mass):
     """
     best_vinf = 0
     best_kickstage = None
-    for kickstage in kickstages:
-        if kickstage is None:
+    for kick in kickstages:
+        # ------------------------------------------------
+        # NO KICKSTAGE
+        # ------------------------------------------------
+        if kick is None:
+
             v_inf = launcher.get_vinf_performance(payload_mass)
-            if v_inf > best_vinf:
-                best_vinf = v_inf
-                best_kickstage = kickstage
-                continue
 
-        # must fit in launcher
-        if payload_mass + kickstage.total_mass > launcher.LEO_payload:
-            v_inf = 0.0
-            if v_inf > best_vinf:
-                best_vinf = v_inf
-                best_kickstage = kickstage
-                continue
+        # ------------------------------------------------
+        # WITH KICKSTAGE
+        # ------------------------------------------------
+        else:
 
-        launcher_vinf = launcher.get_vinf_performance(
-            payload_mass + kickstage.total_mass
-        )
+            # Skip impossible masses
+            if payload_mass + kick.total_mass > launcher.LEO_payload:
+                v_inf=0
+            else:
 
-        kick_dv = kickstage.get_total_dv(payload_mass)
+                launcher_vinf = launcher.get_vinf_performance(
+                    payload_mass + kick.total_mass
+                )
 
-        v_inf = combine_vinf_and_dv(
-            launcher_vinf,
-            kick_dv,
-            launcher.ref_escape_velocity
-        )
+                kick_dv = kick.get_total_dv(payload_mass)
+
+                v_inf = combine_vinf_and_dv(
+                    launcher_vinf,
+                    kick_dv,
+                    launcher.ref_escape_velocity
+                )
         if v_inf > best_vinf:
             best_vinf = v_inf
-            best_kickstage = kickstage
+            best_kickstage = kick
     return best_vinf, best_kickstage
 
+def plot_get_vinf(
+    launcher,
+    kickstages,
+    payload_masses,
+    ax=None,
+    label=None
+):
+    payload_masses = np.asarray(payload_masses)
+
+    v_infs = [
+        get_vinf(launcher, kickstages, m)[0]
+        for m in payload_masses
+    ]
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.plot(
+        payload_masses,
+        v_infs,
+        # lw=2.5,
+        # marker="o",
+        # ms=4,
+        label=label or launcher.__class__.__name__,
+    )
+
+    ax.set_xlabel("Payload Mass [kg]")
+    ax.set_ylabel(r"$V_\infty$ [m/s]")
+    ax.grid(True, alpha=0.3)
+
+    return ax
 
 def get_payload_for_vinf(
     launcher,
@@ -1407,8 +1438,8 @@ if __name__ == "__main__":
         # (Starship_SuperHeavy,
         #  "Starship + Super Heavy"),
         #
-        # (FalconHeavy_Reusable,
-        #  "Falcon Heavy (Reusable)"),
+        (FalconHeavy_Reusable,
+         "Falcon Heavy (Reusable)"),
         #
         # (Vulcan,
         #  "Vulcan Centaur"),
@@ -1427,7 +1458,7 @@ if __name__ == "__main__":
     ]
 
     kickstages = [
-
+        #
         (VegaC_Zefiro9, "VegaC Zefiro9"),
 
         (Orion38, "Orion38"),
@@ -1447,6 +1478,39 @@ if __name__ == "__main__":
         (None, "")
     ]
 
+    kickstages_simple = [
+
+        (VegaC_Zefiro9),
+
+        (Orion38),
+
+        (VegaC_AVUM_plus),
+
+        (Star48BV),
+
+        (Star63),
+
+        (Astris),
+
+        (ESC_A),
+
+        (Helios)
+    ]
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+
+    payload_range = np.linspace(0, 15000, 1000)
+
+    plot_get_vinf(FalconHeavy_Reusable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Reusable")
+    plot_get_vinf(FalconHeavy_Expendable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Expendable")
+    plot_get_vinf(Ariane64_Launcher, kickstages_simple, payload_range, ax=ax, label="Ariane 64")
+    plot_get_vinf(SLS_CentaurV, kickstages_simple, payload_range, ax=ax, label="SLS CV")
+    # plot_get_vinf(VegaC_Launcher, kickstages_simple, payload_range, ax=ax, label="Vega C")
+
+    ax.set_title("V∞ vs Payload Mass (Launcher Comparison)")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
     plot_vinf_comparison(
         launchers,
         kickstages,

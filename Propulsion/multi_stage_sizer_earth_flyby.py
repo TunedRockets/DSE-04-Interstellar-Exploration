@@ -10,7 +10,7 @@ from tqdm import tqdm
 import matplotlib as mpl
 # mpl.use('TkAgg')
 import matplotlib.pyplot as plt
-from proper_earth_rdvz_sizer import *
+from Propulsion.proper_earth_rdvz_sizer import *
 
 # ============================================================
 #                         CONSTANTS

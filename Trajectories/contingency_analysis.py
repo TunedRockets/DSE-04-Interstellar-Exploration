@@ -33,7 +33,7 @@ import os
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 0 # [km/s]
 ION_PENALTY = 2
-AREA_OF_INTEREST = (20,20) # Area where the mass function is defined
+AREA_OF_INTEREST = (17,16) # Area where the mass function is defined
 
 
 # create simple mass interpolator.
@@ -238,6 +238,8 @@ def find_best_point(df:pd.DataFrame, N:int, P:float=0.9, AOI:tuple[float,float]=
     df = df[df["dvi"] <= AOI[0]]
     df = df[df["dvr"] <= AOI[1]]
 
+
+
     ISO_points = df[['dvi', 'dvr']].to_numpy()
     point_list = bounding_box_2d(ISO_points, needed)
     if len(point_list) == 0: 
@@ -314,10 +316,20 @@ if __name__ == '__main__':
 
     # print(earth_mass(5,7))
 
+    # df = get_data_earth()
 
-    # input()
-    # a = 9000 / (jkat.YEAR)
-    # V = Vesta(14.73*1000, 4.153*1000, 0, verbose=True, min_acceleration=a)
+    # df = df[df["dvi"] <= AREA_OF_INTEREST[0]]
+    # df = df[df["dvr"] <= AREA_OF_INTEREST[1]]
+    # xx = df[['dvi','dvr']].to_numpy()
+    # cc = df['mass'].to_numpy()
+    # plt.scatter(xx[:,0],xx[:,1], c=cc)
+    # plt.colorbar()
+    # plt.xlabel('dvi'); plt.ylabel('dvr')
+    # plt.show()
+
+    # # input()
+    # a = 9000 / (jkat.YEAR*2)
+    # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=True, min_acceleration=a)
     # V._converge()
     # print(V)
     # input()

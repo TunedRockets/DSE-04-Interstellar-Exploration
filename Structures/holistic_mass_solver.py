@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 import jkat
 from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launcher, Helios, Star63, VegaC_Zefiro9, \
-    VegaC_AVUM_plus, Orion38
+    VegaC_AVUM_plus, Orion38, FalconHeavy_Reusable
 
 # import psutil
 #
@@ -63,6 +63,7 @@ propellant_margin = 2/100
 xenon_tank_pressure = 187*1e5
 xenon_tank_temp = 273.15+20
 xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
+print("Xenon density: ", xenon_density)
 
 
 l_ion = 0.12
@@ -112,7 +113,7 @@ def dv2mf(dV:float, isp:float, m1:float, l:float)->float:
     structural mass fraction to fuel mass'''
     ve = 9.80665 * isp
     e = m.exp(dV/ve)
-    mf = m1*(e-1)/(1+l-l*e) # fuel mass
+    mf = m1*(e-1)/(1+l-l*e)*(1+propellant_margin) # fuel mass
     return mf
 
 
@@ -1017,7 +1018,7 @@ class Vesta(Hestia):
 
     @property
     def vinf(self):
-        v_inf, best_kickstage = get_vinf(Ariane64_Launcher, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
+        v_inf, best_kickstage = get_vinf(FalconHeavy_Reusable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
         if self.verbose:
             print("Best kickstage: ", best_kickstage)
         return v_inf

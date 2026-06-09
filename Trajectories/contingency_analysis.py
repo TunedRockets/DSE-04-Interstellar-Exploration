@@ -266,7 +266,7 @@ def direct_earth_analysis(N_batches:int=30):
     print("interesting fraction:")
     dfi = df[df["dvi"] <= AREA_OF_INTEREST[0]]
     dfi = dfi[dfi["dvr"] <= AREA_OF_INTEREST[1]]
-    print(dfi[['dvi','dvr','mass']])
+    # print(dfi[['dvi','dvr','mass']])
     count = len(dfi)
 
     print(f" {count} / {len(df)} = {count/len(df)}")
@@ -282,7 +282,7 @@ def direct_earth_analysis(N_batches:int=30):
         # get accurate mass:
         if dvi > AREA_OF_INTEREST[0] or dvr > AREA_OF_INTEREST[1]:
             try:
-                H = Vesta(dvi,dvr,MAX_BOOST_DV,ION_PENALTY)
+                H = Vesta(dvi,dvr,MAX_BOOST_DV,ION_PENALTY, verbose=True)
                 H._converge()
                 m = H.lower_stage_wet_mass
                 changed = True
@@ -321,11 +321,11 @@ if __name__ == '__main__':
     # V._converge()
     # print(V)
     # input()
-
-    dvi, dvr = direct_earth_analysis(20)
-    V = Vesta(dvi*1000, dvr*1000, 5000, verbose=False)
-    V._converge()
-    print(V)
+    while True:
+        dvi, dvr = direct_earth_analysis(300)
+        V = Vesta(dvi*1000, dvr*1000, 0, verbose=False)
+        V._converge()
+        print(V)
 
     # i = make_interp(20)
 

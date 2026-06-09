@@ -62,7 +62,12 @@ def _under(df:pd.DataFrame, dvi:float, dvr:float)->int:
     frac = frac[frac['dvr'] <= dvr]
     return len(frac)
 
-
+def under2(df:pd.DataFrame, v_inf, v_ion)->int:
+    xx = df[['dvi, dvr']].to_numpy()
+    xx[:,0] -= v_inf
+    yy = np.minimum(0,xx[:,0])*ION_PENALTY + xx[:,1]
+    yy = yy[yy<= v_ion]
+    return len(yy)
 
 def study_ISO(ISO:jkat.Orbit, detect_t:float)->dict:
     '''study earth based intercept'''
@@ -134,7 +139,6 @@ def prescan_opt(F, xx, yy):
         ww.append(F((xg[i],yg[i])))
     idx = np.array(ww).argmin()
     return (xg[idx],yg[idx])
-
 
 
 def job(ISOtuple:tuple[jkat.Orbit, float, str])->dict:
@@ -325,6 +329,7 @@ if __name__ == '__main__':
     # plt.scatter(xx[:,0],xx[:,1], c=cc)
     # plt.colorbar()
     # plt.xlabel('dvi'); plt.ylabel('dvr')
+    direct_earth_analysis(0)
     # plt.show()
 
     # # input()

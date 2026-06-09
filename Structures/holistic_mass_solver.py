@@ -1088,7 +1088,9 @@ class Vesta(Hestia):
     def size_boost_system(self):
         pass
 
-
+    @property
+    def ion_dv(self):
+        return Isp_ion*9.81/1000 * m.log(self.upper_stage_wet_mass/self.upper_stage_dry_mass) 
 
 
     def __repr__(self) -> str:

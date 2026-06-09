@@ -497,7 +497,7 @@ def run_conv(V_inf:float, V_ion:float, N:int):
         chances.append(c)
 
         # get std:
-        slice_len = 5
+        slice_len = 10
         if len(chances) < slice_len:
             sigma = np.nan
         else:
@@ -505,7 +505,7 @@ def run_conv(V_inf:float, V_ion:float, N:int):
             sigma = np.std(slice)
             if sigma < 1e-3: break
         
-        print(f'num_gen: {len(r)},\tprob: {c:%},\t std: {sigma}')
+        print(f'num_gen: {len(r[r['ion_res'] >=0 ])}/{len(r)},\tprob: {c:%},\t std: {sigma}')
 
 
     print("done")
@@ -522,23 +522,23 @@ if __name__ == '__main__':
     # # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=False, min_acceleration=0, min_engines=2, ion_penalty=2)
     # V = Vesta(11*1000, 8*1000, 0, verbose=False, min_acceleration=a, min_engines=4, ion_penalty=2)
     # V._converge()
-
+    from Propulsion.multi_stage_sizer_earth_direct import Ariane64_Launcher
 
     # print(V)
     # input()
-    V = Vesta(10*1000,0, verbose=False)
+    V = Vesta(9*1000,0, verbose=False, launcher=Ariane64_Launcher)
     V._converge()
     print(V)
 
-    df = study_storage(12,9)
+    df = study_storage(11.5,9)
     print(f'{chance_working(df ):%}')
     print(f'{len(df[df["ion_res"] >=0])}/{len(df)}')
     plt.hist(df['ion_res'],range=(-100,10),bins=200)
     plt.show()
 
-    run_conv(12,9, 350)
+    run_conv(11.5,9, 350)
 
-    df = study_batch_possible(12, 9,50)
+    df = study_batch_possible(11.5, 9,50)
     print(f'{chance_working(df ):%}')
     plt.hist(df['ion_res'],range=(-100,10),bins=200)
     plt.show()

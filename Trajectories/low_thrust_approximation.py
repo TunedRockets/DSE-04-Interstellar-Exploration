@@ -145,25 +145,19 @@ if __name__ == "__main__":
 
 
     df = get_data_earth()
+  
     
-    r = df['r'].to_numpy()/jkat.AU
-    plt.hist(r)
-    plt.show()
-    
-    
-    input()
-    
-    df = df[df['dvi'] < 14.73]
-    df = df[df['dvr'] < 5]
+    df = df[df['dvi'] <= 16.093]
+    df = df[df['dvr'] <= 3.196]
     print(f"{len(df)=}")
     rel = []
     abso = []
     failed = 0
-    a = 9000 / (jkat.YEAR)
+    a = 3200 / (125*jkat.DAY * 3/4)
     for i in range(len(df)):
         row = df.iloc[i]
         try:
-            res = single_cost_analysis(row, a, 14.73 - 5.754/2) # impulse from run of Vesta
+            res = single_cost_analysis(row, a, 12) # impulse from run of Vesta
             relv = res['relative']
             absv = res['absolute']
             if relv > 10:

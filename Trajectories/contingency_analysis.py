@@ -33,7 +33,7 @@ import os
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 0 # [km/s]
 ION_PENALTY = 2
-AREA_OF_INTEREST = (20,20) # Area where the mass function is defined
+AREA_OF_INTEREST = (17,16) # Area where the mass function is defined
 
 
 # create simple mass interpolator.
@@ -238,6 +238,8 @@ def find_best_point(df:pd.DataFrame, N:int, P:float=0.9, AOI:tuple[float,float]=
     df = df[df["dvi"] <= AOI[0]]
     df = df[df["dvr"] <= AOI[1]]
 
+
+
     ISO_points = df[['dvi', 'dvr']].to_numpy()
     point_list = bounding_box_2d(ISO_points, needed)
     if len(point_list) == 0: 
@@ -266,7 +268,7 @@ def direct_earth_analysis(N_batches:int=30):
     print("interesting fraction:")
     dfi = df[df["dvi"] <= AREA_OF_INTEREST[0]]
     dfi = dfi[dfi["dvr"] <= AREA_OF_INTEREST[1]]
-    print(dfi[['dvi','dvr','mass']])
+    # print(dfi[['dvi','dvr','mass']])
     count = len(dfi)
 
     print(f" {count} / {len(df)} = {count/len(df)}")
@@ -282,7 +284,7 @@ def direct_earth_analysis(N_batches:int=30):
         # get accurate mass:
         if dvi > AREA_OF_INTEREST[0] or dvr > AREA_OF_INTEREST[1]:
             try:
-                H = Vesta(dvi,dvr,MAX_BOOST_DV,ION_PENALTY)
+                H = Vesta(dvi,dvr,MAX_BOOST_DV,ION_PENALTY, verbose=True)
                 H._converge()
                 m = H.lower_stage_wet_mass
                 changed = True
@@ -314,18 +316,28 @@ if __name__ == '__main__':
 
     # print(earth_mass(5,7))
 
+    # df = get_data_earth()
 
-    # input()
-    # a = 9000 / (jkat.YEAR)
-    # V = Vesta(14.73*1000, 4.153*1000, 0, verbose=True, min_acceleration=a)
+    # df = df[df["dvi"] <= AREA_OF_INTEREST[0]]
+    # df = df[df["dvr"] <= AREA_OF_INTEREST[1]]
+    # xx = df[['dvi','dvr']].to_numpy()
+    # cc = df['mass'].to_numpy()
+    # plt.scatter(xx[:,0],xx[:,1], c=cc)
+    # plt.colorbar()
+    # plt.xlabel('dvi'); plt.ylabel('dvr')
+    # plt.show()
+
+    # # input()
+    # a = 9000 / (jkat.YEAR*2)
+    # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=True, min_acceleration=a)
     # V._converge()
     # print(V)
     # input()
-
-    dvi, dvr = direct_earth_analysis(20)
-    V = Vesta(dvi*1000, dvr*1000, 5000, verbose=False)
-    V._converge()
-    print(V)
+    while True:
+        dvi, dvr = direct_earth_analysis(300)
+        V = Vesta(dvi*1000, dvr*1000, 0, verbose=False)
+        V._converge()
+        print(V)
 
     # i = make_interp(20)
 

@@ -304,10 +304,14 @@ class Hestia():
     def size_boost_system(self):
         '''size boost fuel tank and rest'''
 
-        m1 = self.lower_stage_pl_mass + Me_boost
-        mf = dv2mf(self.dV_boost, self.boost_isp, m1, l_boost)
-        self.Mass_boost_fuel = mf
-        self.Mass_boost = Me_boost + (self.Mass_boost_fuel*l_boost  )
+        if self.dV_boost==0:
+            self.Mass_boost_fuel = 0
+            self.Mass_boost = 0
+        else:
+            m1 = self.lower_stage_pl_mass + Me_boost
+            mf = dv2mf(self.dV_boost, self.boost_isp, m1, l_boost)
+            self.Mass_boost_fuel = mf
+            self.Mass_boost = Me_boost + (self.Mass_boost_fuel*l_boost  )
         if self.verbose:
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
 
@@ -1036,9 +1040,13 @@ class Vesta(Hestia):
         injection_dv -= boost_dv
 
         # boost mass:
-        mf_boost = dv2mf(boost_dv,self.boost_isp, self.lower_stage_pl_mass, l_boost)
-        self.Mass_boost_fuel = mf_boost
-        self.Mass_boost = Me_boost + self.Mass_boost_fuel*l_boost
+        if boost_dv > 0:
+            mf_boost = dv2mf(boost_dv,self.boost_isp, self.lower_stage_pl_mass, l_boost)
+            self.Mass_boost_fuel = mf_boost
+            self.Mass_boost = Me_boost + self.Mass_boost_fuel*l_boost
+        else:
+            self.Mass_boost_fuel = 0
+            self.Mass_boost = 0
         # boost is done
 
         self.ion_extra = injection_dv*self.ion_penalty

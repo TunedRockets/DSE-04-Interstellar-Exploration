@@ -11,8 +11,9 @@ def _single_run(args):
     sc = Vesta(
         dV_injection=dv_inj,
         dV_rdvz=dv_rdvz,
-        allowed_dv_boost=5000,
-        convergence_tolerance=0.001
+        allowed_dv_boost=0,
+        convergence_tolerance=0.001,
+        verbose=False,
     )
     try:
         sc._converge()
@@ -251,7 +252,6 @@ def plot_mass_heatmap(interpolator,
 
 if __name__ == "__main__":
     V = Vesta(14_730, 4_153, 7000)
-    # TODO: PLOT MASS VS ALLOWED DV BOOST
     V._converge()
     print(V)
     masses = []
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     resolution = 100
     dVs_inj = np.linspace(0, 7500+8500+2000, resolution)
     dVs_rdvz = np.linspace(0, 25000, resolution)
-    # data = generate_mass_database(dVs_inj, dVs_rdvz)
+    data = generate_mass_database(dVs_inj, dVs_rdvz)
     db = load_mass_database()
 
     interp = MassInterpolator()

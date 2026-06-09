@@ -529,7 +529,7 @@ class BraytonSizing:
             T_hot**4 - T_space**4
         )
 
-        area = Q_rej / q_flux
+        area = Q_rej / (2*q_flux)
 
         return area * self.radiator_areal_density
 
@@ -654,7 +654,7 @@ def mass_heatmap(
         W_elec,
         P1,
         T3,
-        min_T1=273.15,
+        min_T1=173.15,
         max_T1=max_radiator_temp,
         min_P2=None,
         max_P2=None,

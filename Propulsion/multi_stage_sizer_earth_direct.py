@@ -1499,12 +1499,15 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(9, 6))
 
-    payload_range = np.linspace(0, 15000, 1000)
+    payload_range = np.linspace(0, 2000, 1000)
 
     plot_get_vinf(FalconHeavy_Reusable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Reusable")
     plot_get_vinf(FalconHeavy_Expendable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Expendable")
     plot_get_vinf(Ariane64_Launcher, kickstages_simple, payload_range, ax=ax, label="Ariane 64")
     plot_get_vinf(SLS_CentaurV, kickstages_simple, payload_range, ax=ax, label="SLS CV")
+    plot_get_vinf(SLS_Block1_ICPS, kickstages_simple, payload_range, ax=ax, label="SLS Block 1")
+    plot_get_vinf(Vulcan, kickstages_simple, payload_range, ax=ax, label="Vulcan")
+    # plot_get_vinf(Starship_SuperHeavy, kickstages_simple, payload_range, ax=ax, label="Starship SuperHeavy")
     # plot_get_vinf(VegaC_Launcher, kickstages_simple, payload_range, ax=ax, label="Vega C")
 
     ax.set_title("V∞ vs Payload Mass (Launcher Comparison)")

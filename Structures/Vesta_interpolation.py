@@ -429,10 +429,10 @@ if __name__ == "__main__":
     # plt.plot(allowable_boosts, ion_dv)
     # plt.show()
 
-    resolution = 50
+    resolution = 100
     dVs_inj = np.linspace(0, 7500+8500+2000, resolution)
     dVs_rdvz = np.linspace(0, 25000, resolution)
-    path = Path(__file__).parent / "mass_database_vesta_Ariane64.pkl"
+    path = Path(__file__).parent / "mass_database_vesta_FH_Exp.pkl"
     data = generate_mass_database(dVs_inj, dVs_rdvz,path=path)
     db = load_mass_database(filename=path)
 

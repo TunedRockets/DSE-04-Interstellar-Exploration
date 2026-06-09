@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 import jkat
 from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launcher, Helios, Star63, VegaC_Zefiro9, \
-    VegaC_AVUM_plus, Orion38, FalconHeavy_Reusable, FalconHeavy_Expendable
+    VegaC_AVUM_plus, Orion38, FalconHeavy_Reusable, FalconHeavy_Expendable, Starship_SuperHeavy
 
 # import psutil
 #

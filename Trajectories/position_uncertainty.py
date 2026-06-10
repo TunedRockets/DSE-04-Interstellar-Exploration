@@ -8,6 +8,7 @@ import jkat
 import numpy as np
 import math as m
 from Rendezvous_dV_requirements import get_data, recreate_ISO
+from contingency_analysis import study_storage
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
@@ -50,15 +51,18 @@ def orbit_shuffle(ob:jkat.Orbit)->None:
     ob.tp += dtp
 
 def error_distance():
-    df = get_data()
-    df = df[df["rdvz_total"] < 19.3]
+    df = study_storage(12,10,0)
+    df = df[df['ion_res'] >= 0]
+    print(len(df))
 
     errors = []
-    for _ in tqdm(range(100), desc="making disturbances"):
+    distances = []
+    for _ in tqdm(range(5), desc="making disturbances"):
         for i, row in df.iterrows():
             ob,_,_ = recreate_ISO(row)
-            t_end = row['rdvz_t_arrival'] - row['time_until_periapsis'] + row['t_p'] # time of arrival
+            t_end = row['te'] 
             r = ob.t2rvec(t_end)
+            distances.append(np.linalg.norm(r))
             orbit_shuffle(ob)
             r_err = ob.t2rvec(t_end)
             errors.append(r_err - r)
@@ -66,6 +70,8 @@ def error_distance():
     errors = np.array(errors)
     dists = np.linalg.norm(errors, axis=1)
     print(f'avg={np.average(dists)}\tstd={np.std(dists)}\tmax={np.max(dists)}\tmin={np.min(dists)}')
+    distances = np.array(distances)/jkat.AU
+    print(f'avg={np.average(distances)}\tstd={np.std(distances)}\tmax={np.max(distances)}\tmin={np.min(distances)}')
 
     ax = plt.figure().add_subplot(projection='3d')
     ax.scatter(errors[:,0],errors[:,1],errors[:,2],color="blue") # type:ignore

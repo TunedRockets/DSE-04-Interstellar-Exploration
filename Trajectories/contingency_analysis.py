@@ -522,7 +522,7 @@ if __name__ == '__main__':
     # # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=False, min_acceleration=0, min_engines=2, ion_penalty=2)
     # V = Vesta(11*1000, 8*1000, 0, verbose=False, min_acceleration=a, min_engines=4, ion_penalty=2)
     # V._converge()
-    from Propulsion.multi_stage_sizer_earth_direct import Ariane64_Launcher
+    from Propulsion.multi_stage_sizer_earth_direct import Ariane64_Launcher, get_vinf, FalconHeavy_Expendable, Helios,Star63, VegaC_AVUM_plus, VegaC_Zefiro9,Orion38
 
     def save_res(df, string):
         with open(Path(__file__).parent / "result.txt", 'a') as file:
@@ -536,23 +536,25 @@ if __name__ == '__main__':
 
     # print(V)
     # # input()
-    V = Vesta(8.5*1000,0, verbose=False, launcher=Ariane64_Launcher)
-    # V = Vesta(10*1000,0, verbose=False)
+    # V = Vesta(10*1000,0, verbose=False, launcher=Ariane64_Launcher)
+    V = Vesta(10*1000,0, verbose=False)
     V._converge()
     print(V)
     # df = study_storage(12,10)
     # print(f'{chance_working(df):%}\n')
     # save_res(df, 'test')
     input()
-        
 
-    # do(11.2,10) # ariane 64 attempt 1 not
-    do(11.5,8.9) # ariane 64 attempt 2 Works (check twice)
-    # do(11.55,8.7) # ariane 64 attempt 3 definitely not
-    do(11.6, 8.5) # ariane 64 attempt 3.5
-    do(11.4,9.3) # ariane 64 attempt 4
-    do(11.3,9.7) # ariane 64 attempt 5
-    do(12,10) # falcon heavy (again just to be sure)
+    # vinf = lambda m: get_vinf(FalconHeavy_Expendable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], m)[0]
+        
+    # vv = []
+    # mm = []
+    # for ma in np.linspace(2000,2400):
+    #     mm.append(ma)
+    #     vv.append(vinf(ma))
+    # plt.plot(vv,mm)
+    # plt.show()
+
     
     
     

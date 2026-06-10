@@ -1431,8 +1431,8 @@ if __name__ == "__main__":
         # (Starship_SuperHeavy,
         #  "Starship + Super Heavy"),
 
-        (FalconHeavy_Reusable,
-         "Falcon Heavy (Reusable)"),
+        # (FalconHeavy_Reusable,
+        #  "Falcon Heavy (Reusable)"),
         #
         # (Vulcan,
         #  "Vulcan Centaur"),
@@ -1440,8 +1440,8 @@ if __name__ == "__main__":
         # (NewGlennLauncher,
         #  "New Glenn"),
         #
-        # (FalconHeavy_Expendable,
-        #  "Falcon Heavy (Expendable)"),
+        (FalconHeavy_Expendable,
+         "Falcon Heavy (Expendable)"),
         #
         # (SLS_Block1_ICPS,
         #  "SLS Block 1 (ICPS)"),

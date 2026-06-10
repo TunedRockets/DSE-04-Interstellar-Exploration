@@ -433,7 +433,7 @@ if __name__ == "__main__":
     dVs_inj = np.linspace(0, 7500+8500+2000, resolution)
     dVs_rdvz = np.linspace(0, 25000, resolution)
     path = Path(__file__).parent / "mass_database_vesta_FH_Exp.pkl"
-    data = generate_mass_database(dVs_inj, dVs_rdvz,path=path)
+    data = generate_mass_database(dVs_inj, dVs_rdvz,path=path) # TODO MAKE NEW MASS INTERP WITH FH EXP
     db = load_mass_database(filename=path)
 
     interp = MassInterpolator(filename=path)

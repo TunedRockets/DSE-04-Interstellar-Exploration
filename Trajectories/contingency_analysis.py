@@ -605,12 +605,14 @@ if __name__ == '__main__':
     data = (df['te'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] # detection time to arrival in days
     data = (df['ts'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] # launch delay in days
     data = df['r']/jkat.AU # rendezvous distance in au
+    data = df['ion_res'] # residual delta v in ion stage
+    data = df['ISO_excess_velocity']
 
     print(f'avg={np.average(data)}\tstd={np.std(data)}\tmax={np.max(data)}\tmin={np.min(data)}')
 
 
     plt.hist(data, bins=20)
-    plt.show()
+    # plt.show()
     
     
     

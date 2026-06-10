@@ -7,7 +7,7 @@ from ReactoPy.ReactorSize import Reactor
 from functools import cache
 
 import matplotlib as mpl
-# mpl.use('tkagg')
+mpl.use('tkagg')
 # Sources:
 
 # https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/Sort_107145.pdf
@@ -993,7 +993,7 @@ if __name__ == "__main__":
         T3=max_reactor_temp,
         max_T1=max_radiator_temp,
         plot=True,
-        plot_mode="2d",
+        plot_mode="3d",
         verbose=True,
         # mass_budget=300
     )

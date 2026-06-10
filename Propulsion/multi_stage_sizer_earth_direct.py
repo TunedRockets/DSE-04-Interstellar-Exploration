@@ -8,7 +8,7 @@ from src2.orbit import *
 import numpy as np
 from tqdm import tqdm
 import matplotlib as mpl
-# mpl.use('TkAgg')
+mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 from Propulsion.proper_earth_rdvz_sizer import *
 
@@ -1426,13 +1426,13 @@ if __name__ == "__main__":
         # (Falcon9,
         #  "Falcon 9"),
         #
-        # (Ariane64_Launcher, "Ariane 64"),
+        (Ariane64_Launcher, "Ariane 64"),
         #
         # (Starship_SuperHeavy,
         #  "Starship + Super Heavy"),
 
-        # (FalconHeavy_Reusable,
-        #  "Falcon Heavy (Reusable)"),
+        (FalconHeavy_Reusable,
+         "Falcon Heavy (Reusable)"),
         #
         # (Vulcan,
         #  "Vulcan Centaur"),
@@ -1552,11 +1552,11 @@ if __name__ == "__main__":
     # )
 
     plot_launcher_wetmass_feasibility(
-        np.linspace(1, 10000, 1000),
+        np.linspace(1, 5000, 1000),
         launchers,
         kickstages,
-        8500,
-        vertical_wetmass=5352,
+        12000,
+        vertical_wetmass=2000,
         vertical_color='black',
         # vertical_label='Updated Mass Budget'
     )

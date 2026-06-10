@@ -598,12 +598,19 @@ if __name__ == '__main__':
     # plt.plot(vv,mm)
     # plt.show()
     df = study_storage(12,10,0)
-    print(f'total: {len(df)}')
-    print(f'success:{chance_working(df):%}')
     df = df[df["ion_res"] >= 0 ]
-    print(f'reachable: {len(df)}')
-    df = df[df['magnitude_generation_method'] == 'atlas-borisov']
-    print(f'borisov: {len(df)}')
+
+    data = (df['te'] - df['ts'])/jkat.DAY # flight time in days
+    data  = df['periapsis'] # periapsis in au
+    data = (df['te'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] # detection time to arrival in days
+    data = (df['ts'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] # launch delay in days
+    data = df['r']/jkat.AU # rendezvous distance in au
+
+    print(f'avg={np.average(data)}\tstd={np.std(data)}\tmax={np.max(data)}\tmin={np.min(data)}')
+
+
+    plt.hist(data, bins=20)
+    plt.show()
     
     
     

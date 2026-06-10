@@ -380,6 +380,49 @@ def get_data_earth(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
     return mdata
 
 
+def recreate_ISO_and_intercept(row:pd.Series)->tuple[jkat.Orbit,jkat.Orbit, float,float]:
+    '''turn df row back into ISO and intercept orbit,
+    does assume prograde but that should be correct for all of them
+
+    :param row: row of the dataframe, get via `df = study_storage(12,10,0)`,
+    then `row = df.iloc[<number>]`
+    :type row: pd.Series
+    :return: ISO orbit and Transfer orbit, as well as start and end time
+    :rtype: tuple[jkat.Orbit,jkat.Orbit,float,float]
+    '''
+    # extract orbit:
+    ISO = jkat.Orbit(
+        row['parameter'],
+        row['e'],
+        row['i'],
+        row['RAAN'],
+        row['arg_p'],
+        row['t_p'],
+        jkat.SUN_MU
+    )
+    ts = row['ts']
+    te = row['te']
+    trans = jkat.orbit_from_lambert_transfer(jkat.Earth,ISO,ts,te, True) # assumes prograde
+    return ISO, trans, ts, te
+
+
+def simple_ISO_and_trans()->list[tuple[jkat.Orbit, jkat.Orbit, float, float]]:
+    '''get all working trajectories as a list of the ISO trajectory and the transfer trajectory
+
+    :return: list of tuples of the ISO orbit and the transfer orbit, along with the start and end time
+    :rtype: list[tuple[jkat.Orbit, jkat.Orbit, float, float]]
+    '''
+
+    df = study_storage(12,10,0)
+    df = df[df['ion_res'] >= 0]
+    res = []
+    for i, row in df.iterrows():
+        ISO, trans, ts, te = recreate_ISO_and_intercept(row)
+        res.append((ISO,trans, ts, te))
+    return res
+
+
+
 def bounding_box_2d(points, C):
 
     if len(points) < C: return [] # no corner here...

@@ -580,13 +580,13 @@ if __name__ == '__main__':
     # print(V)
     # # input()
     # V = Vesta(10*1000,0, verbose=False, launcher=Ariane64_Launcher)
-    V = Vesta(10*1000,0, verbose=False)
-    V._converge()
-    print(V)
-    # df = study_storage(12,10)
+    # V = Vesta(10*1000,0, verbose=False)
+    # V._converge()
+    # print(V)
+    # # df = study_storage(12,10)
     # print(f'{chance_working(df):%}\n')
     # save_res(df, 'test')
-    input()
+    # input()
 
     # vinf = lambda m: get_vinf(FalconHeavy_Expendable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], m)[0]
         
@@ -597,11 +597,17 @@ if __name__ == '__main__':
     #     vv.append(vinf(ma))
     # plt.plot(vv,mm)
     # plt.show()
-
+    df = study_storage(12,10,0)
+    print(f'total: {len(df)}')
+    print(f'success:{chance_working(df):%}')
+    df = df[df["ion_res"] >= 0 ]
+    print(f'reachable: {len(df)}')
+    df = df[df['magnitude_generation_method'] == 'atlas-borisov']
+    print(f'borisov: {len(df)}')
     
     
     
-    print(''.join(['done!\n' for _ in range(20)]))
+    # print(''.join(['done!\n' for _ in range(20)]))
     # print(f'{chance_working(df ):%}')
     # print(f'{len(df[df["ion_res"] >=0])}/{len(df)}')
     # plt.hist(df['ion_res'],range=(-100,10),bins=200)

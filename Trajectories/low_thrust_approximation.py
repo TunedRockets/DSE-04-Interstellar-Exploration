@@ -153,14 +153,14 @@ if __name__ == "__main__":
     rel = []
     abso = []
     failed = 0
-    a = 6173.698105731037 / (436*jkat.DAY)
+    a = 10_000 / (jkat.YEAR)
     for i in range(len(df)):
         row = df.iloc[i]
         try:
             res = single_cost_analysis(row, a, 12) # impulse from run of Vesta
             relv = res['relative']
             absv = res['absolute']
-            if relv > 4:
+            if relv > 10:
                 print(f"outlier detected: {relv=}, {absv=}")
                 continue
 

@@ -8,7 +8,7 @@ from src2.orbit import *
 import numpy as np
 from tqdm import tqdm
 import matplotlib as mpl
-mpl.use('TkAgg')
+# mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 from Propulsion.proper_earth_rdvz_sizer import *
 

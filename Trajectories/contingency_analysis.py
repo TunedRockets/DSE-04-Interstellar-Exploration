@@ -14,6 +14,8 @@ TODO: need better heat shield sizer!!! (check with Sem)
 
 
 '''
+import os
+os.environ["TQDM_DISABLE"] = "1"
 import jkat
 import pandas as pd
 import numpy as np
@@ -29,6 +31,9 @@ from scipy.interpolate import RegularGridInterpolator
 import pickle as pkl
 import matplotlib.pyplot as plt
 import os
+from functools import partial
+
+
 
 MAX_MISSION_TIME = 10 # [years]
 MAX_BOOST_DV = 0 # [km/s]
@@ -165,6 +170,149 @@ def prescan_opt(F, xx, yy):
     return (xg[idx],yg[idx])
 
 
+def check_ISO_Possible(ISO:jkat.Orbit, detect_t:float,V_inf:float, V_ion:float):
+
+
+    def residual(dvi,dvr):
+        dvi = max(0,(dvi - V_inf))
+        dvr += dvi*ION_PENALTY
+        return V_ion - dvr
+
+    def study_fn(t):
+        ts = t[0]; te = t[1]
+        try:
+            '''manually for own weighting'''
+            r1, v1 = jkat.Earth.t2vectors(ts)
+            r2, v2 = ISO.t2vectors(te)
+            try: vl1,vl2 = jkat.trajectories.lambert(r1,r2,te-ts,ISO.mu, True)
+            except: vl1=vl2=np.array([np.inf,np.inf,np.inf])
+            try: va1, va2 = jkat.trajectories.lambert(r1,r2, te-ts, ISO.mu, False)
+            except: va1=va2=np.array([np.inf,np.inf,np.inf])
+            dvl1 = np.linalg.norm(v1-vl1)
+            dvl1 = max(dvl1,0)
+            dvl2 = np.linalg.norm(v2-vl2)
+
+            dva1 = np.linalg.norm(v1-va1)
+            dva1 = max(dva1,0)
+            dva2 = np.linalg.norm(v2-va2)
+
+            # Balance out burns, here dv0 is boost, dv1 is low_thrust as part of initial
+            # and dv2 is rendezvous
+            
+            l = residual(dvl1, dvl2)
+            a = residual(dva1,dva2)
+            if l >= a:
+                return {
+                "ts": ts,
+                "te": te,
+                'dvi': dvl1,
+                "dvr": dvl2,
+                'r': np.linalg.norm(r2),
+                'ion_res': l
+            }
+            else: return {
+                "ts": ts,
+                "te": te,
+                'dvi': dva1,
+                "dvr": dva2,
+                'r': np.linalg.norm(r2),
+                'ion_res': a
+            }
+        except: return {'ion_res':-m.inf}
+
+        
+    def w(t)->float:
+        '''relu for ensuring residual is less'''
+        res = study_fn(t)
+        return -(res['ion_res'])
+
+    # prescan for minima:
+    x0 = prescan_opt(
+        w,
+        np.linspace(ISO.tp, ISO.tp + 2*jkat.YEAR,10),
+        np.linspace(ISO.tp, ISO.tp+MAX_MISSION_TIME*jkat.YEAR, 10)
+    )
+    res = study_fn(x0)
+    if res['ion_res'] >= 0: return res
+    # x0 = np.array(((ISO.tp + ISO.tp + jkat.YEAR)/2, (ISO.tp + jkat.YEAR + ISO.tp + 2*jkat.YEAR)/2))
+    topt = minimize(w, x0, bounds=((detect_t,detect_t + MAX_MISSION_TIME*jkat.YEAR), (detect_t, detect_t + MAX_MISSION_TIME*jkat.YEAR)))
+    if topt.success: return study_fn(topt.x)
+    else: return {'ion_res':-m.inf}
+
+def study_batch_possible(V_inf:float, V_ion:float, N_batches:int=30)->pd.DataFrame:
+    '''for now bespoke generation, change later'''
+    '''multithreaded analysis'''
+    print("Getting ISOs...")
+    ISOs = get_ISO(N_batches=N_batches)
+    #for each ISO get row:
+    F = partial(job_possible, V_inf=V_inf, V_ion=V_ion)
+    resl = []
+    with mp.Pool() as p:
+    
+        res = tqdm(p.imap_unordered(F, ISOs), desc=f"Studying ISOs, (is possible?)", total=len(ISOs))
+        resl = list(res)
+    return pd.DataFrame(resl)
+
+
+def study_storage(V_inf:float, V_ion:float, extra_batches:int=10)->pd.DataFrame:
+    '''store for convergence analysis'''
+    
+    NAME = PICKLE_NAME + f'{V_inf:5.3f}'+ f'{V_ion:5.3f}'
+
+    # generate new if applicable:
+    if extra_batches > 0:
+
+        # load my data:
+        try:
+            data:pd.DataFrame = pd.read_pickle(PATH_TO_DATA / (NAME + USER_NAME))
+        except (FileNotFoundError):
+            data = pd.DataFrame()
+        new = [data]
+
+        new.append(study_batch_possible(V_inf,V_ion,extra_batches))
+        data = pd.concat(new,ignore_index=True)
+        # save result to my data:
+        data.to_pickle(PATH_TO_DATA / (NAME + USER_NAME))
+
+    # load all data
+    datas = os.listdir(PATH_TO_DATA)
+    ldat = []
+    for dat in datas:
+        if dat.startswith(NAME):
+            ldat.append(pd.read_pickle(PATH_TO_DATA / dat))
+    mdata = pd.concat(ldat) if len(ldat) > 0 else pd.DataFrame()
+
+    return mdata
+
+
+
+    
+def job_possible(ISOtuple:tuple[jkat.Orbit, float, str], V_inf:float, V_ion:float)->dict:
+
+    np.seterr(all="ignore")
+    ISO, detect_t, g_type = ISOtuple
+
+    detect_r = ISO.r(ISO.f(detect_t))/jkat.AU
+    out = {"detection_r":detect_r, "periapsis":ISO.periapsis/jkat.AU, "magnitude_generation_method": g_type,
+        'time_until_periapsis':(ISO.tp - detect_t)/jkat.DAY,
+            "parameter":ISO.p, "e":ISO.e, "i":ISO.i, "RAAN":ISO.raan, "arg_p":ISO.argp, "t_p":ISO.tp, 
+            "ISO_excess_velocity":ISO.vinf}
+    try:
+        out.update(check_ISO_Possible(ISO, detect_t,V_inf,V_ion))
+    except (ArithmeticError, ValueError, AssertionError): return out
+    return out
+
+
+def chance_working(df:pd.DataFrame, N:int=350)->float:
+
+    success = len(df[df['ion_res'] >= 0 ])
+    total = len(df)
+    Pi = success/total
+
+    Pu = 1 - (1 - Pi)**N
+    return Pu
+
+
 def job(ISOtuple:tuple[jkat.Orbit, float, str])->dict:
 
     np.seterr(all="ignore")
@@ -290,6 +438,7 @@ def direct_earth_analysis(N_batches:int=30):
     '''same as before but now direct from earth'''
     N = 350
     Paim = 0.9 # probability aim
+    raise NotImplementedError("No longer works")
 
     df = get_data_earth(extra_batches=N_batches)
 
@@ -339,31 +488,91 @@ def direct_earth_analysis(N_batches:int=30):
 
 
 
+def run_conv(V_inf:float, V_ion:float, N:int):
+
+    chances= []
+    while True:
+        r = study_storage(V_inf,V_ion)
+        c = chance_working(r,N)
+        chances.append(c)
+
+        # get std:
+        slice_len = 10
+        if len(chances) < slice_len:
+            sigma = np.nan
+        else:
+            slice = chances[-slice_len:]
+            sigma = np.std(slice)
+            if sigma < 1e-3: break
+        
+        print(f'num_gen: {len(r[r['ion_res'] >=0 ])}/{len(r)},\tprob: {c:%},\t std: {sigma}')
+
+
+    print("done")
+
+
+
 if __name__ == '__main__':
 
 
     # direct_earth_analysis(30)
-    # input()
 
+    # # # input()
+    # a = 9000 / (jkat.YEAR*2)
+    # # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=False, min_acceleration=0, min_engines=2, ion_penalty=2)
+    # V = Vesta(11*1000, 8*1000, 0, verbose=False, min_acceleration=a, min_engines=4, ion_penalty=2)
+    # V._converge()
+    from Propulsion.multi_stage_sizer_earth_direct import Ariane64_Launcher, get_vinf, FalconHeavy_Expendable, Helios,Star63, VegaC_AVUM_plus, VegaC_Zefiro9,Orion38
+
+    def save_res(df, string):
+        with open(Path(__file__).parent / "result.txt", 'a') as file:
+            file.write(string + '\n')
+            file.write(f'{chance_working(df):%}\n\n')
+
+    def do(vinf, vion):
+        run_conv(vinf,vion,350)
+        df = study_storage(vinf,vion, 0) # ariane 64 attempt 1
+        save_res(df, f'{vinf:.2f} and {vion:.2f}:')
+
+    # print(V)
     # # input()
-    a = 9000 / (jkat.YEAR*2)
-    # V = Vesta(14.7*1000, 8.9*1000, 0, verbose=False, min_acceleration=0, min_engines=2, ion_penalty=2)
-    V = Vesta(14*1000, 6*1000, 0, verbose=False, min_acceleration=a, min_engines=4, ion_penalty=2)
+    # V = Vesta(10*1000,0, verbose=False, launcher=Ariane64_Launcher)
+    V = Vesta(10*1000,0, verbose=False)
     V._converge()
-
     print(V)
+    # df = study_storage(12,10)
+    # print(f'{chance_working(df):%}\n')
+    # save_res(df, 'test')
     input()
-    print(f'{vesta_success_chance(V,0.9,350):%}')
+
+    # vinf = lambda m: get_vinf(FalconHeavy_Expendable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], m)[0]
+        
+    # vv = []
+    # mm = []
+    # for ma in np.linspace(2000,2400):
+    #     mm.append(ma)
+    #     vv.append(vinf(ma))
+    # plt.plot(vv,mm)
+    # plt.show()
 
     
-    input()
-    while True:
-        dvi, dvr = direct_earth_analysis(300)
-        V = Vesta(dvi*1000, dvr*1000, 0, verbose=False)
-        V._converge()
-        print(V)
+    
+    
+    print(''.join(['done!\n' for _ in range(20)]))
+    # print(f'{chance_working(df ):%}')
+    # print(f'{len(df[df["ion_res"] >=0])}/{len(df)}')
+    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
+    # plt.show()
 
-    # i = make_interp(20)
+    # run_conv(11.5,9, 350)
+
+    # df = study_batch_possible(11.5, 9,50)
+    # print(f'{chance_working(df ):%}')
+    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
+    # plt.show()
+
+
+   
 
     # xx = np.linspace(0,5)
     # yy = np.linspace(0,20)

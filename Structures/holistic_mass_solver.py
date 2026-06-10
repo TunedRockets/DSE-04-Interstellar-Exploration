@@ -75,7 +75,7 @@ Isp_boost = 330
 guess_dV_boost = 4_000
 '''[m/s] total dv required by boost system'''
 
-Me_boost = 100
+Me_boost = 00
 '''[kg] boost engine mass'''
 l_boost = 0.05
 '''[-] boost tank mass fraction'''
@@ -222,9 +222,10 @@ class Hestia():
         # check for convergence
         converged = True
         for key, value in var_dict.items():
-
-            if abs(value - self.__dict__[key]) > self.convergence_tolerance:
-                converged = False
+            try:
+                if abs(value - self.__dict__[key]) > self.convergence_tolerance:
+                    converged = False
+            except TypeError: continue # non-comparable variables
         return converged
 
     # property methods are fine as long as there are no side-effects
@@ -977,18 +978,17 @@ class Vesta(Hestia):
     (name subject to change. (e.g. find other backronym for hestia))'''
 
 
-    def __init__(self, dV_injection:float, 
-                 dV_rdvz:float, 
+    def __init__(self, ion_dv:float,
                  allowed_dv_boost:float, 
                  ion_penalty:float=2, 
+                 launcher = FalconHeavy_Expendable,
                  verbose=True, convergence_tolerance=1e-8, 
                  min_acceleration:float=0.0002854,
                  min_engines:int = 2):
         '''DV given in M/S!!!'''
 
         
-        self.dV_injection = dV_injection
-        self.dV_rdvz = dV_rdvz
+        self.ion_dv = ion_dv
         self.verbose = verbose
         self.convergence_tolerance = convergence_tolerance
         self.boost_isp = 375 # helios kick stage
@@ -1014,6 +1014,8 @@ class Vesta(Hestia):
         self.ion_penalty = ion_penalty
         '''extra cost of the ion stage dv numbers'''
 
+        self.launcher = launcher
+
         self.Area_heatshield = 0 # not used
         self.dV_inclination = 0 # not used
 
@@ -1034,7 +1036,7 @@ class Vesta(Hestia):
 
     @property
     def vinf(self):
-        v_inf, best_kickstage = get_vinf(FalconHeavy_Expendable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
+        v_inf, best_kickstage = get_vinf(self.launcher, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
         if self.verbose:
             print("Best kickstage: ", best_kickstage)
         return v_inf
@@ -1042,48 +1044,23 @@ class Vesta(Hestia):
 
 
     def size_prop_system(self):
-        '''new sizer for direct earth vesta propulsion'''
-        # get no. engines and their mass:
+        '''more deterministic solution'''
 
-
-        # for the injection:
-        vinf = self.vinf
-        injection_dv = max(0, (self.dV_injection - vinf))
-
-        # take into account boost:
-
-        
-        boost_dv = min(self.allowed_dv_boost, injection_dv)
-        injection_dv -= boost_dv
-
-        # boost mass:
-        if boost_dv > 0:
-            mf_boost = dv2mf(boost_dv,self.boost_isp, self.lower_stage_pl_mass, l_boost)
-            self.Mass_boost_fuel = mf_boost
-            self.Mass_boost = Me_boost + self.Mass_boost_fuel*l_boost
-        else:
-            self.Mass_boost_fuel = 0
-            self.Mass_boost = 0
-        # boost is done
-
-        self.ion_extra = injection_dv*self.ion_penalty
-
-        ion_dv = self.dV_rdvz + self.ion_extra
-
+        self.Mass_boost_fuel = 0
+        self.Mass_boost = 0
         # only consider upper stage
         F_need = self.upper_stage_wet_mass*self.a_min_ion
 
         self.Number_ions = m.ceil(F_need/F_ion)
         self.Number_ions = max(self.Number_ions, self.min_engines)
 
-        mf_ion = dv2mf(ion_dv, Isp_ion, self.lower_stage_pl_mass + self.Number_ions*Me_ion, l_ion)
+        mf_ion = dv2mf(self.ion_dv, Isp_ion, self.lower_stage_pl_mass + self.Number_ions*Me_ion, l_ion)
 
         self.Mass_ion_fuel = mf_ion
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
 
         if self.verbose:
-            print(f"DV: boost dv is: {boost_dv/1000:4.3f} km/s, Ion dv is {self.ion_extra/1000:4.3f} + {self.dV_rdvz/1000:4.3f} km/s")
-            print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
+            print(f'total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
             print(f"ion engine number: {self.Number_ions}"  )
             print(f"Xenon fuel: {self.Mass_ion_fuel} kg")
             print(f"vinf from launcher: {self.vinf}")
@@ -1095,13 +1072,13 @@ class Vesta(Hestia):
     def size_boost_system(self):
         pass
 
-    @property
-    def ion_dv(self):
-        return Isp_ion*9.81 * m.log(self.upper_stage_wet_mass/self.upper_stage_dry_mass) 
+    # @property
+    # def ion_dv(self):
+    #     return Isp_ion*9.81 * m.log(self.upper_stage_wet_mass/self.upper_stage_dry_mass) 
 
 
     def __repr__(self) -> str:
-        ion_bt = (self.dV_injection - self.vinf)*self.ion_penalty / (self.Number_ions * F_ion / self.upper_stage_wet_mass)
+        ion_bt =  self.ion_dv/ (self.Number_ions * F_ion / self.upper_stage_wet_mass)
         return (
             '--- Vesta configuration: ---\n'
             f'payload mass: {self.upper_stage_pl_mass:6.1f} kg\n'
@@ -1113,13 +1090,10 @@ class Vesta(Hestia):
             f'boost wet mass: {self.lower_stage_wet_mass:6.1f} kg\n'
             '---\n'
             f'{self.Number_ions} ion engines\n'
-            f'rendezvous burn time: {self.rdvz_burn_time/86_000:3.2f} days\n'
-            f'ion injection burn time: {ion_bt/86_000:3.2f} days\n'
+            f'ion engine burn time (pessemistic): {ion_bt/86000:.2f} days\n'
             f'{self.Power_provided:6.1f} W used from reactor with mass {self.Mass_power_truss:6.1f} kg\n'
-            f'injection V_inf: {self.vinf}, with ion dv: {(self.dV_injection - self.vinf)*self.ion_penalty}'
-            f' + {self.dV_rdvz} m/s\n'
+            f'injection V_inf: {self.vinf}, with ion dv: {self.ion_dv}'
         )
-
 
 
 

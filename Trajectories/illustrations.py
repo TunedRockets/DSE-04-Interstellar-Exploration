@@ -9,7 +9,7 @@ import numpy as np
 
 
 # fraction showcase:
-if True:
+if False:
     np.random.seed(122)
     points = np.random.random((20,2))*0.99
     plt.scatter(points[:,0],points[:,1], marker='x', lw=3, color='b')
@@ -46,7 +46,7 @@ if True:
 
 
 # specific design optimizer:
-if True:
+if False:
     np.random.seed(121)
     points = np.random.random((10,2))*0.99
     plt.scatter(points[:,0],points[:,1], marker='x', lw=3, color='b')
@@ -113,7 +113,8 @@ if True:
     ])
     print(f"probability: {count}/{len(points)}")
     plt.plot([design_point[0] + design_point[1]/2,design_point[0]],[0,design_point[1]], color='k', lw=1, zorder=-99)
-
+    plt.plot([design_point[0],design_point[0]],[0,design_point[1]], color='k', lw=1, ls='--', zorder=-99)
+    
 
     plt.plot([0,design_point[0]],[design_point[1],design_point[1]], color='k', lw=1, zorder=-99)
     plt.scatter(design_point[0],design_point[1], color="green", marker='s', lw=3)

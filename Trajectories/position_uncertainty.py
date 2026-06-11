@@ -8,8 +8,10 @@ import jkat
 import numpy as np
 import math as m
 from Rendezvous_dV_requirements import get_data, recreate_ISO
+from contingency_analysis import simple_ISO_and_trans
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from copy import copy
 
 # interstellar uncertainties from the JPL SBDL (1-sigma)
 e_arr = [2.469e-5, 2.1064e-5, 1.9039e-5]
@@ -50,22 +52,24 @@ def orbit_shuffle(ob:jkat.Orbit)->None:
     ob.tp += dtp
 
 def error_distance():
-    df = get_data()
-    df = df[df["rdvz_total"] < 19.3]
+    ob_list = simple_ISO_and_trans()
 
     errors = []
-    for _ in tqdm(range(100), desc="making disturbances"):
-        for i, row in df.iterrows():
-            ob,_,_ = recreate_ISO(row)
-            t_end = row['rdvz_t_arrival'] - row['time_until_periapsis'] + row['t_p'] # time of arrival
-            r = ob.t2rvec(t_end)
-            orbit_shuffle(ob)
-            r_err = ob.t2rvec(t_end)
-            errors.append(r_err - r)
+    distances = []
 
+    for ISO, trans, ts, te in tqdm(ob_list, desc="making disturbances"):
+        for _ in range(10):
+            ISO2 = copy(ISO) # since shuffling is in place we need a copy
+            r = ISO2.t2rvec(te)
+            distances.append(np.linalg.norm(r))
+            orbit_shuffle(ISO2)
+            r_err = ISO2.t2rvec(te)
+            errors.append(r_err - r)
     errors = np.array(errors)
     dists = np.linalg.norm(errors, axis=1)
     print(f'avg={np.average(dists)}\tstd={np.std(dists)}\tmax={np.max(dists)}\tmin={np.min(dists)}')
+    distances = np.array(distances)/jkat.AU
+    print(f'avg={np.average(distances)}\tstd={np.std(distances)}\tmax={np.max(distances)}\tmin={np.min(distances)}')
 
     ax = plt.figure().add_subplot(projection='3d')
     ax.scatter(errors[:,0],errors[:,1],errors[:,2],color="blue") # type:ignore

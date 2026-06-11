@@ -7,7 +7,7 @@ from ReactoPy.ReactorSize import Reactor
 from functools import cache
 
 import matplotlib as mpl
-mpl.use('tkagg')
+# mpl.use('tkagg')
 # Sources:
 
 # https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/Sort_107145.pdf
@@ -456,7 +456,7 @@ class BraytonSizing:
         engine,
         radiator_areal_density=radiator_areal_density,
         compressor_Ds=3.0,
-        compressor_mass_coeff=2.0e4,
+        compressor_mass_coeff=4.0e6,
         turbine_specific_power=4000.0
     ):
         self.engine = engine
@@ -529,7 +529,7 @@ class BraytonSizing:
             T_hot**4 - T_space**4
         )
 
-        area = Q_rej / q_flux
+        area = Q_rej / (2*q_flux)
 
         return area * self.radiator_areal_density
 
@@ -632,9 +632,8 @@ def evaluate_system(
         sol["T1"]
     )
 
-    reactor = Reactor(sol["T2"],sol["T3"], sol["q_in"]*mdot, operating_pressure=sol["P2"])
-    # TODO: Remove when applied in reactor
-    m_reactor = 1.82*reactor.size_all(print_true=False)
+    reactor = Reactor(sol["T2"],sol["T3"], sol["q_in"]*mdot, operating_pressure=sol["P2"], power_density="int")
+    m_reactor = reactor.size_all(print_true=False)
 
 
     total = m_comp + m_turb + m_rad + m_alternator + m_reactor
@@ -655,13 +654,13 @@ def mass_heatmap(
         W_elec,
         P1,
         T3,
-        min_T1=273.15,
+        min_T1=173.15,
         max_T1=max_radiator_temp,
         min_P2=None,
         max_P2=None,
         res=120,
-        limit=5000.0,
-        plot=True,
+        limit=1000.0,
+        plot=False,
         plot_mode="2d",   # "2d" or "3d"
         verbose=False,
         mass_budget=None):
@@ -669,7 +668,7 @@ def mass_heatmap(
         min_P2 = 1.01*P1
 
     if max_P2 is None:
-        max_P2 = 3*P1
+        max_P2 = 10*P1
 
     sizer = BraytonSizing(engine)
 
@@ -936,11 +935,13 @@ def mass_heatmap(
         print(f"Alternator mass: {m_alternator:.2f} kg")
         print(f"Reactor mass: {m_reactor:.2f} kg")
         print(f"Radiator mass: {mr:.2f} kg")
+        print(f"Radiator area: {mr/radiator_areal_density:.2f} m2")
         print(f"TOTAL MASS: {best[0]:.2f} kg")
 
     return best
 
-def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressure=2.5*BAR, verbose=False, plot=False):
+@cache
+def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressure=15.5*BAR, verbose=False, plot=False):
     cycle = BraytonCycle(Helium, 0.85, 0.88, 0.90)
     best = mass_heatmap(cycle, W_elec, P1=rad_pressure, T3=T3, max_T1=max_T1, limit=5000, plot=plot, verbose=verbose)
     mass = best[0]
@@ -979,59 +980,59 @@ if __name__ == "__main__":
 
     engine = BraytonCycle(Helium, 0.85, 0.88, 0.90)
 
-    low_pressures = np.linspace(1, 5, 30)
+    low_pressures = np.linspace(1, 40, 30)
     masses = []
-    # iss_radiator_pressure = 3447 * 1000  # Pa
+    iss_radiator_pressure = 3447 * 1000  # Pa
 
     high_pressures = []
 
     best = mass_heatmap(
         engine,
-        W_elec=46000,
-        P1=2.7 * BAR,
+        W_elec=23800,
+        P1=15.5*BAR,
         T3=max_reactor_temp,
         max_T1=max_radiator_temp,
-        # plot=False,
-        plot_mode="3d",
+        plot=True,
+        plot_mode="2d",
         verbose=True,
         # mass_budget=300
     )
 
-    for low_pressure in low_pressures:
-        best = mass_heatmap(
-            engine,
-            W_elec=46000,
-            P1=low_pressure * BAR,
-            T3=max_reactor_temp,
-            max_T1=max_radiator_temp,
-            plot=False,
-            # plot_mode="2d",
-            # mass_budget=300
-        )
-        print(f"LP Pressure: {low_pressure:.2f} bar")
-        masses.append(best[0])
-        T1_opt, P2_opt, mc, mt, mr, m_alternator, m_reactor, mdot = best[1]
-        high_pressures.append(P2_opt/BAR)
-        # efficiency_heatmap(engine, pressure*BAR, 2000+273.15)
-
-    high_pressures = np.array(high_pressures)
-    # Convert ISS radiator pressure to bar
+    # for low_pressure in low_pressures:
+    #     best = mass_heatmap(
+    #         engine,
+    #         W_elec=16000,
+    #         P1=low_pressure * BAR,
+    #         T3=max_reactor_temp,
+    #         max_T1=max_radiator_temp,
+    #         plot=False,
+    #         # plot_mode="2d",
+    #         # mass_budget=300
+    #     )
+    #     print(f"LP Pressure: {low_pressure:.2f} bar")
+    #     masses.append(best[0])
+    #     T1_opt, P2_opt, mc, mt, mr, m_alternator, m_reactor, mdot = best[1]
+    #     high_pressures.append(P2_opt/BAR)
+    #     # efficiency_heatmap(engine, pressure*BAR, 2000+273.15)
+    #
+    # high_pressures = np.array(high_pressures)
+    # # Convert ISS radiator pressure to bar
     # iss_radiator_pressure_bar = iss_radiator_pressure / BAR
-
-    # Plot
-    plt.figure()
-    plt.plot(high_pressures, masses, marker='x', label='Reactor System Pressure')
-    plt.plot(low_pressures, masses, marker='o', label='Radiator System Pressure')
+    #
+    # # Plot
+    # plt.figure()
+    # plt.plot(high_pressures, masses, marker='x', label='Reactor System Pressure')
+    # plt.plot(low_pressures, masses, marker='o', label='Radiator System Pressure')
     # plt.axvline(
     #     x=iss_radiator_pressure_bar,
     #     color='r',
     #     linestyle='--',
     #     label=f'ISS radiator ({iss_radiator_pressure_bar:.2f} bar)'
     # )
-
-    plt.xlabel("Pressure (bar)")
-    plt.ylabel("Mass")
-    plt.title("System Mass vs Helium Pressure")
-    plt.grid(True)
-    plt.legend()
-    plt.show()
+    #
+    # plt.xlabel("Pressure (bar)")
+    # plt.ylabel("Mass")
+    # plt.title("System Mass vs Helium Pressure")
+    # plt.grid(True)
+    # plt.legend()
+    # plt.show()

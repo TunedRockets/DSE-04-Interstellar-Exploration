@@ -113,8 +113,10 @@ class Reactor:
         interpolates for power density based on the two prometheus points base case and high power.
         source desmos and dittus-boelter
         """
+        pressure_MPa = self.operating_pressure/1e6
+        powerden_MW = 5.24980203666*pressure_MPa**0.490307894714
         
-        return 3.62032*self.operating_pressure**0.49
+        return powerden_MW*1e6
 
     # ------------------------------------------------------------------
     def size_fuel(self):
@@ -432,21 +434,24 @@ def uranium_frac_vs_fuel_mass():
 
 
 def main():
-    reactorquestionmark = Reactor(1050, 1273, 190000)
-    reactorquestionmark.size_all()
-    haleu = Reactor(1050, 1273, 190000, enrichment=0.2, power_density=5.8e6)
-    haleu.size_all()
-    reactoring = Reactor(1050, 1273, 190000, operating_pressure=4e6, power_density=10.4e6)
-    reactoring.size_all(print_true=True)
-    reactor_small = Reactor(1050, 1273, 54000, operating_pressure=2e6, power_density=7.4e6)
-    reactor_small.size_all(print_true=True)
-    print(reactor_small.reactor_mass * 1.85)
-    reactor_small_hp = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density=10.4e6)
+    # reactorquestionmark = Reactor(1050, 1273, 190000)
+    # reactorquestionmark.size_all()
+    # haleu = Reactor(1050, 1273, 190000, enrichment=0.2, power_density=5.8e6)
+    # haleu.size_all()
+    # reactoring = Reactor(1050, 1273, 190000, operating_pressure=4e6, power_density=10.4e6)
+    # reactoring.size_all(print_true=True)
+    # reactor_small = Reactor(1050, 1273, 54000, operating_pressure=2e6, power_density=7.4e6)
+    # reactor_small.size_all(print_true=True)
+    # print(reactor_small.reactor_mass * 1.85)
+    reactor_small_hp = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density=10.3587374144e6)
     reactor_small_hp.size_all(print_true=True)
     print(reactor_small_hp.reactor_mass * 1.85)
-    reactor_haleu = Reactor(1050, 1273, 54000, enrichment=0.2, operating_pressure=2e6, power_density=5.8e6)
-    reactor_haleu.size_all(print_true=True)
-    print(reactor_haleu.reactor_mass * 1.85)
+    reactor_small_hp_int = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density="int")
+    reactor_small_hp_int.size_all(print_true=True)
+    print(reactor_small_hp_int.reactor_mass * 1.85)
+    # reactor_haleu = Reactor(1050, 1273, 54000, enrichment=0.2, operating_pressure=2e6, power_density=5.8e6)
+    # reactor_haleu.size_all(print_true=True)
+    # print(reactor_haleu.reactor_mass * 1.85)
 
 
 if __name__ == "__main__":

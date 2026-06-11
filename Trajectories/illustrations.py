@@ -94,7 +94,7 @@ if False:
     # plt.legend()
     plt.show()
 
-if True:
+if False:
     np.random.seed(78091162)
     points = np.random.random((15,2))*0.99
     plt.scatter(points[:,0],points[:,1], marker='x', lw=3, color='b')
@@ -104,7 +104,6 @@ if True:
     plt.ylim((0,1))
     plt.xticks(ticks=np.arange(0,1.05,0.1),labels='')
     plt.yticks(ticks=np.arange(0,1.05,0.1),labels='')
-    plt.axis()
 
     design_point = np.array((0.5,0.6))
     count = len(points[
@@ -120,3 +119,107 @@ if True:
     plt.scatter(design_point[0],design_point[1], color="green", marker='s', lw=3)
 
     plt.show()
+
+
+# optimum search space
+
+def argymax(x:list[np.ndarray]): # argmax for the y coordinate
+    idx = 0
+    maxx = 0
+    for i, p in enumerate(x):
+        if p[1] > maxx: maxx = p[1]; idx = i
+    return idx
+
+
+def study_slice(points:np.ndarray, C:int)->np.ndarray:
+    '''study a slice, and add new pivot'''
+
+    if len(points) < C: return np.array([]) # no corner here...
+
+
+
+    points = points[np.argsort(points[:,0])] # sort by x
+
+    interior = list(points[:C]) # points inside the fence
+    maxy = argymax(interior) # max y index
+    corners = [] # list of corners (the thing we want)
+
+    # first point is special case:
+    pf = points[C-1]
+    corners.append(np.array((pf[0],interior[maxy][1])))
+
+    for i in range(C,len(points)):
+        p = points[i]
+
+        if p[1] > interior[maxy][1]: continue # outside the fence
+        interior.pop(maxy) # get rid of highest
+        interior.append(p)
+        maxy = argymax(interior) # max y index
+
+        corners.append(np.array((p[0],interior[maxy][1])))
+    return np.array(corners)
+
+# optimization stairs
+if False:
+    N = 30
+    C = 5
+    points = np.random.random((N,2))*0.97 # points inside (1,1)
+    print(f'{N=},{C=}')
+
+    corners = study_slice(points, C)
+
+    border = [np.array((corners[0,0], 1))]
+
+    for i in range(len(corners)-1):
+        border.append(corners[i])
+        border.append(np.array([
+            corners[i+1][0], corners[i][1]
+        ]))
+    border.append(corners[-1])
+    border.append(np.array([
+        1, corners[-1][1]
+    ]))
+
+    border = np.array(border)
+    plt.plot(border[:,0],border[:,1], ls='--', lw=1, zorder=-99, color='orange')
+        
+
+
+
+    plt.scatter(points[:,0],points[:,1],label="ISOs", marker='x', color='b', lw=3)
+
+    plt.scatter(corners[:,0],corners[:,1], color='orange', label="potential design points")
+
+    plt.xlabel(r'$\Delta V_i$',fontsize=11)
+    plt.ylabel(r'$\Delta V_r$',fontsize=11)
+    plt.xlim((0,1))
+    plt.ylim((0,1))
+    plt.xticks(ticks=np.arange(0,1.05,0.1),labels='')
+    plt.yticks(ticks=np.arange(0,1.05,0.1),labels='')
+
+    plt.legend()
+    plt.show()
+
+
+
+if True:
+
+    from contingency_analysis import study_storage, recreate_ISO_and_intercept 
+    import jkat
+    from jkat.plotting.plot import init
+
+    df = study_storage(12,10,0)
+    df = df[df['ion_res'] >= 0]
+    df = df.sort_values('periapsis', ignore_index=True)
+
+    row = df.iloc[0]
+
+    ISO, trans, ts, te = recreate_ISO_and_intercept(row)
+
+
+    jkat.add_solar_system(ts, '11111111', True)
+
+    jkat.plot(ISO, t_bounds=(ts,te), t=ts, max_distance=50*jkat.AU, color="purple")
+    jkat.plot(trans,t_bounds=(ts,te), t=te, color='green', stilts=True)
+    jkat.show()
+   

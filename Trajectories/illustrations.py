@@ -210,16 +210,17 @@ if True:
 
     df = study_storage(12,10,0)
     df = df[df['ion_res'] >= 0]
-    df = df.sort_values('periapsis', ignore_index=True)
+    df = df.sort_values('r', ignore_index=True)
 
-    row = df.iloc[0]
+    row = df.iloc[-2]
+    td = row['t_p']- row['time_until_periapsis']*jkat.DAY
 
     ISO, trans, ts, te = recreate_ISO_and_intercept(row)
 
 
     jkat.add_solar_system(ts, '11111111', True)
 
-    jkat.plot(ISO, t_bounds=(ts,te), t=ts, max_distance=50*jkat.AU, color="purple")
+    jkat.plot(ISO, t_bounds=(td,te), t=ts, max_distance=50*jkat.AU, color="purple")
     jkat.plot(trans,t_bounds=(ts,te), t=te, color='green', stilts=True)
     jkat.show()
    

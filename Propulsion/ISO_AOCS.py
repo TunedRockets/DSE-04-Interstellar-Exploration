@@ -282,7 +282,7 @@ def keplerian_orbit_radius(iso_mass, alt):
     return r, v, T
 
 
-def build_probe_trajectory(iso, n_survey_orbits=3.0, survey_alt=1500.0,
+def build_probe_trajectory(iso, n_survey_orbits=3.0, survey_alt=10_000,
                            standoff_alt=200.0, n_pts=1400):
     """
     Survey phase: a precessing near-polar circular orbit so the ground track

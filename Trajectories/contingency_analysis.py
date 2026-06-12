@@ -229,8 +229,8 @@ def check_ISO_Possible(ISO:jkat.Orbit, detect_t:float,V_inf:float, V_ion:float):
     # prescan for minima:
     x0 = prescan_opt(
         w,
-        np.linspace(ISO.tp, ISO.tp + 2*jkat.YEAR,10),
-        np.linspace(ISO.tp, ISO.tp+MAX_MISSION_TIME*jkat.YEAR, 10)
+        np.linspace(max(ISO.tp, detect_t), ISO.tp + 2*jkat.YEAR,10),
+        np.linspace(max(ISO.tp, detect_t), ISO.tp+MAX_MISSION_TIME*jkat.YEAR, 10)
     )
     res = study_fn(x0)
     if res['ion_res'] >= 0: return res
@@ -553,7 +553,15 @@ def run_conv(V_inf:float, V_ion:float, N:int):
 
     print("done")
 
+def save_res(df, string):
+    with open(Path(__file__).parent / "result.txt", 'a') as file:
+        file.write(string + '\n')
+        file.write(f'{chance_working(df):%}\n\n')
 
+def do(vinf, vion):
+    run_conv(vinf,vion,350)
+    df = study_storage(vinf,vion, 0) # ariane 64 attempt 1
+    save_res(df, f'{vinf:.2f} and {vion:.2f}:')
 
 if __name__ == '__main__':
 
@@ -567,38 +575,45 @@ if __name__ == '__main__':
     # V._converge()
     from Propulsion.multi_stage_sizer_earth_direct import Ariane64_Launcher, get_vinf, FalconHeavy_Expendable, Helios,Star63, VegaC_AVUM_plus, VegaC_Zefiro9,Orion38
 
-    def save_res(df, string):
-        with open(Path(__file__).parent / "result.txt", 'a') as file:
-            file.write(string + '\n')
-            file.write(f'{chance_working(df):%}\n\n')
 
-    def do(vinf, vion):
-        run_conv(vinf,vion,350)
-        df = study_storage(vinf,vion, 0) # ariane 64 attempt 1
-        save_res(df, f'{vinf:.2f} and {vion:.2f}:')
 
-    # print(V)
-    # # input()
-    # V = Vesta(10*1000,0, verbose=False, launcher=Ariane64_Launcher)
-    # V = Vesta(10*1000,0, verbose=False)
-    # V._converge()
-    # print(V)
-    # # df = study_storage(12,10)
-    # print(f'{chance_working(df):%}\n')
-    # save_res(df, 'test')
-    # input()
 
-    # vinf = lambda m: get_vinf(FalconHeavy_Expendable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], m)[0]
-        
-    # vv = []
-    # mm = []
-    # for ma in np.linspace(2000,2400):
-    #     mm.append(ma)
-    #     vv.append(vinf(ma))
-    # plt.plot(vv,mm)
-    # plt.show()
+
+
+    limit = 60 # days
+
     df = study_storage(12,10,0)
     df = df[df["ion_res"] >= 0 ]
+    print(len(df))
+    df = df[
+        (df['ts'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] < limit
+    ]
+    print(len(df))
+    df.sort_values('ion_res',ascending=False, ignore_index=True)
+    launch_delay = (df['ts'] - df['t_p']) + df['time_until_periapsis']*jkat.DAY
+    residual = df['ion_res']
+
+
+    # redo with other limit:
+    for i in range(len(df)):
+        ISO, _,ts,_ = recreate_ISO_and_intercept(df.iloc[i])
+        detect_r = df.iloc[i]['detection_r']
+        detect_t = ISO.t(-ISO.cross_radius(detect_r*jkat.AU)) # type:ignore
+        delay = ts - detect_t
+
+        print(f"{i}, has residual: {residual.iloc[i]:.3f}, with delay: {launch_delay.iloc[i]/jkat.DAY:.2f} Days")
+        
+        res = check_ISO_Possible(ISO, detect_t+ 40*jkat.DAY,12,10)
+        good = (res['ion_res'] >= 0)
+        new_delay = res['ts'] - detect_t
+        if good: print(f'{i}: {good}, new Delay: {new_delay/jkat.DAY:.2f} Days')
+        else: print(f'{i}: False, did not work')
+
+    print('done!')
+    input()
+
+
+
 
     data = (df['te'] - df['ts'])/jkat.DAY # flight time in days
     data  = df['periapsis'] # periapsis in au
@@ -614,38 +629,4 @@ if __name__ == '__main__':
     plt.hist(data, bins=20)
     # plt.show()
     
-    
-    
-    # print(''.join(['done!\n' for _ in range(20)]))
-    # print(f'{chance_working(df ):%}')
-    # print(f'{len(df[df["ion_res"] >=0])}/{len(df)}')
-    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
-    # plt.show()
-
-    # run_conv(11.5,9, 350)
-
-    # df = study_batch_possible(11.5, 9,50)
-    # print(f'{chance_working(df ):%}')
-    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
-    # plt.show()
-
-
    
-
-    # xx = np.linspace(0,5)
-    # yy = np.linspace(0,20)
-    # pp = []
-    # for y in yy:
-    #     prow = []
-    #     for x in xx:
-    #         prow.append(i((x,y)))
-    #     pp.append(prow)
-
-    # plt.imshow(pp, origin='lower', extent=(0,5,0,20))
-    # plt.axis('scaled')
-    # plt.show()
-
-
-
-
-    # direct_earth_analysis(20)

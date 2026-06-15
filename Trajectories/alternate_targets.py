@@ -117,8 +117,9 @@ def catch_up(i:int):
     jkat.add_solar_system(t[0], '11111111', True) # type:ignore
     try: trans = jkat.orbit_from_lambert_transfer(origin, ISO, t[0], t[1], True) # type: ignore
     except: trans = jkat.orbit_from_lambert_transfer(origin, ISO, t[0], t[1], False) # type: ignore
-    print(jkat.ephemeris.from_time(t[1]))
-    print(np.linalg.norm(ISO.t2rvec(t[1]))/jkat.AU)
+    print(jkat.ephemeris.from_time(t[0])) #type:ignore
+    print(jkat.ephemeris.from_time(t[1])) #type:ignore
+    print(np.linalg.norm(ISO.t2rvec(t[1]))/jkat.AU) #type:ignore
     jkat.plot(trans, t_bounds=(t[0],t[1])) # type: ignore
     jkat.plot(ISO, t=t[1], t_bounds=(ts_mis, te_mis + travel_time*2)) # type: ignore
     jkat.show()
@@ -149,7 +150,38 @@ if __name__ == "__main__":
     # catch_up(1)
     # catch_up(2)
     # catch_up(3)
-    test_and_show('hale-bopp')
+    # test_and_show('-31')
+    from jkat.utils import a2p
+
+    voy1 = jkat.Orbit(
+        a2p(-4.819798218736759e8, 3.7271400250), 3.7271400250,
+        np.radians(3.578609859e1),
+        np.radians(1.79076617550e2),
+        np.radians(3.382249766e2),
+        jkat.ephemeris.from_JD(2444227.292516708840),
+        jkat.SUN_MU 
+    )
+
+    voy2 = jkat.Orbit(
+        a2p(-6.0223998e8, 6.2781866), 6.2781866,
+        np.radians(7.878897e1),
+        np.radians(1.0164489e2),
+        np.radians(1.30064e2),
+        jkat.ephemeris.from_JD(22445454.972632967867),
+        jkat.SUN_MU 
+    )
+    tgt = voy1
+    origin = jkat.Earth
+    t = can_reach(tgt,origin)
+    if t is None: print(f"couldn't be reached")
+    # else:
+    print(f"is possible")
+    jkat.add_solar_system(t[0], '11111111', True) # type:ignore
+    trans = jkat.orbit_from_lambert_transfer(origin, tgt, t[0], t[1], True) # type: ignore
+    jkat.plot(trans, t_bounds=(t[0],t[1])) # type: ignore
+    jkat.plot(tgt, t=t[1], t_bounds=(ts_mis, te_mis + travel_time*2)) # type: ignore
+    jkat.show()
+
 
     for n in targets:
         tgt = horizons_request(n)

@@ -201,8 +201,8 @@ if False:
     plt.show()
 
 
-
-if True:
+# drawing random orbits
+if False:
 
     from contingency_analysis import study_storage, recreate_ISO_and_intercept 
     import jkat
@@ -224,3 +224,43 @@ if True:
     jkat.plot(trans,t_bounds=(ts,te), t=te, color='green', stilts=True)
     jkat.show()
    
+
+# cmap of success chance
+if True:
+    # (pessemistic since trajectories not reoptimized)
+   
+        
+    from contingency_analysis import _under, study_storage
+
+    df = study_storage(12,10,0)
+    df = df[df['ion_res'] >= 0]
+
+    _under(df, 10,10) # TODO: do this for meshgrid then plot
+    # and redo _under to use Vinf and Dvion instead...
+
+
+
+    
+    # N_range = np.arange(10,MS_N + 30,5)
+    # V_range =np.arange(1,25, 0.5)
+    # NN, VV = np.meshgrid(N_range,V_range)
+    # F = lambda v,n: mission_success_probability(v,n,rdvz,df)
+    # PP = np.vectorize(F)(VV,NN)
+    # plt.imshow(PP,origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]))
+    # if num != 1:
+    #     plt.colorbar(location="right", label=r"$P_s$")
+    # CS = plt.contour(PP,levels=[0.5,0.9,0.99],origin="lower",aspect="auto", extent=(N_range[0],N_range[-1],V_range[0],V_range[-1]), colors='k')
+    # plt.clabel(CS, fmt=lambda x: f"{x*100:.0f}%")
+    # if num < 2:
+    #     plt.ylabel(r'$\Delta V$ budget [km/s]')
+    # plt.xlabel(r'$N$')
+    # # plt.title(f"Probability map for {"rendezvous" if rdvz else "intercept"}\nAnd estimated ISO detections during {years} year mission")
+    # if guesses:
+    #     plt.axvline(EL_N,ls='--', color="gray")
+    #     plt.text(EL_N+1, np.average(V_range)+3, "Ezell, Loeb mean", color="gray")
+    #     plt.axvline(HSP_N,ls='--', color="gray")
+    #     plt.text(HSP_N+1, np.average(V_range), "Hoover, et al. mean /\nMarčeta, Seligman (conservative)", color="gray")
+    #     plt.axvline(MS_N,ls='--', color="gray")
+    #     plt.text(MS_N-1, np.average(V_range)-3, "Marčeta, Seligman mean", ha="right", color="gray")
+
+    # plt.gca().set_aspect(N_range[-1]/V_range[-1])

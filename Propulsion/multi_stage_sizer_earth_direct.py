@@ -288,12 +288,12 @@ class Launcher():
             payload_mass
         )
 
-        # return dv_to_vinf(
-        #     dv,
-        #     self.ref_LEO_velocity,
-        #     self.ref_escape_velocity
-        # )
-        return dv # FUCK FUCK FUCK WE DONT TALK ABOUT THIS
+        return dv_to_vinf(
+            dv,
+            self.ref_LEO_velocity,
+            self.ref_escape_velocity
+        )
+        # return dv # FUCK FUCK FUCK WE DONT TALK ABOUT THIS
 
     # def get_C3_performance(self, payload_mass):
     #

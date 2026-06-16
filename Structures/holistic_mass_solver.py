@@ -1105,28 +1105,65 @@ class Vesta(Hestia):
 
 
 if __name__ == "__main__":
-    SC = Hestia(
-        dV_inclination=3300,
-        dV_rdvz=17000,
-        dV_boost=4000,
-        verbose=True,
-        convergence_tolerance=0.001
+
+    # Sweep ranges
+    isps = np.linspace(3500, 4500, 200)
+    dvs = np.linspace(9000, 11000, 200)
+
+    M = np.zeros((len(dvs), len(isps)))
+
+    for i, dv in enumerate(dvs):
+        for j, isp in enumerate(isps):
+
+            # Temporarily overwrite ion ISP
+            globals()["Isp_ion"] = isp
+
+            sc = Vesta(
+                ion_dv=dv,
+                allowed_dv_boost=0,
+                verbose=False,
+                convergence_tolerance=1e-3
+            )
+
+            try:
+                sc._converge()
+                M[i, j] = sc.lower_stage_wet_mass
+            except:
+                M[i, j] = np.nan
+
+    X, Y = np.meshgrid(isps, dvs)
+
+    plt.figure(figsize=(10, 8))
+
+    # Heatmap
+    pcm = plt.pcolormesh(
+        X,
+        Y,
+        M,
+        shading="auto",
+        cmap="viridis"
     )
 
-    SC._converge()
+    cbar = plt.colorbar(pcm)
+    cbar.set_label("Launch Mass [kg]")
 
-    resolution = 10
-    dVs_incl = np.linspace(1, 3500, resolution)
-    dVs_rdvz = np.linspace(1, 20000, resolution)
-    dVs_boost = np.linspace(1, 7500, resolution)
-    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
-    data = load_mass_database()
-    # plot_interp_heatmap("inclination", 3000)
-    # plot_interp_heatmap("rdvz", 15000)
-    # plot_interp_heatmap("boost", 7500)
-    plot_mass_database(data)
-    plot_mass_database_2(data)
-    #
-    # _test_mass_database(data, n_tests=10, tolerance=1e-2)
-    # _test_interpolator_no_nans(data)
-    # _test_all_grid_points(data)
+    cs = plt.contour(
+        X,
+        Y,
+        M,
+        levels=np.arange(2000, 2200, 50),  # every 100 kg
+        colors="black",
+        linewidths=1
+    )
+
+    plt.scatter(4220, 10000, marker='o', s=50, c='r', label='Design Point')
+
+    plt.clabel(cs, fontsize=8)
+
+    plt.xlabel("Ion Isp [s]")
+    plt.ylabel("Required ΔV [m/s]")
+    plt.legend()
+    # plt.title("Vesta Mass Sensitivity")
+
+    plt.tight_layout()
+    plt.show()

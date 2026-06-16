@@ -229,8 +229,8 @@ def check_ISO_Possible(ISO:jkat.Orbit, detect_t:float,V_inf:float, V_ion:float):
     # prescan for minima:
     x0 = prescan_opt(
         w,
-        np.linspace(ISO.tp, ISO.tp + 2*jkat.YEAR,10),
-        np.linspace(ISO.tp, ISO.tp+MAX_MISSION_TIME*jkat.YEAR, 10)
+        np.linspace(max(ISO.tp, detect_t), ISO.tp + 2*jkat.YEAR,10),
+        np.linspace(max(ISO.tp, detect_t), ISO.tp+MAX_MISSION_TIME*jkat.YEAR, 10)
     )
     res = study_fn(x0)
     if res['ion_res'] >= 0: return res
@@ -380,6 +380,49 @@ def get_data_earth(extra_batches:int=0, gen_type:str="")->pd.DataFrame:
     return mdata
 
 
+def recreate_ISO_and_intercept(row:pd.Series)->tuple[jkat.Orbit,jkat.Orbit, float,float]:
+    '''turn df row back into ISO and intercept orbit,
+    does assume prograde but that should be correct for all of them
+
+    :param row: row of the dataframe, get via `df = study_storage(12,10,0)`,
+    then `row = df.iloc[<number>]`
+    :type row: pd.Series
+    :return: ISO orbit and Transfer orbit, as well as start and end time
+    :rtype: tuple[jkat.Orbit,jkat.Orbit,float,float]
+    '''
+    # extract orbit:
+    ISO = jkat.Orbit(
+        row['parameter'],
+        row['e'],
+        row['i'],
+        row['RAAN'],
+        row['arg_p'],
+        row['t_p'],
+        jkat.SUN_MU
+    )
+    ts = row['ts']
+    te = row['te']
+    trans = jkat.orbit_from_lambert_transfer(jkat.Earth,ISO,ts,te, True) # assumes prograde
+    return ISO, trans, ts, te
+
+
+def simple_ISO_and_trans()->list[tuple[jkat.Orbit, jkat.Orbit, float, float]]:
+    '''get all working trajectories as a list of the ISO trajectory and the transfer trajectory
+
+    :return: list of tuples of the ISO orbit and the transfer orbit, along with the start and end time
+    :rtype: list[tuple[jkat.Orbit, jkat.Orbit, float, float]]
+    '''
+
+    df = study_storage(12,10,0)
+    df = df[df['ion_res'] >= 0]
+    res = []
+    for i, row in df.iterrows():
+        ISO, trans, ts, te = recreate_ISO_and_intercept(row)
+        res.append((ISO,trans, ts, te))
+    return res
+
+
+
 def bounding_box_2d(points, C):
 
     if len(points) < C: return [] # no corner here...
@@ -510,7 +553,15 @@ def run_conv(V_inf:float, V_ion:float, N:int):
 
     print("done")
 
+def save_res(df, string):
+    with open(Path(__file__).parent / "result.txt", 'a') as file:
+        file.write(string + '\n')
+        file.write(f'{chance_working(df):%}\n\n')
 
+def do(vinf, vion):
+    run_conv(vinf,vion,350)
+    df = study_storage(vinf,vion, 0) # ariane 64 attempt 1
+    save_res(df, f'{vinf:.2f} and {vion:.2f}:')
 
 if __name__ == '__main__':
 
@@ -524,70 +575,58 @@ if __name__ == '__main__':
     # V._converge()
     from Propulsion.multi_stage_sizer_earth_direct import Ariane64_Launcher, get_vinf, FalconHeavy_Expendable, Helios,Star63, VegaC_AVUM_plus, VegaC_Zefiro9,Orion38
 
-    def save_res(df, string):
-        with open(Path(__file__).parent / "result.txt", 'a') as file:
-            file.write(string + '\n')
-            file.write(f'{chance_working(df):%}\n\n')
 
-    def do(vinf, vion):
-        run_conv(vinf,vion,350)
-        df = study_storage(vinf,vion, 0) # ariane 64 attempt 1
-        save_res(df, f'{vinf:.2f} and {vion:.2f}:')
 
-    # print(V)
-    # # input()
-    # V = Vesta(10*1000,0, verbose=False, launcher=Ariane64_Launcher)
-    V = Vesta(10*1000,0, verbose=True)
-    V._converge()
-    print(V)
-    # df = study_storage(12,10)
-    # print(f'{chance_working(df):%}\n')
-    # save_res(df, 'test')
-    # input()
 
-    # vinf = lambda m: get_vinf(FalconHeavy_Expendable, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], m)[0]
+
+
+    limit = 60 # days
+
+    df = study_storage(12,10,0)
+    df = df[df["ion_res"] >= 0 ]
+    print(len(df))
+    df = df[
+        (df['ts'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] < limit
+    ]
+    print(len(df))
+    df.sort_values('ion_res',ascending=False, ignore_index=True)
+    launch_delay = (df['ts'] - df['t_p']) + df['time_until_periapsis']*jkat.DAY
+    residual = df['ion_res']
+
+
+    # redo with other limit:
+    for i in range(len(df)):
+        ISO, _,ts,_ = recreate_ISO_and_intercept(df.iloc[i])
+        detect_r = df.iloc[i]['detection_r']
+        detect_t = ISO.t(-ISO.cross_radius(detect_r*jkat.AU)) # type:ignore
+        delay = ts - detect_t
+
+        print(f"{i}, has residual: {residual.iloc[i]:.3f}, with delay: {launch_delay.iloc[i]/jkat.DAY:.2f} Days")
         
-    # vv = []
-    # mm = []
-    # for ma in np.linspace(2000,2400):
-    #     mm.append(ma)
-    #     vv.append(vinf(ma))
-    # plt.plot(vv,mm)
+        res = check_ISO_Possible(ISO, detect_t+ 40*jkat.DAY,12,10)
+        good = (res['ion_res'] >= 0)
+        new_delay = res['ts'] - detect_t
+        if good: print(f'{i}: {good}, new Delay: {new_delay/jkat.DAY:.2f} Days')
+        else: print(f'{i}: False, did not work')
+
+    print('done!')
+    input()
+
+
+
+
+    data = (df['te'] - df['ts'])/jkat.DAY # flight time in days
+    data  = df['periapsis'] # periapsis in au
+    data = (df['te'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] # detection time to arrival in days
+    data = (df['ts'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] # launch delay in days
+    data = df['r']/jkat.AU # rendezvous distance in au
+    data = df['ion_res'] # residual delta v in ion stage
+    data = df['ISO_excess_velocity']
+
+    print(f'avg={np.average(data)}\tstd={np.std(data)}\tmax={np.max(data)}\tmin={np.min(data)}')
+
+
+    plt.hist(data, bins=20)
     # plt.show()
-
     
-    
-    
-    # print(''.join(['done!\n' for _ in range(20)]))
-    # print(f'{chance_working(df ):%}')
-    # print(f'{len(df[df["ion_res"] >=0])}/{len(df)}')
-    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
-    # plt.show()
-
-    # run_conv(11.5,9, 350)
-
-    # df = study_batch_possible(11.5, 9,50)
-    # print(f'{chance_working(df ):%}')
-    # plt.hist(df['ion_res'],range=(-100,10),bins=200)
-    # plt.show()
-
-
    
-
-    # xx = np.linspace(0,5)
-    # yy = np.linspace(0,20)
-    # pp = []
-    # for y in yy:
-    #     prow = []
-    #     for x in xx:
-    #         prow.append(i((x,y)))
-    #     pp.append(prow)
-
-    # plt.imshow(pp, origin='lower', extent=(0,5,0,20))
-    # plt.axis('scaled')
-    # plt.show()
-
-
-
-
-    # direct_earth_analysis(20)

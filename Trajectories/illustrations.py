@@ -6,7 +6,8 @@ a picture says a thousand words, so this way we save on page count
 
 import matplotlib.pyplot as plt
 import numpy as np
-
+import pandas as pd
+from tqdm import tqdm
 
 # fraction showcase:
 if False:
@@ -228,15 +229,56 @@ if False:
 # cmap of success chance
 if True:
     # (pessemistic since trajectories not reoptimized)
+    def under(df:pd.DataFrame,vinf, dvion):
+        count = 0
+        for i, row in df.iterrows():
+            dvi = row['dvi']
+            dvr = row['dvr']
+            dvi = max(0, dvi- vinf)
+            if 2*dvi + dvr <= dvion: count += 1
+        return count
+
+    def pct_chance(df:pd.DataFrame, count:int, vinf:float, dvion: float, N:int):
+
+        frac = under(df,vinf,dvion)/count
+        chance = 1 - (1-frac)**N
+        return chance
    
         
-    from contingency_analysis import _under, study_storage
+    from contingency_analysis import study_storage
 
     df = study_storage(12,10,0)
+    lendf = len(df)
     df = df[df['ion_res'] >= 0]
 
-    _under(df, 10,10) # TODO: do this for meshgrid then plot
+    # TODO: do this for meshgrid then plot
     # and redo _under to use Vinf and Dvion instead...
+    res = 100
+    vvion = np.linspace(6,10.5,res)
+    vvinf = np.linspace(10,12.5,res)
+    PP = []
+    for vinf in tqdm(vvinf, desc='making plot'):
+        Prow = []
+        for vion in vvion:
+            Prow.append(pct_chance(df,lendf,vinf,vion,350))
+        PP.append(Prow)
+    PP = np.array(PP).T
+
+    plt.imshow(PP, origin='lower', aspect=1/2,
+               extent=(vvinf[0],vvinf[-1],vvion[0],vvion[-1]))
+    plt.colorbar(location="right", label=r"$P_s$")
+    
+    plt.scatter(12,10, color="red")
+    CS = plt.contour(PP,levels=[0.5, 0.75,0.9,0.95],origin="lower", extent=(vvinf[0],vvinf[-1],vvion[0],vvion[-1]), colors='k')
+    plt.clabel(CS, fmt=lambda x: f"{x:.0%}")
+    # plt.axis('scaled')
+    plt.xlabel(r'$V_\infty$')
+    plt.ylabel(r'$\Delta V_{\rm ion}$')
+
+    
+
+    plt.show()
+
 
 
 

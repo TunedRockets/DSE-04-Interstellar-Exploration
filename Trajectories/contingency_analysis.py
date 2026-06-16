@@ -578,39 +578,37 @@ if __name__ == '__main__':
 
 
 
-
-
     limit = 60 # days
 
     df = study_storage(12,10,0)
     df = df[df["ion_res"] >= 0 ]
     print(len(df))
-    df = df[
-        (df['ts'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] < limit
-    ]
-    print(len(df))
-    df.sort_values('ion_res',ascending=False, ignore_index=True)
-    launch_delay = (df['ts'] - df['t_p']) + df['time_until_periapsis']*jkat.DAY
-    residual = df['ion_res']
+    # df = df[
+    #     (df['ts'] - df['t_p'])/jkat.DAY + df['time_until_periapsis'] < limit
+    # ]
+    # print(len(df))
+    # df.sort_values('ion_res',ascending=False, ignore_index=True)
+    # launch_delay = (df['ts'] - df['t_p']) + df['time_until_periapsis']*jkat.DAY
+    # residual = df['ion_res']
 
 
-    # redo with other limit:
-    for i in range(len(df)):
-        ISO, _,ts,_ = recreate_ISO_and_intercept(df.iloc[i])
-        detect_r = df.iloc[i]['detection_r']
-        detect_t = ISO.t(-ISO.cross_radius(detect_r*jkat.AU)) # type:ignore
-        delay = ts - detect_t
+    # # redo with other limit:
+    # for i in range(len(df)):
+    #     ISO, _,ts,_ = recreate_ISO_and_intercept(df.iloc[i])
+    #     detect_r = df.iloc[i]['detection_r']
+    #     detect_t = ISO.t(-ISO.cross_radius(detect_r*jkat.AU)) # type:ignore
+    #     delay = ts - detect_t
 
-        print(f"{i}, has residual: {residual.iloc[i]:.3f}, with delay: {launch_delay.iloc[i]/jkat.DAY:.2f} Days")
+    #     print(f"{i}, has residual: {residual.iloc[i]:.3f}, with delay: {launch_delay.iloc[i]/jkat.DAY:.2f} Days")
         
-        res = check_ISO_Possible(ISO, detect_t+ 40*jkat.DAY,12,10)
-        good = (res['ion_res'] >= 0)
-        new_delay = res['ts'] - detect_t
-        if good: print(f'{i}: {good}, new Delay: {new_delay/jkat.DAY:.2f} Days')
-        else: print(f'{i}: False, did not work')
+    #     res = check_ISO_Possible(ISO, detect_t+ 40*jkat.DAY,12,10)
+    #     good = (res['ion_res'] >= 0)
+    #     new_delay = res['ts'] - detect_t
+    #     if good: print(f'{i}: {good}, new Delay: {new_delay/jkat.DAY:.2f} Days')
+    #     else: print(f'{i}: False, did not work')
 
-    print('done!')
-    input()
+    # print('done!')
+    # input()
 
 
 
@@ -622,6 +620,7 @@ if __name__ == '__main__':
     data = df['r']/jkat.AU # rendezvous distance in au
     data = df['ion_res'] # residual delta v in ion stage
     data = df['ISO_excess_velocity']
+    # data = np.rad2deg(df['i'])
 
     print(f'avg={np.average(data)}\tstd={np.std(data)}\tmax={np.max(data)}\tmin={np.min(data)}')
 

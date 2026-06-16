@@ -12,7 +12,7 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 from Propulsion.proper_earth_rdvz_sizer import *
 
-from Propulsion.multi_stage_sizer_earth_flyby import VegaC_Launcher
+# from Propulsion.multi_stage_sizer_earth_flyby import VegaC_Launcher
 
 # ============================================================
 #                         CONSTANTS
@@ -445,7 +445,8 @@ def plot_get_vinf(
     kickstages,
     payload_masses,
     ax=None,
-    label=None
+    label=None,
+    design_point=None,   # (payload_mass, vinf)
 ):
     payload_masses = np.asarray(payload_masses)
 
@@ -469,6 +470,49 @@ def plot_get_vinf(
     ax.set_xlabel("Payload Mass [kg]")
     ax.set_ylabel(r"$V_\infty$ [m/s]")
     ax.grid(True, alpha=0.3)
+
+
+    # ---------------- DESIGN POINT ----------------
+    if design_point is not None:
+        dm, dv = design_point
+
+        ax.scatter(
+            dm,
+            dv,
+            color="black",
+            s=20,
+            zorder=20,
+            marker="o",
+            label="Design Parameters"
+        )
+
+        # ---------------- projection lines ----------------
+        ax.axvline(
+            dm,
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            alpha=0.5,
+            zorder=5
+        )
+
+        ax.axhline(
+            dv,
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            alpha=0.5,
+            zorder=5
+        )
+
+        # ax.annotate(
+        #     "Preliminary Design",
+        #     (dm, dv),
+        #     textcoords="offset points",
+        #     xytext=(8, 8),
+        #     fontsize=9,
+        #     color="black"
+        # )
 
     return ax
 #
@@ -653,6 +697,10 @@ NewGlennLauncher = Launcher(
     UpperStage=NewGlennUpper
 )
 
+VegaC_Launcher = Launcher(
+    LEO_payload=3300,
+    UpperStage=VegaC_AVUM_plus
+)
 # ============================================================
 # SPACECRAFT SIZING
 # ============================================================
@@ -1280,7 +1328,8 @@ def plot_vinf_comparison(
     kickstages,
     payload_min=100,
     payload_max=15000,
-    n=1500
+    n=1500,
+    design_point=None,   # (payload_mass, vinf)
 ):
 
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -1385,6 +1434,28 @@ def plot_vinf_comparison(
             color="red"
         )
 
+    # ---------------- DESIGN POINT ----------------
+    if design_point is not None:
+        dm, dv = design_point
+
+        ax.scatter(
+            dv,
+            dm,
+            color="black",
+            s=20,
+            marker="o",
+            zorder=50
+        )
+
+        ax.annotate(
+            "Design",
+            (dv, dm),
+            textcoords="offset points",
+            xytext=(10, 10),
+            fontsize=10,
+            color="black"
+        )
+
     # =========================================================
     # FORMATTING
     # =========================================================
@@ -1410,6 +1481,220 @@ def plot_vinf_comparison(
     plt.show()
 
 
+from matplotlib.patches import Patch
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_launcher_vinf_feasibility(
+    fixed_wet_mass,
+    launchers,
+    kickstages,
+    vinf_range,
+    vertical_vinf=None,
+    vertical_label=None,
+    vertical_color="red"
+):
+
+    launcher_names = [name for _, name in launchers]
+    kickstage_names = [name for _, name in kickstages]
+
+    vinf_vals = np.asarray(vinf_range)
+
+    # ---------------------------------------------------------
+    # STORAGE: (launcher, mode) → feasibility over vinf axis
+    # ---------------------------------------------------------
+    availability = {}
+
+    for lname in launcher_names:
+        availability[(lname, "Direct")] = np.zeros(len(vinf_vals), dtype=bool)
+        for ks in kickstage_names:
+            availability[(lname, ks)] = np.zeros(len(vinf_vals), dtype=bool)
+
+    # ---------------------------------------------------------
+    # FEASIBILITY EVALUATION
+    # ---------------------------------------------------------
+    for j, vinf_req in enumerate(vinf_vals):
+
+        for launcher, lname in launchers:
+
+            # -------------------------
+            # DIRECT INJECTION
+            # -------------------------
+            dv_launcher = launcher.get_dv_performance(fixed_wet_mass)
+
+            vinf_direct = dv_to_vinf(
+                dv_launcher,
+                launcher.ref_LEO_velocity,
+                launcher.ref_escape_velocity
+            )
+
+            if vinf_direct >= vinf_req:
+                availability[(lname, "Direct")][j] = True
+
+            # -------------------------
+            # KICKSTAGES
+            # -------------------------
+            for kick, ks_name in kickstages:
+
+                if kick is None:
+                    continue
+
+                if fixed_wet_mass + kick.total_mass > launcher.LEO_payload:
+                    continue
+
+                launcher_dv = launcher.get_dv_performance(
+                    fixed_wet_mass + kick.total_mass
+                )
+
+                kick_dv = kick.get_total_dv(fixed_wet_mass)
+
+                total_vinf = dv_to_vinf(
+                    launcher_dv + kick_dv,
+                    launcher.ref_LEO_velocity,
+                    launcher.ref_escape_velocity
+                )
+
+                if total_vinf >= vinf_req:
+                    availability[(lname, ks_name)][j] = True
+
+    # ---------------------------------------------------------
+    # COLORS
+    # ---------------------------------------------------------
+    cmap = plt.get_cmap("tab20")
+
+    mode_colors = {"Direct": "#006400"}
+    for i, ks in enumerate(kickstage_names):
+        mode_colors[ks] = cmap(i)
+
+    # ---------------------------------------------------------
+    # PLOT
+    # ---------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(15, 8))
+
+    launcher_height = 0.8
+    subbar_height = launcher_height / max(len(kickstage_names), 1)
+
+    for i, lname in enumerate(launcher_names):
+
+        base_y = i - launcher_height / 2
+
+        direct = availability[(lname, "Direct")]
+
+        # -------------------------
+        # KICKSTAGES
+        # -------------------------
+        for m, ks in enumerate(kickstage_names):
+
+            y = base_y + m * subbar_height
+
+            feasible = np.logical_and(
+                availability[(lname, ks)],
+                ~direct
+            )
+
+            start = None
+
+            for j, val in enumerate(feasible):
+
+                if val and start is None:
+                    start = j
+
+                end = (not val or j == len(feasible) - 1) and start is not None
+
+                if end:
+                    end_j = j if val and j == len(feasible) - 1 else j - 1
+
+                    x0 = vinf_vals[start]
+                    x1 = vinf_vals[end_j]
+
+                    ax.broken_barh(
+                        [(x0, x1 - x0)],
+                        (y, subbar_height * 0.9),
+                        facecolors=mode_colors[ks],
+                        alpha=0.7
+                    )
+
+                    start = None
+
+        # -------------------------
+        # DIRECT
+        # -------------------------
+        start = None
+
+        for j, val in enumerate(direct):
+
+            if val and start is None:
+                start = j
+
+            end = (not val or j == len(direct) - 1) and start is not None
+
+            if end:
+                end_j = j if val and j == len(direct) - 1 else j - 1
+
+                x0 = vinf_vals[start]
+                x1 = vinf_vals[end_j]
+
+                ax.broken_barh(
+                    [(x0, x1 - x0)],
+                    (i - launcher_height / 2, launcher_height),
+                    facecolors="#006400",
+                    alpha=0.9,
+                    zorder=10
+                )
+
+                start = None
+
+    # ---------------------------------------------------------
+    # OPTIONAL VERTICAL LINE (now vinf)
+    # ---------------------------------------------------------
+    if vertical_vinf is not None:
+        ax.axvline(vertical_vinf, color=vertical_color, linestyle="--")
+
+        if vertical_label:
+            ax.text(
+                vertical_vinf,
+                len(launchers) - 0.5,
+                vertical_label,
+                rotation=90,
+                color=vertical_color,
+                va="top"
+            )
+
+    # ---------------------------------------------------------
+    # LABELS
+    # ---------------------------------------------------------
+    ax.set_yticks(range(len(launcher_names)))
+    ax.set_yticklabels(launcher_names)
+
+    ax.set_xlabel(r"Required $V_\infty$ [m/s]")
+    ax.set_ylabel("Launcher")
+
+    ax.set_title(
+        f"Launcher Feasibility at Fixed Wet Mass = {fixed_wet_mass:.0f} kg"
+    )
+
+    ax.grid(True, axis="x", linestyle="--", alpha=0.4)
+
+    # ---------------------------------------------------------
+    # LEGEND
+    # ---------------------------------------------------------
+    legend_handles = [
+        Patch(color="#006400", label="Direct Injection")
+    ]
+
+    for ks in kickstage_names:
+        legend_handles.append(
+            Patch(color=mode_colors[ks], label=ks)
+        )
+
+    ax.legend(handles=legend_handles[::-1], loc="upper right")
+
+    ax.set_xlim(vinf_vals[0], vinf_vals[-1])
+    ax.set_ylim(-0.5, len(launchers) - 0.5)
+
+    plt.tight_layout()
+    plt.show()
+
 
 
 # ============================================================
@@ -1419,12 +1704,12 @@ def plot_vinf_comparison(
 if __name__ == "__main__":
     launchers = [
 
-        # (VegaC_Launcher, "Vega C"),
-        #
-        # (Ariane62_Launcher, "Ariane 62"),
-        #
-        # (Falcon9,
-        #  "Falcon 9"),
+        (VegaC_Launcher, "Vega C"),
+
+        (Ariane62_Launcher, "Ariane 62"),
+
+        (Falcon9,
+         "Falcon 9"),
         #
         (Ariane64_Launcher, "Ariane 64"),
         #
@@ -1434,11 +1719,11 @@ if __name__ == "__main__":
         (FalconHeavy_Reusable,
          "Falcon Heavy (Reusable)"),
         #
-        # (Vulcan,
-        #  "Vulcan Centaur"),
-        #
-        # (NewGlennLauncher,
-        #  "New Glenn"),
+        (Vulcan,
+         "Vulcan Centaur"),
+
+        (NewGlennLauncher,
+         "New Glenn"),
         #
         (FalconHeavy_Expendable,
          "Falcon Heavy (Expendable)"),
@@ -1468,7 +1753,7 @@ if __name__ == "__main__":
 
         (Helios, "Helios"),
 
-        (Nothing, "Clean")
+        (None, "")
     ]
 
     kickstages_simple = [
@@ -1501,12 +1786,18 @@ if __name__ == "__main__":
 
     payload_range = np.linspace(1, 10000, 1000)
 
-    plot_get_vinf(FalconHeavy_Reusable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Reusable")
+    plot_get_vinf(NewGlennLauncher, kickstages_simple, payload_range, ax=ax, label="New Glenn")
     plot_get_vinf(FalconHeavy_Expendable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Expendable")
+    plot_get_vinf(FalconHeavy_Reusable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Reusable")
     plot_get_vinf(Ariane64_Launcher, kickstages_simple, payload_range, ax=ax, label="Ariane 64")
+    plot_get_vinf(Ariane62_Launcher, kickstages_simple, payload_range, ax=ax, label="Ariane 62")
+    plot_get_vinf(Falcon9, kickstages_simple, payload_range, ax=ax, label="Falcon 9")
+    # plot_get_vinf(VegaC_Launcher, kickstages_simple, payload_range, ax=ax, label="Vega C")
+
+
     # plot_get_vinf(SLS_CentaurV, kickstages_simple, payload_range, ax=ax, label="SLS CV")
     # plot_get_vinf(SLS_Block1_ICPS, kickstages_simple, payload_range, ax=ax, label="SLS Block 1")
-    plot_get_vinf(Vulcan, kickstages_simple, payload_range, ax=ax, label="Vulcan")
+    plot_get_vinf(Vulcan, kickstages_simple, payload_range, ax=ax, label="Vulcan", design_point=(2000,12000))
     # plot_get_vinf(Starship_SuperHeavy, kickstages_simple, payload_range, ax=ax, label="Starship SuperHeavy")
     # plot_get_vinf(VegaC_Launcher, kickstages_simple, payload_range, ax=ax, label="Vega C")
 
@@ -1519,7 +1810,8 @@ if __name__ == "__main__":
         kickstages,
         payload_min=1,
         payload_max=20000,
-        n=2000
+        n=2000,
+        design_point=(2000,12000)
     )
 
 
@@ -1559,4 +1851,13 @@ if __name__ == "__main__":
         vertical_wetmass=2000,
         vertical_color='black',
         # vertical_label='Updated Mass Budget'
+    )
+
+    plot_launcher_vinf_feasibility(
+        fixed_wet_mass=2000,
+        launchers=launchers,
+        kickstages=kickstages,
+        vinf_range=np.linspace(0, 18000, 1000),
+        vertical_vinf=12000,
+        # vertical_label="Deep Space Mission"
     )

@@ -4,70 +4,77 @@ from multiprocessing import Pool
 from tqdm import tqdm
 from pathlib import Path
 
+
 def _single_run(args):
-    """Worker function (must be top-level for multiprocessing)."""
-    i, j, dv_inj, dv_rdvz = args
+    i, ion_dv = args
 
     sc = Vesta(
-        dV_injection=dv_inj,
-        dV_rdvz=dv_rdvz,
+        ion_dv=ion_dv,
         allowed_dv_boost=0,
         convergence_tolerance=0.001,
         verbose=False,
     )
+
     try:
         sc._converge()
-        total_mass = sc.lower_stage_wet_mass
-    except:
-        total_mass = np.nan
-    # print()
-    # print("Result completed!")
-    # print("i", i)
-    # print("j", j)
-    # print("k", k)
-    # print()
-    # print()
-    # print("Result completed!")
-    # print("dV Inclination: ", dv_inc)
-    # print("dV Rendezvous: ", dv_rdvz)
-    # print("dV Boost", dv_boost)
-    # print("Total mass: ", total_mass)
-    # print()
 
-    return i, j, total_mass
+        result = {
+            "total_mass": sc.lower_stage_wet_mass,
+            "payload_mass": sc.static_mass,
+            "reactor_truss": sc.Mass_power_truss,
+            "engine_mass": sc.Mass_ion,
+            "fuel_mass": sc.Mass_ion_fuel,
+        }
 
+    except Exception:
+        result = {
+            "total_mass": np.nan,
+            "reactor_truss": np.nan,
+            "fuel_mass": np.nan,
+            "engine_mass": np.nan,
+            "payload_mass": np.nan,
+        }
+
+    return i, result
 # from concurrent.futures import ProcessPoolExecutor, as_completed
 path = Path(__file__).parent / "mass_database_vesta.pkl"
-def generate_mass_database(dVs_inj, dVs_rdvz, path=path):
+def generate_mass_database(ion_dvs, path=path):
 
     jobs = [
-        (i, j, dv_inj, dv_rdvz)
-        for i, dv_inj in enumerate(dVs_inj)
-        for j, dv_rdvz in enumerate(dVs_rdvz)
+        (i, ion_dv)
+        for i, ion_dv in enumerate(ion_dvs)
     ]
 
-    masses = np.zeros((len(dVs_inj), len(dVs_rdvz)))
-
-    # pbar = tqdm(total=len(jobs), desc="Mass DB")
+    masses = np.zeros(len(ion_dvs))
+    total_mass = np.zeros(len(ion_dvs))
+    reactor_mass = np.zeros(len(ion_dvs))
+    fuel_mass = np.zeros(len(ion_dvs))
+    engine_mass = np.zeros(len(ion_dvs))
+    payload_mass = np.zeros(len(ion_dvs))
 
     with Pool() as p:
-        results = tqdm(p.imap_unordered(_single_run, jobs,5), desc="Jobs completed: ", total=len(jobs))
+        results = tqdm(
+            p.imap_unordered(_single_run, jobs, 5),
+            desc="Jobs completed",
+            total=len(jobs),
+        )
 
-        for result in results:
-            i, j, mass = result
-            # print("Result appended!")
-            masses[i, j] = mass
-            # pbar.update(1)
-
-    print("Run complete!")
-
-    # pbar.close()
+        for i, result in results:
+            total_mass[i] = result["total_mass"]
+            reactor_mass[i] = result["reactor_truss"]
+            fuel_mass[i] = result["fuel_mass"]
+            engine_mass[i] = result["engine_mass"]
+            payload_mass[i] = result["payload_mass"]
 
     data = {
-        "dV_injection": dVs_inj,
-        "dV_rdvz": dVs_rdvz,
-        "mass": masses,
+        "ion_dv": ion_dvs,
+        "total_mass": total_mass,
+        "reactor_mass": reactor_mass,
+        "fuel_mass": fuel_mass,
+        "engine_mass": engine_mass,
+        "payload_mass": payload_mass,
     }
+
     with open(path, "wb") as f:
         pickle.dump(data, f)
 
@@ -93,30 +100,25 @@ def load_mass_database(filename=path):
     with open(filename, "rb") as f:
         data = pickle.load(f)
 
-    required_keys = ["dV_injection", "dV_rdvz", "mass"]
-
-    missing = [k for k in required_keys if k not in data]
-    if missing:
-        raise KeyError(f"Missing keys in database file: {missing}")
-
-    # Ensure numpy arrays (pickle sometimes preserves weird types)
-    data["dV_injection"] = np.asarray(data["dV_injection"])
-    data["dV_rdvz"] = np.asarray(data["dV_rdvz"])
-    data["mass"] = np.asarray(data["mass"])
-
-    # Basic sanity check
-    expected_shape = (
-        len(data["dV_injection"]),
-        len(data["dV_rdvz"])
-    )
-
-    if data["mass"].shape != expected_shape:
-        raise ValueError(
-            f"Mass array shape mismatch.\n"
-            f"Expected {expected_shape}, got {data['mass'].shape}"
-        )
+    # required_keys = ["ion_dv", "mass"]
+    #
+    # missing = [k for k in required_keys if k not in data]
+    # if missing:
+    #     raise KeyError(f"Missing keys in database file: {missing}")
+    #
+    # data["ion_dv"] = np.asarray(data["ion_dv"])
+    # data["mass"] = np.asarray(data["mass"])
+    #
+    # expected_shape = (len(data["ion_dv"]),)
+    #
+    # if data["mass"].shape != expected_shape:
+    #     raise ValueError(
+    #         f"Expected {expected_shape}, got {data['mass'].shape}"
+    #     )
 
     return data
+
+from scipy.interpolate import interp1d
 
 class MassInterpolator:
 
@@ -125,129 +127,118 @@ class MassInterpolator:
         with open(filename, "rb") as f:
             data = pickle.load(f)
 
-        self.interp = RegularGridInterpolator(
-            (
-                data["dV_injection"],
-                data["dV_rdvz"]
-            ),
-            data["mass"]
+        self.interp = interp1d(
+            data["ion_dv"],
+            data["mass"],
+            kind="linear",
+            bounds_error=False,
+            fill_value=np.nan,
         )
 
-    def mass(self, dV_injection, dV_rdvz):
+    def mass(self, ion_dv):
 
-        point = np.array([
-            dV_injection,
-            dV_rdvz
-        ])
-
-        val = self.interp(point)
+        val = self.interp(ion_dv)
         return float(np.asarray(val).squeeze())
 
 import matplotlib.pyplot as plt
 
-def plot_mass_heatmap(interpolator,
-                      dV_inj_range=None,
-                      dV_rdvz_range=None,
-                      resolution=200,
-                      show_points=False,
-                      database=None):
-    """
-    Plot a heatmap of interpolated mass values.
+def plot_mass_curve(interpolator,
+                    ion_dv_range,
+                    resolution=500,
+                    database=None,
+                    show_points=False):
 
-    Parameters
-    ----------
-    interpolator : MassInterpolator
-        Instance of MassInterpolator.
+    x = np.linspace(*ion_dv_range, resolution)
+    y = interpolator.interp(x)
 
-    dV_inj_range : tuple(float, float), optional
-        (min, max) injection ΔV range.
-        If None, inferred from database.
+    plt.figure(figsize=(8, 5))
 
-    dV_rdvz_range : tuple(float, float), optional
-        (min, max) rendezvous ΔV range.
-        If None, inferred from database.
+    plt.plot(x, y, label="Interpolated")
 
-    resolution : int
-        Number of points per axis for interpolation.
-
-    show_points : bool
-        If True, overlay original database sample points.
-
-    database : dict, optional
-        Output from load_mass_database().
-        Required if ranges are omitted or if show_points=True.
-    """
-
-    if database is None and (
-        dV_inj_range is None
-        or dV_rdvz_range is None
-        or show_points
-    ):
-        raise ValueError(
-            "database must be supplied when ranges are omitted "
-            "or show_points=True"
-        )
-
-    if dV_inj_range is None:
-        dV_inj_range = (
-            database["dV_injection"].min(),
-            database["dV_injection"].max()
-        )
-
-    if dV_rdvz_range is None:
-        dV_rdvz_range = (
-            database["dV_rdvz"].min(),
-            database["dV_rdvz"].max()
-        )
-
-    inj = np.linspace(*dV_inj_range, resolution)
-    rdvz = np.linspace(*dV_rdvz_range, resolution)
-
-    X, Y = np.meshgrid(inj, rdvz, indexing="ij")
-
-    points = np.column_stack([
-        X.ravel(),
-        Y.ravel()
-    ])
-
-    Z = interpolator.interp(points).reshape(X.shape)
-
-    plt.figure(figsize=(10, 8))
-
-    im = plt.pcolormesh(
-        X,
-        Y,
-        Z,
-        shading="auto"
-    )
-
-    cbar = plt.colorbar(im)
-    cbar.set_label("Lower Stage Wet Mass [kg]")
-
-    if show_points:
-        XI, YI = np.meshgrid(
-            database["dV_injection"],
-            database["dV_rdvz"],
-            indexing="ij"
-        )
-
+    if show_points and database is not None:
         plt.scatter(
-            XI.ravel(),
-            YI.ravel(),
-            s=10,
-            c="k",
-            alpha=0.5,
+            database["ion_dv"],
+            database["mass"],
+            s=15,
             label="Database Points"
         )
-        plt.legend()
 
-    plt.xlabel("Injection ΔV [m/s]")
-    plt.ylabel("Rendezvous ΔV [m/s]")
-    plt.title("Vesta Mass Interpolation Heatmap")
+    plt.xlabel("Ion ΔV [m/s]")
+    plt.ylabel("Spacecraft Wet Mass [kg]")
+    # plt.title("Mass vs Ion ΔV")
 
+    plt.legend()
     plt.tight_layout()
     plt.show()
+def plot_mass_breakdown(database):
 
+    x = database["ion_dv"]
+
+    plt.figure(figsize=(10,6))
+
+    plt.stackplot(
+        x,
+        database["payload_mass"],
+        database["reactor_mass"],
+        database["engine_mass"],
+        database["fuel_mass"],
+        labels=[
+            "Fixed Mass (Payload, TT&C, and Bus)",
+            "Reactor + Truss",
+            "Engine System",
+            "Fuel",
+        ]
+    )
+
+    plt.plot(
+        x,
+        database["total_mass"],
+        "k",
+        linewidth=2,
+        label="Total"
+    )
+
+    # ===== design point =====
+
+    design_dv = 10_000
+
+    design_mass = np.interp(
+        design_dv,
+        database["ion_dv"],
+        database["total_mass"]
+    )
+
+    plt.plot(
+        [-1000000, design_dv],
+        [design_mass, design_mass],
+        "k:",
+        linewidth=2,
+    )
+    plt.plot(
+        [design_dv, design_dv],
+        [-100000, design_mass],
+        "k:",
+        linewidth=2,
+    )
+    plt.plot(
+        design_dv,
+        design_mass,
+        "ko",
+        markersize=6
+    )
+
+    plt.annotate(
+        f"{design_mass:.0f} kg",
+        (design_dv, design_mass),
+        xytext=(10, 10),
+        textcoords="offset points"
+    )
+
+    plt.xlabel("Ion ΔV [m/s]")
+    plt.ylabel("Mass [kg]")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 import random
 def _test_mass_database(
@@ -410,10 +401,156 @@ def _test_all_grid_points(data):
 
     print("PASSED: all grid points")
 
+from scipy.interpolate import interp1d
+from scipy.optimize import brentq
+import numpy as np
+
+
+def find_crossovers(x, y1, y2):
+    """
+    Return all x locations where y1 == y2.
+    """
+    diff = y1 - y2
+
+    roots = []
+
+    for i in range(len(x) - 1):
+
+        if np.isnan(diff[i]) or np.isnan(diff[i + 1]):
+            continue
+
+        # exact hit
+        if diff[i] == 0:
+            roots.append(x[i])
+
+        # sign change
+        elif diff[i] * diff[i + 1] < 0:
+
+            f = interp1d(
+                x[i:i+2],
+                diff[i:i+2],
+                kind="linear"
+            )
+
+            root = brentq(
+                lambda xx: float(f(xx)),
+                x[i],
+                x[i+1]
+            )
+
+            roots.append(root)
+
+    return roots
+
+import matplotlib.pyplot as plt
+
+
+def plot_mass_breakdown_comparison(
+    db1,
+    db2,
+    label1="Ion engines",
+    label2="Hall effect thrusters",
+):
+
+    x = db1["ion_dv"]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    y1 = db1["total_mass"]
+    y2 = db2["total_mass"]
+
+    y3 = db1["fuel_mass"]
+    y4 = db2["fuel_mass"]
+
+    y5 = db1["reactor_mass"]
+    y6 = db2["reactor_mass"]
+
+    ax.plot(
+        x,
+        y1,
+        lw=3,
+        label=f"{label1}"
+    )
+
+    ax.plot(
+        x,
+        y2,
+        lw=3,
+        ls="--",
+        label=f"{label2}"
+    )
+
+    ax.plot(
+        x,
+        y3,
+        lw=1,
+        label=f"{label1} fuel mass"
+    )
+
+    ax.plot(
+        x,
+        y4,
+        lw=1,
+        ls="--",
+        label=f"{label2} fuel mass"
+    )
+
+    ax.plot(
+        x,
+        y5,
+        lw=1,
+        label=f"{label1} reactor mass"
+    )
+
+    ax.plot(
+        x,
+        y6,
+        lw=1,
+        ls="--",
+        label=f"{label2} reactor mass"
+    )
+
+    # ---- total-mass crossover ----
+
+    # roots = find_crossovers(x, y1, y2)
+    #
+    # for root in roots:
+    #
+    #     mass = np.interp(root, x, y1)
+    #
+    #     ax.plot(root, mass, "ko")
+    #
+    #     ax.axvline(
+    #         root,
+    #         color="k",
+    #         ls=":",
+    #         alpha=0.5,
+    #     )
+    #
+    #     ax.annotate(
+    #         f"{root:.0f} m/s\n{mass:.0f} kg",
+    #         (root, mass),
+    #         xytext=(10, 10),
+    #         textcoords="offset points",
+    #     )
+    #
+    #     print(
+    #         f"Total mass crossover at "
+    #         f"{root:.1f} m/s "
+    #         f"({mass:.1f} kg)"
+    #     )
+
+    ax.set_xlabel("Ion ΔV [m/s]")
+    ax.set_ylabel("Total Mass [kg]")
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
+
 
 if __name__ == "__main__":
-    # V = Vesta(14_730, 4_153, 7000)
-    # V._converge()
+    V = Vesta(10000, 0)
+    V._converge()
     # print(V)
     # masses = []
     # ion_dv = []
@@ -429,22 +566,32 @@ if __name__ == "__main__":
     # plt.plot(allowable_boosts, ion_dv)
     # plt.show()
 
-    resolution = 100
-    dVs_inj = np.linspace(0, 7500+8500+2000, resolution)
-    dVs_rdvz = np.linspace(0, 25000, resolution)
-    path = Path(__file__).parent / "mass_database_vesta_FH_Exp.pkl"
-    # data = generate_mass_database(dVs_inj, dVs_rdvz,path=path) # TODO MAKE NEW MASS INTERP WITH FH EXP
-    db = load_mass_database(filename=path)
+    path_hall = Path(__file__).parent / "mass_database_vesta_Ariane64_hall.pkl"
+    path_ion = Path(__file__).parent / "mass_database_vesta_Ariane64.pkl"
+    path = path_hall
+    ion_dvs = np.linspace(0, 25000, 500)
 
-    interp = MassInterpolator(filename=path)
+    # data = generate_mass_database(
+    #     ion_dvs,
+    #     path=path
+    # )
 
-    # _test_mass_database(db)
-    # _test_interpolator_no_nans(db)
-    # _test_all_grid_points(db)
+    db_ion = load_mass_database(path_ion)
+    db_hall = load_mass_database(path_hall)
 
-    plot_mass_heatmap(
-        interp,
-        database=db,
-        resolution=300,
-        show_points=False
-    )
+    plot_mass_breakdown_comparison(db_ion, db_hall)
+
+
+    # interp = MassInterpolator(path)
+
+    # plot_mass_curve(
+    #     interp,
+    #     ion_dv_range=(
+    #         db["ion_dv"].min(),
+    #         db["ion_dv"].max()
+    #     ),
+    #     database=db,
+    #     show_points=True,
+    # )
+
+    # plot_mass_breakdown(db)

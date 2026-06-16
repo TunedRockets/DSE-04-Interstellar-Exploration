@@ -37,6 +37,7 @@ static_area = (2.2**2)*m.pi + 2*2
 
 # ion system: (http://large.stanford.edu/courses/2025/ph240/tuckey1/docs/nasa-nov17.pdf)
 Isp_ion = 4220
+# Isp_ion = 3300 # Hall effect option
 '''[s] ion drive isp'''
 guess_dV_inclination = 3000
 
@@ -48,11 +49,15 @@ guess_dV_rdvz = 17_000
 guess_dV_ion = guess_dV_rdvz + guess_dV_inclination
 '''[m/s] total dv required by ion system'''
 Me_ion = 15 + 36 # NEXT thruster mass
+# Me_ion = 2 # Hall effect
 '''[kg] ion engine mass'''
 P_ion = 7400
+# P_ion = 2300 # Hall effect option
 '''[w] power per ion engine'''
 F_ion = 0.235
+# F_ion = 88/1000 # Hall effect option
 '''[N] thrust per ion engine'''
+
 T_max_inclination = 700*jkat.DAY
 '''max time spent on inclination burn'''
 R = 8.31446261815324
@@ -145,7 +150,7 @@ class Hestia():
         self.verbose = verbose
         self.convergence_tolerance = convergence_tolerance
         self.boost_isp = 330 # hypergaulic type engines
-
+        self.static_mass = static_mass
         # the varying variables 
         self.Mass_ion = 51
         '''the ion engines and tanks (not fuel)'''
@@ -1019,7 +1024,7 @@ class Vesta(Hestia):
         self.Area_heatshield = 0 # not used
         self.dV_inclination = 0 # not used
 
-
+        self.static_mass=static_mass
 
         self.min_acceleration = min_acceleration
         '''minimum acceleration required for sizing the Ion system'''

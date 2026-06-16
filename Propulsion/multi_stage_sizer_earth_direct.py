@@ -288,11 +288,12 @@ class Launcher():
             payload_mass
         )
 
-        return dv_to_vinf(
-            dv,
-            self.ref_LEO_velocity,
-            self.ref_escape_velocity
-        )
+        # return dv_to_vinf(
+        #     dv,
+        #     self.ref_LEO_velocity,
+        #     self.ref_escape_velocity
+        # )
+        return dv # FUCK FUCK FUCK WE DONT TALK ABOUT THIS
 
     # def get_C3_performance(self, payload_mass):
     #
@@ -435,9 +436,9 @@ def get_vinf(launcher, kickstages, payload_mass):
         kick_dv = kick.get_total_dv(payload_mass)
 
         v_inf = dv_to_vinf(kick_dv+launcher_dv, launcher.ref_LEO_velocity, launcher.ref_escape_velocity)
-    if v_inf > best_vinf:
-        best_vinf = v_inf
-        best_kickstage = kick
+        if v_inf > best_vinf:
+            best_vinf = v_inf
+            best_kickstage = kick
     return best_vinf, best_kickstage
 
 def plot_get_vinf(
@@ -1710,15 +1711,15 @@ if __name__ == "__main__":
 
         (Falcon9,
          "Falcon 9"),
-        #
+
         (Ariane64_Launcher, "Ariane 64"),
-        #
-        # (Starship_SuperHeavy,
-        #  "Starship + Super Heavy"),
+
+        (Starship_SuperHeavy,
+         "Starship + Super Heavy"),
 
         (FalconHeavy_Reusable,
          "Falcon Heavy (Reusable)"),
-        #
+
         (Vulcan,
          "Vulcan Centaur"),
 
@@ -1727,12 +1728,12 @@ if __name__ == "__main__":
         #
         (FalconHeavy_Expendable,
          "Falcon Heavy (Expendable)"),
-        #
-        # (SLS_Block1_ICPS,
-        #  "SLS Block 1 (ICPS)"),
-        #
-        # (SLS_CentaurV,
-        #  "SLS + Centaur V"),
+
+        (SLS_Block1_ICPS,
+         "SLS Block 1 (ICPS)"),
+
+        (SLS_CentaurV,
+         "SLS + Centaur V"),
     ]
 
     kickstages = [
@@ -1784,7 +1785,7 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(9, 6))
 
-    payload_range = np.linspace(1, 10000, 1000)
+    payload_range = np.linspace(1, 10000, 10000)
 
     plot_get_vinf(NewGlennLauncher, kickstages_simple, payload_range, ax=ax, label="New Glenn")
     plot_get_vinf(FalconHeavy_Expendable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Expendable")

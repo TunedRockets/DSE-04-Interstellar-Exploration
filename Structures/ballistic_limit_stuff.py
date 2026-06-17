@@ -275,3 +275,5 @@ plt.title('Critical Space Debris Diameter vs Velocity for Comet Interceptor vs P
 plt.legend(['Comet Interceptor', 'Proposed Design', 'baseplate'])
 plt.grid()
 plt.show()
+
+print(y_ours[v==8])

@@ -7,7 +7,7 @@ from ReactoPy.ReactorSize import Reactor
 from functools import cache
 
 import matplotlib as mpl
-# mpl.use('tkagg')
+mpl.use('tkagg')
 # Sources:
 
 # https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/Sort_107145.pdf
@@ -659,7 +659,7 @@ def mass_heatmap(
         min_P2=None,
         max_P2=None,
         res=120,
-        limit=1000.0,
+        limit=600.0,
         plot=False,
         plot_mode="2d",   # "2d" or "3d"
         verbose=False,
@@ -887,6 +887,64 @@ def mass_heatmap(
 
         )
 
+        # ---------------------------------
+        # Read-off lines to optimum point
+        # ---------------------------------
+
+        x_opt = P2_opt / BAR
+        y_opt = T1_opt
+        z_opt = best_mass
+
+        z_floor = 0
+        x_min, x_max = ax.get_xlim()
+        y_min, y_max = ax.get_ylim()
+        z_min, z_max = ax.get_zlim()
+
+        # vertical
+        ax.plot([x_opt, x_opt], [y_opt, y_opt], [z_floor, z_opt], "k:")
+
+        # projection on x-axis plane
+        # ax.plot([x_opt, x_opt], [y_min, y_opt], [z_floor, z_floor], "k:")
+
+        # projection on y-axis plane
+        # ax.plot([x_min, x_opt], [y_opt, y_opt], [z_floor, z_floor], "k:")
+
+        i_opt = np.argmin(np.abs(T1_vals - y_opt))
+        j_opt = np.argmin(np.abs(P2_vals / BAR - x_opt))
+
+        z_total = M[i_opt, j_opt]
+        z_brayton = M_brayton[i_opt, j_opt]
+        z_radiator = M_radiator[i_opt, j_opt]
+        z_reactor = M_reactor[i_opt, j_opt]
+
+        ax.scatter(
+            x_opt, y_opt, z_total,
+            color="black",
+            s=80,
+            zorder=10
+        )
+
+        ax.scatter(
+            x_opt, y_opt, z_brayton,
+            color="tab:orange",
+            s=60,
+            zorder=10
+        )
+
+        ax.scatter(
+            x_opt, y_opt, z_radiator,
+            color="tab:green",
+            s=60,
+            zorder=10
+        )
+
+        ax.scatter(
+            x_opt, y_opt, z_reactor,
+            color="tab:red",
+            s=60,
+            zorder=10
+        )
+
         ax.set_xlabel("P2 (bar)")
 
         ax.set_ylabel("T1 (K)")
@@ -928,6 +986,7 @@ def mass_heatmap(
         print("\n--- OPTIMUM DESIGN ---")
         print(f"T1: {T1_opt:.2f} K")
         print(f"P2: {P2_opt/BAR:.2f} bar")
+        print(f"P4: {sol["P4"]/BAR:.2f} bar")
         print(f"Mass flow: {mdot:.4f} kg/s")
         print(f"Thermal efficiency: {100*efficiency:.2f} %")
         print(f"Compressor mass: {mc:.2f} kg")
@@ -953,6 +1012,143 @@ def size_power(W_elec, T3=max_reactor_temp, max_T1=max_radiator_temp, rad_pressu
     reactor_mass = m_reactor
     brayton_system_mass = mc+mt+m_alternator
     return mass, reactor_mass, radiator_mass, brayton_system_mass, thermal_power, radiator_area
+from scipy.optimize import fsolve
+import numpy as np
+import matplotlib.pyplot as plt
+
+def qin_vs_wnet_curve(engine, solution, mdot, n_points=200, plot=True):
+    """
+    Generate q_in vs w_net curve for a converged Brayton solution.
+
+    Finds the minimum reactor heat input that still gives positive
+    net work by solving w_net = 0, then sweeps up to the design point.
+
+    Parameters
+    ----------
+    engine : BraytonCycle
+        Brayton cycle object
+
+    solution : dict
+        Existing converged solution from solve_cycle()
+
+    n_points : int
+        Number of points on curve
+
+    plot : bool
+        Plot curve
+
+    Returns
+    -------
+    dict containing:
+        qin_critical
+        T3_critical
+        qin
+        wnet
+    """
+
+    P1 = solution["P1"]
+    P2 = solution["P2"]
+    T1 = solution["T1"]
+
+    design_qin = solution["q_in"]
+    design_T3 = solution["T3"]
+
+    # --------------------------------------------------
+    # Find T3 where LP turbine produces zero work
+    # --------------------------------------------------
+
+    def residual(T3):
+        T3 = T3[0]
+
+        sol = engine.solve_cycle(
+            P1=P1,
+            P2=P2,
+            T1=T1,
+            T3=T3
+        )
+
+        return [sol["net_specific"]*mdot]
+
+    # start near compressor outlet
+    T3_guess = solution["T2"] + 10.0
+
+    T3_critical = float(fsolve(residual, T3_guess)[0])
+
+    sol_critical = engine.solve_cycle(
+        P1=P1,
+        P2=P2,
+        T1=T1,
+        T3=T3_critical
+    )
+
+    qin_critical = sol_critical["q_in"]
+
+    # --------------------------------------------------
+    # Sweep from critical point to design point
+    # --------------------------------------------------
+
+    T3_vals = np.linspace(
+        T3_critical,
+        design_T3,
+        n_points
+    )
+
+    qin_vals = np.zeros_like(T3_vals)
+    wnet_vals = np.zeros_like(T3_vals)
+
+    for i, T3 in enumerate(T3_vals):
+
+        sol = engine.solve_cycle(
+            P1=P1,
+            P2=P2,
+            T1=T1,
+            T3=T3
+        )
+
+        qin_vals[i] = sol["q_in"]
+        wnet_vals[i] = sol["net_specific"]
+
+    # --------------------------------------------------
+    # Plot
+    # --------------------------------------------------
+
+    if plot:
+
+        plt.figure(figsize=(8,5))
+
+        plt.plot(
+            qin_vals*mdot/1000,
+            wnet_vals*mdot/1000,
+            lw=2
+        )
+
+        plt.axhline(
+            0,
+            color="k",
+            linestyle="--"
+        )
+
+        plt.axvline(
+            qin_critical*mdot/1000,
+            color="r",
+            linestyle="--",
+            label=f"Minimum q_in = {qin_critical*mdot/1000:.2f} kJ"
+        )
+
+        plt.xlabel("Reactor Heat Input q_in (kW)")
+        plt.ylabel("Net Specific Work w_net (kW)")
+        plt.title("Brayton Cycle Power Threshold")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    return {
+        "qin_critical": qin_critical,
+        "T3_critical": T3_critical,
+        "qin": qin_vals,
+        "wnet": wnet_vals
+    }
 
 # =========================================================
 # MAIN
@@ -986,6 +1182,8 @@ if __name__ == "__main__":
 
     high_pressures = []
 
+    # Final desin
+
     best = mass_heatmap(
         engine,
         W_elec=23800,
@@ -993,10 +1191,25 @@ if __name__ == "__main__":
         T3=max_reactor_temp,
         max_T1=max_radiator_temp,
         plot=True,
-        plot_mode="2d",
+        plot_mode="3d",
         verbose=True,
+        res=400
         # mass_budget=300
     )
+
+    (total, (T1_opt, P2_opt, mc, mt, mr, m_alternator, m_reactor, mdot)) = best
+
+    sol = engine.solve_cycle(
+        P1=15.5 * BAR,
+        P2=P2_opt,
+        T1=T1_opt,
+        T3=max_reactor_temp
+    )
+
+    curve = qin_vs_wnet_curve(engine, sol, mdot)
+
+    print("Critical T3:", curve["T3_critical"], "K")
+    print("Critical q_in:", curve["qin_critical"] / 1000, "kW")
 
     # for low_pressure in low_pressures:
     #     best = mass_heatmap(

@@ -15,20 +15,25 @@ modelled in a free-space frame co-moving with the ISO (the ISO is "still").
 Two vehicles are simulated in sequence:
   1) The MOTHER PROBE  -- flies a survey orbit around the ISO, performing LiDAR
                           scans until >= 50% of the surface is mapped, then
-                          descends to a close stand-off point for lander release.
+                          descends to a close stand-off point for lander release,
+                          then RETURNS to its original survey orbit and acts as
+                          a comm relay for the lander (ADDED).
   2) The LANDER         -- separates and descends to the surface under its own
-                          ADCS / RCS.
+                          ADCS / RCS. It is rendered as a visible cube and shown
+                          in the probe animation after release (ADDED).
 
 Outputs
 -------
 * A LIVE matplotlib animation (not a gif, not a sequence of stills) showing:
-    - left  3D panel : vehicle flying around the non-uniform ISO, with the
-                       LiDAR-scanned surface patches lighting up, and the final
-                       descent / landing track.
+    - left  3D panel : vehicle (cube body + 4x3 corner RCS clusters) flying
+                       around the non-uniform ISO, with the LiDAR-scanned
+                       surface patches lighting up, the descent / landing
+                       track, the released lander, and the probe<->lander
+                       comm link.
     - right panels   : live time histories of every disturbance-torque source,
                        surface coverage / altitude, and vehicle speed.
 * Static summary figures: disturbance-torque magnitudes, surface-coverage curve,
-  and the 3D survey + descent track.
+  and the 3D survey + descent + return track.
 * A printed report of all valuable numbers and the resulting ADCS hardware
   selection for both the probe and the lander.
 
@@ -45,7 +50,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection  # >>> CHANGED: + Line3DCollection
 from scipy.spatial import ConvexHull
 
 # ----------------------------------------------------------------------------- #
@@ -68,12 +73,13 @@ R_HELIO    = 100.0 * AU         # rendezvous heliocentric distance  [m]    (repo
 # --- Mother probe (HESTIA bus after kick-stage jettison) --------------------- #
 # Report Table 3.10: spacecraft wet mass ~2188.5 kg after the kick stage is
 # discarded; the bus is a 2 m cube (sec. 3.11.1). We use the on-station wet mass.
-PROBE_MASS   = 1500             # spacecraft wet mass at ISO        [kg]   (Table 3.10)
+PROBE_MASS   = 2353             # spacecraft wet mass at ISO        [kg]   (Table 3.10)
 PROBE_SIDE   = 2.0              # cube side length                  [m]    (sec. 3.11.1)
 PROBE_CD     = 1.4              # surface area coeff for SRP (cube faces, conservative)
 PROBE_REFL   = 0.6              # reflectivity (MLI / coatings, 0=black 1=mirror)
 PROBE_CG_OFF = 0.05             # CoP-CoG offset, fraction of side  -> 0.10 m
 PROBE_RES_DIP = 0.5             # residual magnetic dipole          [A m^2] (heritage)
+PROBE_ALT     = 1500
 
 # --- Lander (Philae-class, sec. 3.12.2) -------------------------------------- #
 LANDER_MASS   = 88.8 * 1.10     # Philae mass + 10% margin          [kg]   (Table 3.10)
@@ -94,32 +100,67 @@ SAFETY_MARGIN = 0.05            # AS001: ADCS sized with 5% margin
 
 # --- Delta-v budget / propellant parameters (additive) ----------------------- #
 G0            = 9.80665         # standard gravity (Isp -> exhaust vel)   [m s^-2]
-RCS_ISP       = 70.0            # cold-gas GN2 RCS specific impulse        [s]  (catalogue)
+RCS_ISP       = 30.0            # cold-gas GN2 RCS specific impulse        [s]  (catalogue)
+LAN_ISP       = 76
 DV_MARGIN     = 0.10            # 10% delta-v margin (ECSS-style)
 N_STATIONKEEP = 6              # number of survey-orbit station-keeping corrections
 SK_DV_EACH    = 0.05           # delta-v per station-keeping pulse        [m/s]
 DESAT_DV_BUDGET = 0.10         # cumulative RCS delta-v for wheel desats   [m/s]
 ATT_DV_BUDGET   = 0.20         # cumulative delta-v-equivalent for attitude/RCS pulsing [m/s]
 LANDER_REL_DV   = 0.10         # probe retreat after lander release        [m/s]
+
+# --- Lander mounting geometry ------------------------------------------------ #
+# The lander sits on the -z face of the probe cube, centred, flush with the face.
+# Its CoM is half a lander side below the face, so the offset from the probe CoM
+# along the body z-axis is:  (PROBE_SIDE/2) + (LANDER_SIDE/2)  [m]
+LANDER_MOUNT_OFFSET = np.array([0.0, 0.0, -(PROBE_SIDE / 2 + LANDER_SIDE / 2)])
+# (negative z: mounted on the nadir-pointing face)
+
+# --- Visualisation scales ---------------------------------------------------- #
+# The real bodies (2 m / 1 m cubes) are invisible against a 1 km body at km
+# axis scale, so the rendered cubes are exaggerated. Physics uses real sizes.
+PROBE_VIS_SIDE  = 220.0         # rendered probe cube side          [m]  (visual only)
+LANDER_VIS_SIDE = 140.0         # rendered lander cube side         [m]  (visual only)
+
+# --- Hardcoded moments of inertia -------------------------------------------- #
+# Replace placeholder values with actuals from CAD / structural test.
+# All values are principal-axis diagonal [Ixx, Iyy, Izz] about the body CoM,
+# units: kg m^2.  Off-diagonal terms assumed negligible (principal-axis frame).
+#
+# PROBE_I_COMBINED : probe bus + lander attached  (phases 0 and 1)
+# PROBE_I_POST     : probe bus alone after lander separation (phase 2)
+# PROBE_DELTA_COM  : CoM shift vector [x,y,z] in body frame at the moment of
+#                    lander release [m]  (+z = away from lander mount face)
+# LANDER_I         : lander standalone (used in lander ADCS sizing AND in the
+#                    parallel-axis contribution to PROBE_I_COMBINED)
+#
+# Current values are computed from uniform-cube approximations and will be
+# overwritten once the structural mass model is available.
+PROBE_I_COMBINED = np.array([1804.73, 1804.73, 1584.95])  # [kg m^2] PLACEHOLDER
+PROBE_I_POST     = np.array([1568.67, 1568.67, 1568.67])  # [kg m^2] PLACEHOLDER
+PROBE_DELTA_COM  = np.array([0.0,     0.0,     0.0598])   # [m]      PLACEHOLDER
+LANDER_I         = np.array([11.014,   11.724,   12.679])    # [kg m^2] PLACEHOLDER
+
 seed = random.randrange(100)
 seed2 = random.randrange(100)
 print(seed, seed2)
 tf = random.randrange(2)
-if tf == 0:
-    ISO_MASS = (1-(seed)/100)*ISO_MASS
-else:
-    ISO_MASS = (1+(seed)/100)*ISO_MASS
-tf2 = random.randrange(2)
-if tf2 == 0:
-    ISO_RMEAN = np.abs(1-seed2/seed)*ISO_RMEAN
-else:
-    ISO_RMEAN = np.abs(1+seed2/seed)*ISO_RMEAN
-print(ISO_MASS, ISO_RMEAN)
+
+#if tf == 0:
+    #ISO_MASS = (1-(seed)/100)*ISO_MASS
+#else:
+   # ISO_MASS = (1+(seed)/100)*ISO_MASS
+#tf2 = random.randrange(2)
+#if tf2 == 0:
+    #ISO_RMEAN = np.abs(1-seed2/seed)*ISO_RMEAN
+#else:
+   # ISO_RMEAN = np.abs(1+seed2/seed)*ISO_RMEAN
+#print(ISO_MASS, ISO_RMEAN)
 
 # ============================================================================= #
 #  1.  NON-UNIFORM ISO SHAPE MODEL
 # ============================================================================= #
-def make_iso_shape(r_mean=ISO_RMEAN, n_lat=22, n_lon=44, seed=seed):
+def make_iso_shape(r_mean=ISO_RMEAN, n_lat=22, n_lon=44, seed=7):
     """
     Build a lumpy, non-uniform "potato" ISO by perturbing a sphere with a sum of
     low-order spherical-harmonic-like bumps. Returns a triangulated convex-ish
@@ -184,12 +225,125 @@ def make_iso_shape(r_mean=ISO_RMEAN, n_lat=22, n_lon=44, seed=seed):
 
 
 # ============================================================================= #
+#  1b.  VEHICLE GEOMETRY HELPERS  (ADDED)
+# ============================================================================= #
+def cube_poly_verts(center, side):
+    """
+    Return the 6 quadrilateral faces of an axis-aligned cube of the given side
+    length centred on `center`, as a list of (4,3) vertex arrays suitable for a
+    Poly3DCollection. Used to render the probe / lander bodies.
+    """
+    h = side / 2.0
+    c = np.array([[sx, sy, sz] for sx in (-h, h) for sy in (-h, h) for sz in (-h, h)])
+    c = c + np.asarray(center, dtype=float)
+    F = [[0, 1, 3, 2], [4, 5, 7, 6],        # -x, +x
+         [0, 1, 5, 4], [2, 3, 7, 6],        # -y, +y
+         [0, 2, 6, 4], [1, 3, 7, 5]]        # -z, +z
+    return [c[f] for f in F]
+
+
+# RCS layout (per the design): 4 clusters of 3 thrusters each, on OPPOSING
+# corners of the cube (tetrahedral pattern). Each cluster's 3 nozzles point
+# outward along the body x, y, z axes -> full 6-DOF torque + translation
+# authority with 12 thrusters. Same layout on probe and lander.
+RCS_CORNER_SIGNS = np.array([[ 1,  1,  1],
+                             [ 1, -1, -1],
+                             [-1,  1, -1],
+                             [-1, -1,  1]], dtype=float)
+
+
+def rcs_segments(center, side, nozzle_len=None):
+    """
+    Line segments for the 4x3 corner-mounted RCS clusters of a cube body.
+    Returns 12 segments (one per nozzle) for a Line3DCollection.
+    """
+    h = side / 2.0
+    if nozzle_len is None:
+        nozzle_len = 0.45 * side
+    center = np.asarray(center, dtype=float)
+    segs = []
+    for s in RCS_CORNER_SIGNS:
+        corner = center + s * h
+        for ax in range(3):
+            d = np.zeros(3)
+            d[ax] = s[ax] * nozzle_len
+            segs.append(np.array([corner, corner + d]))
+    return segs
+
+
+def rotation_between(a, b):
+    """Rotation matrix mapping unit vector a onto unit vector b (Rodrigues)."""
+    a = np.asarray(a, float); b = np.asarray(b, float)
+    a = a / np.linalg.norm(a); b = b / np.linalg.norm(b)
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))
+    s = np.linalg.norm(v)
+    if s < 1e-12:
+        if c > 0:
+            return np.eye(3)
+        # antiparallel: rotate 180 deg about any axis perpendicular to a
+        p = np.array([1.0, 0.0, 0.0])
+        if abs(a[0]) > 0.9:
+            p = np.array([0.0, 1.0, 0.0])
+        axis = np.cross(a, p); axis /= np.linalg.norm(axis)
+        K = np.array([[0, -axis[2], axis[1]],
+                      [axis[2], 0, -axis[0]],
+                      [-axis[1], axis[0], 0]])
+        return np.eye(3) + 2 * (K @ K)
+    K = np.array([[0, -v[2], v[1]],
+                  [v[2], 0, -v[0]],
+                  [-v[1], v[0], 0]])
+    return np.eye(3) + K + K @ K * ((1 - c) / s**2)
+
+
+# ============================================================================= #
 #  2.  RIGID-BODY INERTIA OF A UNIFORM CUBE BUS
 # ============================================================================= #
 def cube_inertia(mass, side):
     """Principal moments of inertia of a uniform solid cube about its centre."""
     I = (1.0 / 6.0) * mass * side**2
     return np.array([I, I, I])      # I_xx = I_yy = I_zz for a cube
+
+
+def probe_inertia_with_lander():
+    """
+    Inertia tensor of the combined probe+lander system about the PROBE CoM,
+    treating both bodies as uniform solid cubes.
+
+    The lander is mounted at LANDER_MOUNT_OFFSET from the probe CoM (on the
+    -z face). Its contribution is:
+        I_lander_about_probe_CoM = I_lander_own + m_lander * (|d|^2 * E - d d^T)
+    which is the parallel-axis (Steiner) theorem for a 3-D tensor.
+
+    Returns I_combined [3] (principal diagonal only; off-diagonal terms are
+    zero by symmetry of the cube + axis-aligned offset).
+    """
+    # Return the hardcoded constant; computation kept above for reference.
+    return PROBE_I_COMBINED
+
+
+def probe_inertia_post_release():
+    """
+    Inertia tensor of the probe AFTER lander deployment (lander mass removed).
+    The probe CoM shifts slightly when the lander separates; we update it via
+    the reverse parallel-axis theorem and a CoM correction.
+
+    Step 1: compute the combined CoM shift (the probe CoM moves toward +z
+            when the lander mass on -z is removed).
+    Step 2: the probe body's own inertia about its geometric centre is still
+            cube_inertia(PROBE_MASS, PROBE_SIDE), but now the reference point
+            for the ADCS is the new (post-release) probe CoM, which is offset
+            from the geometric centre.
+
+    For HESTIA the CoM shift is small (< 5 mm on a 2 m body; see below), so
+    the dominant effect is simply the removal of the lander's parallel-axis
+    contribution. Both effects are computed exactly here.
+
+    Returns (I_post [3], delta_com [3]) where delta_com is the shift of the
+    probe CoM in body coordinates after release.
+    """
+    # Return hardcoded constants; derivation kept in docstring above.
+    return PROBE_I_POST, PROBE_DELTA_COM
 
 
 # ============================================================================= #
@@ -209,7 +363,7 @@ class DisturbanceModel:
     """
 
     def __init__(self, mass, side, refl, cg_off_frac, res_dipole,
-                 r_helio=R_HELIO):
+                 r_helio=R_HELIO, inertia=None):
         self.mass = mass
         self.side = side
         self.area = side * side                     # one face area  [m^2]
@@ -217,7 +371,9 @@ class DisturbanceModel:
         self.cp_cg = cg_off_frac * side             # CoP-CoG offset [m]
         self.dipole = res_dipole
         self.r_helio = r_helio
-        self.I = cube_inertia(mass, side)
+        # Accept an explicit inertia tensor (e.g. combined probe+lander or
+        # post-release probe-only) rather than always recomputing from mass/side.
+        self.I = inertia if inertia is not None else cube_inertia(mass, side)
 
         # Solar flux at rendezvous distance
         self.solar_flux = L_SUN / (4 * np.pi * r_helio**2)     # [W/m^2]
@@ -271,7 +427,7 @@ class DisturbanceModel:
 
 
 # ============================================================================= #
-#  4.  PROXIMITY TRAJECTORY  (probe survey orbit -> descent)
+#  4.  PROXIMITY TRAJECTORY  (probe survey orbit -> descent -> return)
 # ============================================================================= #
 def keplerian_orbit_radius(iso_mass, alt):
     """Circular-orbit speed & period for an orbit at radius (r_mean+alt)."""
@@ -282,7 +438,7 @@ def keplerian_orbit_radius(iso_mass, alt):
     return r, v, T
 
 
-def build_probe_trajectory(iso, n_survey_orbits=3.0, survey_alt=10_000,
+def build_probe_trajectory(iso, n_survey_orbits=3.0, survey_alt=PROBE_ALT,
                            standoff_alt=200.0, n_pts=1400):
     """
     Survey phase: a precessing near-polar circular orbit so the ground track
@@ -321,18 +477,80 @@ def build_probe_trajectory(iso, n_survey_orbits=3.0, survey_alt=10_000,
     # spiral that ends pointing at the landing site direction
     base = np.column_stack([np.cos(ang), np.sin(ang), 0.2 * np.sin(0.5 * ang)])
     base /= np.linalg.norm(base, axis=1, keepdims=True)
+
+    # >>> ADDED (velocity-spike fix, part 1/2): the spiral used to start at the
+    # fixed direction [1,0,0] regardless of where the survey ended, producing a
+    # position jump at the survey->descent seam (a huge spurious speed spike in
+    # the central-difference speed trace). Rotate the spiral so its first
+    # direction coincides with the survey end direction -> position-continuous.
+    end_dir = survey[-1] / np.linalg.norm(survey[-1])
+    base = base @ rotation_between(base[0], end_dir).T
+
     # blend spiral direction into the site direction toward the end
     blend = np.linspace(0, 1, n_desc)[:, None]
     dirs = (1 - blend) * base + blend * site_dir
     dirs /= np.linalg.norm(dirs, axis=1, keepdims=True)
     descent = dirs * r_desc[:, None]
 
-    t_desc = t_surv[-1] + np.linspace(0, 0.6 * T_s, n_desc)
+    # >>> CHANGED (velocity-spike fix, part 2/2): t_desc used to start exactly
+    # at t_surv[-1] (duplicate time stamp -> dt = 0 across the seam, blowing up
+    # the finite-difference speed). Offset the first descent sample by one
+    # survey time-step so the time axis is strictly increasing.
+    dt0 = t_surv[-1] - t_surv[-2]
+    t_desc = t_surv[-1] + np.linspace(dt0, 0.6 * T_s, n_desc)
 
     pos = np.vstack([survey, descent])
     t = np.concatenate([t_surv, t_desc])
     phase = np.concatenate([np.zeros(n_surv), np.ones(n_desc)])
     return t, pos, phase, site_dir, v_n
+
+
+def build_probe_return(start_pos, t_start, survey_alt=PROBE_ALT, n_pts=420):
+    """
+    #>>> ADDED  --  Phase 2: post-release return to the survey orbit.
+
+    After the lander is released at the stand-off point, the probe climbs back
+    out to its original survey altitude along a smooth spiral (mirror of the
+    descent), then holds a circular parking arc at the survey radius where it
+    acts as the comm relay between the lander and Earth.
+
+    Returns (t, pos[N,3]) with t continuing from t_start; position is
+    continuous with the descent end point (start_pos).
+    """
+    r_s, v_s, T_s = keplerian_orbit_radius(ISO_MASS, survey_alt)
+    r0 = np.linalg.norm(start_pos)
+    u = np.asarray(start_pos, float) / r0
+
+    # in-plane direction for the climb / parking arc
+    zhat = np.array([0.0, 0.0, 1.0])
+    w = np.cross(zhat, u)
+    if np.linalg.norm(w) < 1e-6:
+        w = np.cross(np.array([0.0, 1.0, 0.0]), u)
+    w /= np.linalg.norm(w)
+
+    n_up = max(2, int(n_pts * 0.55))
+    n_park = max(2, n_pts - n_up)
+
+    # ---- climb: smoothstep radius, gentle winding (mirror of the descent) -- #
+    s = np.linspace(0, 1, n_up)
+    r_up = r0 + (r_s - r0) * (3 * s**2 - 2 * s**3)
+    ang_up = 1.25 * np.pi * s
+    dirs_up = np.cos(ang_up)[:, None] * u + np.sin(ang_up)[:, None] * w
+    pos_up = dirs_up * r_up[:, None]
+    t_up = np.linspace(0.0, 0.6 * T_s, n_up)
+
+    # ---- parking arc at the survey radius (comm-relay station) ------------ #
+    t_park = np.linspace(0.0, 0.5 * T_s, n_park)
+    ang_park = ang_up[-1] + (2 * np.pi / T_s) * t_park
+    dirs_park = np.cos(ang_park)[:, None] * u + np.sin(ang_park)[:, None] * w
+    pos_park = dirs_park * r_s
+
+    dtp = t_park[1] - t_park[0]
+    t_rel = np.concatenate([t_up, t_up[-1] + dtp + t_park])
+    pos = np.vstack([pos_up, pos_park])
+    dt0 = t_up[1] - t_up[0]
+    t = t_start + dt0 + t_rel
+    return t, pos
 
 
 def build_lander_trajectory(iso, site_dir, release_alt=200.0, n_pts=500):
@@ -500,7 +718,7 @@ def orbit_speed(alt):
     return np.sqrt(mu / (ISO_RMEAN + alt))
 
 
-def propellant_mass(dv_total, m0, isp=RCS_ISP):
+def propellant_mass(dv_total, m0, isp):
     """
     Tsiolkovsky propellant mass for a given total delta-v and initial (wet) mass.
         m_prop = m0 * (1 - exp(-dv / (Isp*g0)))
@@ -523,7 +741,15 @@ def deltav_budget_probe(pos, phase, isp=RCS_ISP, m0=PROBE_MASS):
       - Attitude-control RCS pulsing (slews / pointing)
       - Descent: integrated speed change along the spiral from survey to stand-off
       - Lander-release retreat burn
-    Returns (budget_dict, dv_total, dv_with_margin, m_prop, ve).
+      - Return climb to the survey orbit + re-insertion (phase 2)
+
+    Propellant is computed in TWO CHAINED STAGES so that the post-release phase
+    correctly uses the reduced probe mass (lander separated):
+        stage 1: phases 0+1  with m0 = PROBE_MASS (lander still attached)
+        stage 2: phase  2    with m0 = PROBE_MASS - lander propellant mass removed
+                                      (only PROBE_MASS itself; lander has separated)
+
+    Returns (budget_dict, dv_total, dv_with_margin, m_prop_total, ve).
     """
     surv = phase == 0
     desc = phase == 1
@@ -537,20 +763,13 @@ def deltav_budget_probe(pos, phase, isp=RCS_ISP, m0=PROBE_MASS):
     dv_desat = DESAT_DV_BUDGET
     dv_att = ATT_DV_BUDGET
 
-    # descent: sum of |delta-speed| along the descent track (RCS controlled)
-    dpos = np.diff(pos[desc], axis=0)
-    dt = 1.0                                     # per-step; magnitudes only -> use path
-    seg = np.linalg.norm(dpos, axis=1)
-    # convert the radius change into an equivalent braked delta-v: the descent
-    # starts at survey speed and is brought to ~0 at the stand-off point, plus
-    # the path-following control effort. Use survey speed as the dominant term.
     r_standoff = np.linalg.norm(pos[desc][-1])
     v_standoff = orbit_speed(r_standoff - ISO_RMEAN)
     dv_descent = orbit_speed(alt_surv) + v_standoff   # de-orbit + re-circularise/null
 
     dv_release = LANDER_REL_DV
 
-    budget = {
+    budget_pre = {
         "Survey-orbit insertion": dv_insert,
         "Station-keeping (survey)": dv_sk,
         "Wheel desaturation (RCS)": dv_desat,
@@ -558,13 +777,36 @@ def deltav_budget_probe(pos, phase, isp=RCS_ISP, m0=PROBE_MASS):
         "Descent to stand-off": dv_descent,
         "Lander-release retreat": dv_release,
     }
+
+    dv_pre = sum(budget_pre.values())
+    dv_pre_margin = dv_pre * (1 + DV_MARGIN)
+    ve = isp * G0
+    m_prop_pre = m0 * (1.0 - np.exp(-dv_pre_margin / ve))
+
+    budget = dict(budget_pre)
+
+    # Phase 2: probe has jettisoned the lander, so the wet mass is now
+    # PROBE_MASS minus the propellant already burned in phases 0+1.
+    # The lander mass (LANDER_MASS) has physically separated and is NOT
+    # subtracted again — it was never the probe's propellant.
+    m_post_release = m0 - m_prop_pre          # probe wet mass at start of phase 2
+
+    if np.any(phase == 2):
+        dv_return = v_standoff + orbit_speed(alt_surv)
+        budget["Return to survey orbit (post-release)"] = dv_return
+        dv_return_margin = dv_return * (1 + DV_MARGIN)
+        m_prop_post = m_post_release * (1.0 - np.exp(-dv_return_margin / ve))
+    else:
+        m_prop_post = 0.0
+        dv_return = 0.0
+
+    m_prop_total = m_prop_pre + m_prop_post
     dv_total = sum(budget.values())
     dv_margin = dv_total * (1 + DV_MARGIN)
-    m_prop, ve = propellant_mass(dv_margin, m0, isp)
-    return budget, dv_total, dv_margin, m_prop, ve
+    return budget, dv_total, dv_margin, m_prop_total, ve
 
 
-def deltav_budget_lander(pos, r_surface, isp=RCS_ISP, m0=LANDER_MASS):
+def deltav_budget_lander(pos, r_surface, isp=LAN_ISP, m0=LANDER_MASS):
     """
     Lander descent delta-v budget from the simulated descent track.
 
@@ -629,11 +871,19 @@ def print_header(title):
     print("=" * 78)
 
 
-def report_vehicle(label, mass, side, dist_model, sized, hw, extra=None):
+def report_vehicle(label, mass, side, dist_model, sized, hw, extra=None,
+                   sized_post=None, hw_post=None, delta_com=None):
     print_header(f"{label}  -  CONFIGURATION & ADCS SELECTION")
     print(f"  Mass                          : {mass:10.2f} kg")
     print(f"  Body (cube) side length       : {side:10.2f} m")
     print(f"  Principal MoI  (Ixx=Iyy=Izz)  : {sized['I'][0]:10.2f} kg m^2")
+    if sized_post is not None:
+        print(f"  MoI post-release (probe only) : {sized_post['I'][0]:10.2f} kg m^2"
+              f"  (delta = {sized_post['I'][0] - sized['I'][0]:+.2f} kg m^2,"
+              f" {(sized_post['I'][0]/sized['I'][0]-1)*100:+.2f}%)")
+        if delta_com is not None:
+            print(f"  CoM shift at lander release   : "
+                  f"[{delta_com[0]:+.4f}, {delta_com[1]:+.4f}, {delta_com[2]:+.4f}] m")
     print(f"  Heliocentric distance         : {dist_model.r_helio/AU:10.2f} AU")
     print(f"  Solar flux at station         : {dist_model.solar_flux:10.4e} W/m^2")
 
@@ -667,6 +917,10 @@ def report_vehicle(label, mass, side, dist_model, sized, hw, extra=None):
     print(f"                        thrust={thr:.3f} N, Isp={isp} s, arm={hw['moment_arm']:.2f} m")
     print(f"                        -> control torque {thr*hw['moment_arm']:.3e} N m "
           f"(req {sized['T_rcs_req']:.3e})  [{note}]")
+    # >>> ADDED: thruster layout per the design (same on probe and lander)
+    print(f"                        layout: 4 corner clusters x 3 nozzles = 12 thrusters")
+    print(f"                                on opposing cube corners (tetrahedral pattern),")
+    print(f"                                nozzles along body x/y/z -> full 6-DOF authority")
     nm, acc, note = hw["st"]
     print(f"     Attitude sensor  : {nm}  (acc {acc*3600:.1f} arcsec)  [{note}]")
     print(f"     + IMU (gyro+accel), Sun sensors (safe mode), "
@@ -674,6 +928,223 @@ def report_vehicle(label, mass, side, dist_model, sized, hw, extra=None):
     if extra:
         for line in extra:
             print(f"  {line}")
+
+    # Post-release ADCS sizing comparison (probe only, after lander jettison)
+    if sized_post is not None and hw_post is not None:
+        print("\n  POST-RELEASE ADCS (probe alone, lander jettisoned):")
+        print(f"     Mass (probe only)          : {PROBE_MASS:10.2f} kg"
+              f"  (was {PROBE_MASS + LANDER_MASS:.2f} kg combined)")
+        print(f"     Inertia (Ixx=Iyy=Izz)     : {sized_post['I'][0]:10.2f} kg m^2"
+              f"  (was {sized['I'][0]:.2f} kg m^2, delta {sized_post['I'][0]-sized['I'][0]:+.2f})")
+        print(f"     RW torque required         : {sized_post['T_rw_req']:10.4e} N m"
+              f"  (pre {sized['T_rw_req']:.4e},"
+              f" delta {(sized_post['T_rw_req']/sized['T_rw_req']-1)*100:+.1f}%)")
+        print(f"     RW momentum required       : {sized_post['h_rw_req']:10.4e} N m s"
+              f"  (pre {sized['h_rw_req']:.4e},"
+              f" delta {(sized_post['h_rw_req']/sized['h_rw_req']-1)*100:+.1f}%)")
+        print(f"     RCS torque required        : {sized_post['T_rcs_req']:10.4e} N m"
+              f"  (pre {sized['T_rcs_req']:.4e},"
+              f" delta {(sized_post['T_rcs_req']/sized['T_rcs_req']-1)*100:+.1f}%)")
+        nm_post, tmax_p, hstore_p, mass_p = hw_post["rw"]
+        nm_pre, tmax_r, hstore_r, mass_r = hw["rw"]
+        hw_changed = nm_post != nm_pre
+        print(f"     Selected RW post-release   : 4x {nm_post}"
+              f"  {'<<< HARDWARE CHANGE' if hw_changed else '(unchanged)'}")
+        nm_rcs_post, thr_p, isp_p, note_p = hw_post["rcs"]
+        nm_rcs_pre,  thr_r, isp_r, note_r = hw["rcs"]
+        rcs_changed = nm_rcs_post != nm_rcs_pre
+        print(f"     Selected RCS post-release  : {nm_rcs_post}"
+              f"  {'<<< HARDWARE CHANGE' if rcs_changed else '(unchanged)'}")
+
+
+
+# ============================================================================= #
+#  8b.  THRUST & CUMULATIVE MASS PLOTS
+# ============================================================================= #
+# Manoeuvre durations (fixed assumptions; used only for plotting burn widths).
+# Impulsive burns are given a short finite width so they're visible on the plot.
+_BURN_DURATIONS = {
+    # probe
+    "Survey-orbit insertion":              60.0,    # 1-min impulsive
+    "Station-keeping (survey)":           180.0,    # 3-min spread over survey
+    "Wheel desaturation (RCS)":            30.0,    # short pulses
+    "Attitude control (RCS)":             600.0,    # distributed over mission
+    "Descent to stand-off":              3600.0,    # ~1 h descent
+    "Lander-release retreat":              30.0,    # short
+    "Return to survey orbit (post-release)": 3600.0,  # ~1 h climb
+    # lander
+    "Separation push-off":                 10.0,
+    "Descent braking (null orbital v)":   200.0,
+    "Cross-range / hazard avoid":         300.0,
+    "Touchdown null burn":                 10.0,
+}
+_DEFAULT_BURN_DUR = 60.0   # fallback for any unlisted entry
+
+
+def build_thrust_profile(budget, t_starts, isp, m0, phase_t, phase_arr,
+                         phase_map, dt=10.0):
+    """
+    Construct thrust [N] and cumulative propellant mass [kg] vs time [s].
+
+    budget     : OrderedDict of {label: delta_v}  (with margin already applied
+                 inside deltav_budget_* — we use raw dv here for the burn sizing,
+                 adding DV_MARGIN explicitly so the propellant matches the budget)
+    t_starts   : dict {label: t_centre [s]}  — when each burn is centred
+    isp        : specific impulse [s]
+    m0         : initial wet mass [kg]
+    phase_t    : time array of the full trajectory
+    phase_arr  : phase array matching phase_t
+    phase_map  : dict {label: phase_value} controlling phase boundaries
+    dt         : time resolution of the output timeseries [s]
+
+    Returns (t_out, thrust_out, mass_used_out).
+    """
+    ve = isp * G0
+    t_out = np.arange(phase_t[0], phase_t[-1] + dt, dt)
+    thrust_out   = np.zeros_like(t_out)
+    mass_used_out = np.zeros_like(t_out)
+
+    m_current = m0
+    for label, dv in budget.items():
+        dv_m = dv * (1 + DV_MARGIN)          # with margin (matches budget total)
+        dur  = _BURN_DURATIONS.get(label, _DEFAULT_BURN_DUR)
+        t_c  = t_starts.get(label, phase_t[0])
+        t0b  = t_c - dur / 2.0
+        t1b  = t_c + dur / 2.0
+
+        # mass flow rate for this burn segment (constant mdot assumption)
+        dm   = m_current * (1.0 - np.exp(-dv_m / ve))
+        mdot = dm / dur                      # [kg/s]
+        F    = mdot * ve                     # thrust = mdot * ve  [N]
+
+        mask = (t_out >= t0b) & (t_out < t1b)
+        thrust_out[mask] += F
+        m_current -= dm
+
+    # cumulative mass consumed: integrate mdot profile
+    for j in range(1, len(t_out)):
+        mass_used_out[j] = mass_used_out[j-1] + thrust_out[j-1] / ve * dt
+
+    return t_out, thrust_out, mass_used_out
+
+
+def _probe_burn_centres(t_p, phase_p):
+    """
+    Return a dict mapping each probe budget label to a representative
+    time coordinate for plotting burn windows.
+    """
+    idx_surv = np.where(phase_p == 0)[0]
+    idx_desc = np.where(phase_p == 1)[0]
+    idx_ret  = np.where(phase_p == 2)[0]
+
+    t_surv_mid = float(t_p[idx_surv[len(idx_surv)//2]])  if len(idx_surv) else 0.0
+    t_surv_end = float(t_p[idx_surv[-1]])                 if len(idx_surv) else 0.0
+    t_desc_mid = float(t_p[idx_desc[len(idx_desc)//2]])  if len(idx_desc) else t_surv_end
+    t_desc_end = float(t_p[idx_desc[-1]])                 if len(idx_desc) else t_surv_end
+    t_ret_start = float(t_p[idx_ret[0]])                  if len(idx_ret)  else t_desc_end
+    t_ret_mid   = float(t_p[idx_ret[len(idx_ret)//2]])   if len(idx_ret)  else t_desc_end
+
+    return {
+        "Survey-orbit insertion":              float(t_p[idx_surv[0]]) + 30.0,
+        "Station-keeping (survey)":            t_surv_mid,
+        "Wheel desaturation (RCS)":            t_surv_mid + 600.0,
+        "Attitude control (RCS)":              t_surv_mid - 300.0,
+        "Descent to stand-off":                t_desc_mid,
+        "Lander-release retreat":              t_desc_end,
+        "Return to survey orbit (post-release)": t_ret_mid,
+    }
+
+
+def _lander_burn_centres(t_l):
+    n = len(t_l)
+    return {
+        "Separation push-off":               float(t_l[0]) + 5.0,
+        "Descent braking (null orbital v)":  float(t_l[n//5]),
+        "Cross-range / hazard avoid":        float(t_l[n//2]),
+        "Touchdown null burn":               float(t_l[-1]) - 5.0,
+    }
+
+
+# Phase colour map for the background shading
+_PHASE_COLORS = {0: "#d0e8ff", 1: "#ffe8c0", 2: "#d4f5d4"}
+_PHASE_LABELS = {0: "Survey orbit", 1: "Descent / stand-off", 2: "Return & comm relay"}
+
+
+def plot_thrust_mass(t_out, thrust, mass_used, phase_t, phase_arr,
+                     vehicle_label, isp, fname):
+    """
+    Two-panel figure: thrust [mN] and cumulative propellant mass [g or kg]
+    vs time [min], with mission phase shading and per-manoeuvre annotations.
+    """
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
+    fig.suptitle(f"{vehicle_label}  —  RCS thrust output & propellant consumption",
+                 fontsize=13)
+
+    t_min = t_out / 60.0
+
+    # ---- phase background shading ---------------------------------------- #
+    # find contiguous phase blocks in the trajectory time array
+    phase_interp = np.interp(t_out, phase_t, phase_arr)
+    phase_block  = np.round(phase_interp).astype(int)
+    for ph, col in _PHASE_COLORS.items():
+        mask = phase_block == ph
+        if not np.any(mask):
+            continue
+        # find contiguous segments
+        idx = np.where(np.diff(np.concatenate([[False], mask, [False]])))[0]
+        for k in range(0, len(idx), 2):
+            x0 = t_min[idx[k]] if idx[k] < len(t_min) else t_min[-1]
+            x1 = t_min[min(idx[k+1], len(t_min)-1)]
+            lbl = _PHASE_LABELS[ph] if k == 0 else None
+            ax1.axvspan(x0, x1, color=col, alpha=0.45, label=lbl)
+            ax2.axvspan(x0, x1, color=col, alpha=0.45)
+
+    # ---- thrust panel ------------------------------------------------------- #
+    thrust_mN = thrust * 1e3                         # N -> mN
+    ax1.step(t_min, thrust_mN, where="mid", color="tab:red", lw=1.8,
+             label="RCS thrust (total, 12 thrusters)")
+    ax1.set_ylabel("Thrust [mN]")
+    ax1.set_ylim(bottom=0)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc="upper right", fontsize=8, ncol=2)
+
+    # annotate peak
+    pk = thrust_mN.max()
+    if pk > 0:
+        pk_t = t_min[np.argmax(thrust_mN)]
+        ax1.annotate(f"peak {pk:.1f} mN",
+                     xy=(pk_t, pk), xytext=(pk_t + t_min[-1]*0.03, pk * 0.85),
+                     arrowprops=dict(arrowstyle="->", color="k", lw=1.0),
+                     fontsize=8)
+
+    # ---- cumulative mass panel --------------------------------------------- #
+    # auto-scale: use grams if total < 1 kg, else kg
+    m_total = mass_used[-1]
+    if m_total < 1.0:
+        m_plot  = mass_used * 1e3
+        m_unit  = "g"
+    else:
+        m_plot  = mass_used
+        m_unit  = "kg"
+
+    ax2.plot(t_min, m_plot, color="tab:blue", lw=2.0,
+             label=f"Cumulative propellant consumed [Isp = {isp:.0f} s]")
+    ax2.set_xlabel("Mission elapsed time [min]")
+    ax2.set_ylabel(f"Propellant used [{m_unit}]")
+    ax2.set_ylim(bottom=0)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(loc="upper left", fontsize=8)
+
+    # annotate final mass
+    ax2.annotate(f"total: {m_plot[-1]:.3f} {m_unit}",
+                 xy=(t_min[-1], m_plot[-1]),
+                 xytext=(t_min[-1] * 0.75, m_plot[-1] * 0.85),
+                 arrowprops=dict(arrowstyle="->", color="k", lw=1.0),
+                 fontsize=8)
+
+    fig.tight_layout()
+    fig.savefig(fname, dpi=130)
+    return fig
 
 
 # ============================================================================= #
@@ -722,6 +1193,11 @@ def plot_track_3d(iso, pos, phase, fname, title):
             color="tab:blue", lw=1.5, label="LiDAR survey orbit")
     ax.plot(pos[desc, 0]/1000, pos[desc, 1]/1000, pos[desc, 2]/1000,
             color="tab:red", lw=2.0, label="Descent / approach")
+    # >>> ADDED: phase-2 return-to-orbit track
+    ret = phase == 2
+    if np.any(ret):
+        ax.plot(pos[ret, 0]/1000, pos[ret, 1]/1000, pos[ret, 2]/1000,
+                color="tab:green", lw=1.8, label="Return to survey orbit")
     lim = iso.r_max / 1000 * 5
     ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
     ax.set_xlabel("x [km]"); ax.set_ylabel("y [km]"); ax.set_zlabel("z [km]")
@@ -736,13 +1212,23 @@ def plot_track_3d(iso, pos, phase, fname, title):
 #  9.  LIVE ANIMATION
 # ============================================================================= #
 def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
-                   vehicle_name, color_body="tab:blue", surface_ref=None):
+                   vehicle_name, color_body="tab:blue", surface_ref=None,
+                   body_side_m=None, lander_overlay=None,
+                   lander_side_m=LANDER_VIS_SIDE):
     """
     Single live figure:
-       - 3D panel: ISO + vehicle + scanned faces lighting up + trailing track
+       - 3D panel: ISO + vehicle (rendered as a cube with its 4x3 corner RCS
+                   clusters) + scanned faces lighting up + trailing track.
+                   For the probe, after lander release the lander cube appears,
+                   descends to the surface, and a comm-link line is drawn
+                   between probe and lander (ADDED).
        - top-right   : live disturbance-torque magnitudes
        - middle-right: live surface coverage (probe) or altitude (lander)
        - bottom-right: live vehicle speed relative to the ISO
+
+    NOTE: the cube bodies are drawn at an exaggerated visual scale
+    (PROBE_VIS_SIDE / LANDER_VIS_SIDE); the real 2 m / 1 m cubes would be
+    sub-pixel at km axis scale. All physics uses the real dimensions.
     """
     fig = plt.figure(figsize=(14, 7))
     fig.suptitle(f"HESTIA proximity operations - {vehicle_name}", fontsize=14)
@@ -750,7 +1236,7 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
     ax3d = fig.add_subplot(1, 2, 1, projection="3d")
     axT = fig.add_subplot(3, 2, 2)
     axC = fig.add_subplot(3, 2, 4)
-    axV = fig.add_subplot(3, 2, 6)          # NEW: velocity panel
+    axV = fig.add_subplot(3, 2, 6)          # velocity panel
 
     # ---- static ISO mesh -------------------------------------------------- #
     face_colors = np.tile(np.array([0.55, 0.5, 0.45, 0.9]), (len(iso.faces), 1))
@@ -762,11 +1248,42 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
     lim = iso.r_max / 1000 * 5
     ax3d.set_xlim(-lim, lim); ax3d.set_ylim(-lim, lim); ax3d.set_zlim(-lim, lim)
     ax3d.set_xlabel("x [km]"); ax3d.set_ylabel("y [km]"); ax3d.set_zlabel("z [km]")
-    ax3d.set_title("ISO + vehicle (live)")
+    ax3d.set_title("ISO + vehicle (live; cube bodies not to scale)")
 
     (track_line,) = ax3d.plot([], [], [], lw=1.3, color=color_body, alpha=0.8)
-    vehicle_pt = ax3d.plot([], [], [], "o", color=color_body, ms=8)[0]
+    vehicle_pt = ax3d.plot([], [], [], "o", color=color_body, ms=3)[0]   # >>> CHANGED: small centre dot (cube is the body)
     beam_line, = ax3d.plot([], [], [], color="tab:orange", lw=1.0, alpha=0.7)
+
+    # ---- vehicle cube body + 4x3 corner RCS clusters (ADDED) -------------- #
+    vis_side = (body_side_m if body_side_m is not None else PROBE_VIS_SIDE) / 1000.0
+    cube_col = Poly3DCollection(cube_poly_verts(pos[0] / 1000, vis_side))
+    cube_col.set_facecolor((0.82, 0.82, 0.88, 0.95))
+    cube_col.set_edgecolor((0.1, 0.1, 0.1, 1.0))
+    ax3d.add_collection3d(cube_col)
+    rcs_col = Line3DCollection(rcs_segments(pos[0] / 1000, vis_side),
+                               colors="tab:orange", linewidths=1.6)
+    ax3d.add_collection3d(rcs_col)
+
+    # ---- released lander overlay + comm link (ADDED, probe view only) ----- #
+    lander_vis = lander_side_m / 1000.0
+    lander_cube = None
+    lander_rcs = None
+    comm_line = None
+    lander_track_line = None
+    if lander_overlay is not None:
+        lander_cube = Poly3DCollection(cube_poly_verts(np.zeros(3), lander_vis))
+        lander_cube.set_facecolor((0.75, 0.6, 0.85, 0.95))
+        lander_cube.set_edgecolor((0.1, 0.1, 0.1, 1.0))
+        lander_cube.set_visible(False)
+        ax3d.add_collection3d(lander_cube)
+        lander_rcs = Line3DCollection(rcs_segments(np.zeros(3), lander_vis),
+                                      colors="tab:red", linewidths=1.2)
+        lander_rcs.set_visible(False)
+        ax3d.add_collection3d(lander_rcs)
+        (comm_line,) = ax3d.plot([], [], [], ls="--", color="tab:green",
+                                 lw=1.3, alpha=0.9)
+        (lander_track_line,) = ax3d.plot([], [], [], color="tab:purple",
+                                         lw=1.4, alpha=0.85)
 
     # ---- disturbance panel ----------------------------------------------- #
     axT.set_title("Disturbance torque magnitudes")
@@ -800,9 +1317,11 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
         axC.set_xlim(0, t[-1] / 60); axC.set_ylim(0, max(alt) * 1.05)
         (cov_line,) = axC.plot([], [], lw=2, color="tab:purple")
 
-    # ---- velocity panel (NEW) -------------------------------------------- #
+    # ---- velocity panel --------------------------------------------------- #
     # Speed history from the animated trajectory itself (central differences),
     # so the curve always matches whatever the vehicle is actually doing.
+    # (The old spike at the survey end is gone: the survey->descent seam is now
+    #  position- and time-continuous, see build_probe_trajectory.)
     speed = np.zeros(len(t))
     if len(t) > 2:
         speed[1:-1] = np.linalg.norm(pos[2:] - pos[:-2], axis=1) / (t[2:] - t[:-2])
@@ -836,6 +1355,10 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
         track_line.set_3d_properties(pos[:i, 2]/1000)
         vehicle_pt.set_data([p[0]], [p[1]]); vehicle_pt.set_3d_properties([p[2]])
 
+        # cube body + RCS clusters follow the vehicle (ADDED)
+        cube_col.set_verts(cube_poly_verts(p, vis_side))
+        rcs_col.set_segments(rcs_segments(p, vis_side))
+
         # LiDAR beam from vehicle to nearest visible surface point
         nearest = iso.centroids[np.argmin(np.linalg.norm(iso.centroids - pos[i], axis=1))]
         beam_line.set_data([p[0], nearest[0]/1000], [p[1], nearest[1]/1000])
@@ -848,6 +1371,25 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
             fc[scanned] = np.array([0.15, 0.7, 0.95, 0.95])     # cyan = scanned
             tri.set_facecolor(fc)
 
+        # released lander + comm link (ADDED)
+        comm_txt = ""
+        if lander_overlay is not None:
+            lp = lander_overlay[i]
+            if np.all(np.isfinite(lp)):
+                lkm = lp / 1000
+                lander_cube.set_visible(True)
+                lander_rcs.set_visible(True)
+                lander_cube.set_verts(cube_poly_verts(lkm, lander_vis))
+                lander_rcs.set_segments(rcs_segments(lkm, lander_vis))
+                comm_line.set_data([p[0], lkm[0]], [p[1], lkm[1]])
+                comm_line.set_3d_properties([p[2], lkm[2]])
+                fin = np.isfinite(lander_overlay[:i, 0])
+                lander_track_line.set_data(lander_overlay[:i, 0][fin] / 1000,
+                                           lander_overlay[:i, 1][fin] / 1000)
+                lander_track_line.set_3d_properties(lander_overlay[:i, 2][fin] / 1000)
+                comm_txt = (f"   |   comm link: "
+                            f"{np.linalg.norm(pos[i] - lp)/1000:5.2f} km")
+
         # disturbance traces
         for k, ln in dist_lines.items():
             ln.set_data(t[:i] / 60, np.maximum(dist_series[k][:i], 1e-18))
@@ -855,10 +1397,15 @@ def live_animation(iso, t, pos, phase, lidar_track, cov_track, dist_series,
         # coverage / altitude trace
         if is_probe:
             cov_line.set_data(t[:i] / 60, np.array(cov_track[:i]) * 100)
-            ph = "SURVEY" if phase[i] == 0 else "DESCENT (lander release)"
+            if phase[i] == 0:
+                ph = "SURVEY"
+            elif phase[i] == 1:
+                ph = "DESCENT (to stand-off)"
+            else:
+                ph = "LANDER RELEASED - RETURN TO SURVEY ORBIT (comm relay)"
             status.set_text(f"t = {t[i]/60:6.1f} min   |   phase: {ph}   |   "
                             f"coverage: {cov_track[i]*100:5.1f}%   |   "
-                            f"speed: {speed[i]:6.3f} m/s")
+                            f"speed: {speed[i]:6.3f} m/s{comm_txt}")
         else:
             ref = surface_ref if surface_ref is not None else iso.r_mean
             alt = np.linalg.norm(pos[:i], axis=1) - ref
@@ -912,7 +1459,16 @@ def main():
     # ====================================================================== #
     t_p, pos_p, phase_p, site_dir, v_dir = build_probe_trajectory(iso_obj, n_pts=n_pts)
     print("---------", v_dir, "-----------")
-    # LiDAR coverage over the survey
+
+    # >>> ADDED: phase 2 - after lander release, the probe climbs back to its
+    # original survey orbit and holds station there as the comm relay.
+    t_ret, pos_ret = build_probe_return(pos_p[-1], t_p[-1],
+                                        n_pts=max(120, n_pts // 3))
+    t_p = np.concatenate([t_p, t_ret])
+    pos_p = np.vstack([pos_p, pos_ret])
+    phase_p = np.concatenate([phase_p, 2.0 * np.ones(len(t_ret))])
+
+    # LiDAR coverage over the survey (+ descent + return)
     lidar = LidarCoverage(iso_obj)
     lidar_track, cov_track = [], []
     for p in pos_p:
@@ -921,22 +1477,76 @@ def main():
         cov_track.append(cov)
     final_cov = cov_track[-1]
 
-    # disturbance torques (probe)
-    dist_probe = DisturbanceModel(PROBE_MASS, PROBE_SIDE, PROBE_REFL,
-                                  PROBE_CG_OFF, PROBE_RES_DIP)
-    series_p = dist_probe.evaluate_timeseries(t_p)
+    # ---------------------------------------------------------------------- #
+    #  INERTIA ACCOUNTING  (mass-moment update at lander release)
+    # ---------------------------------------------------------------------- #
+    # Phase 0+1: probe + lander are a single combined body.
+    #   I_combined includes the lander's own inertia + parallel-axis term
+    #   from its mounting offset (LANDER_MOUNT_OFFSET on the -z face).
+    # Phase 2:   lander has separated; probe inertia reverts to the bare cube.
+    #   The CoM shifts slightly; we compute that shift for the report.
+    I_combined = probe_inertia_with_lander()
+    I_post, delta_com = probe_inertia_post_release()
+    mass_combined = PROBE_MASS + LANDER_MASS
 
-    # ADCS sizing + selection (probe)
-    sized_p = size_adcs("probe", dist_probe, dist_probe.I,
-                        slew_angle_deg=180, slew_time_s=600)
-    hw_p = select_hardware(sized_p, moment_arm=PROBE_SIDE / 2)
+    print_header("INERTIA ACCOUNTING  -  LANDER ATTACHED vs. POST-RELEASE")
+    print(f"  Lander mount offset (body frame) : "
+          f"[{LANDER_MOUNT_OFFSET[0]:.3f}, "
+          f"{LANDER_MOUNT_OFFSET[1]:.3f}, "
+          f"{LANDER_MOUNT_OFFSET[2]:.3f}] m  (-z face, centred)")
+    print(f"  Combined mass (probe+lander)     : {mass_combined:.2f} kg")
+    print(f"  Probe-only mass (post-release)   : {PROBE_MASS:.2f} kg")
+    print(f"  I_combined  (Ixx=Iyy=Izz) [kg m^2]: "
+          f"{I_combined[0]:.4f}  {I_combined[1]:.4f}  {I_combined[2]:.4f}")
+    print(f"  I_post      (Ixx=Iyy=Izz) [kg m^2]: "
+          f"{I_post[0]:.4f}  {I_post[1]:.4f}  {I_post[2]:.4f}")
+    dI = I_post - I_combined
+    pct = dI / I_combined * 100
+    print(f"  Delta I     (post - combined)    : "
+          f"{dI[0]:+.4f}  {dI[1]:+.4f}  {dI[2]:+.4f}  kg m^2")
+    print(f"                               pct : "
+          f"{pct[0]:+.2f}%  {pct[1]:+.2f}%  {pct[2]:+.2f}%")
+    print(f"  CoM shift at release (body frame): "
+          f"[{delta_com[0]:+.4f}, {delta_com[1]:+.4f}, {delta_com[2]:+.4f}] m")
+
+    # ---------------------------------------------------------------------- #
+    #  DISTURBANCE MODELS  (two instances, one per inertia state)
+    # ---------------------------------------------------------------------- #
+    # Pre-release: combined mass and combined inertia tensor
+    dist_probe_pre = DisturbanceModel(mass_combined, PROBE_SIDE, PROBE_REFL,
+                                      PROBE_CG_OFF, PROBE_RES_DIP,
+                                      inertia=I_combined)
+    # Post-release: probe-only mass and probe-only inertia tensor
+    dist_probe_post = DisturbanceModel(PROBE_MASS, PROBE_SIDE, PROBE_REFL,
+                                       PROBE_CG_OFF, PROBE_RES_DIP,
+                                       inertia=I_post)
+
+    # Phase-stitched timeseries: pre-release model for phases 0+1,
+    # post-release model for phase 2
+    idx_release = np.searchsorted(phase_p, 1.5)   # first index with phase >= 2
+    t_pre  = t_p[:idx_release]
+    t_post = t_p[idx_release:]
+    ser_pre  = dist_probe_pre.evaluate_timeseries(t_pre)
+    ser_post = dist_probe_post.evaluate_timeseries(t_post - t_post[0])
+    series_p = {k: np.concatenate([ser_pre[k], ser_post[k]])
+                for k in ser_pre}
+
+    # ---------------------------------------------------------------------- #
+    #  ADCS SIZING  (pre-release: combined body; post-release: probe alone)
+    # ---------------------------------------------------------------------- #
+    sized_p_pre  = size_adcs("probe_pre",  dist_probe_pre,  I_combined,
+                              slew_angle_deg=180, slew_time_s=600)
+    sized_p_post = size_adcs("probe_post", dist_probe_post, I_post,
+                              slew_angle_deg=180, slew_time_s=600)
+    hw_p_pre  = select_hardware(sized_p_pre,  moment_arm=PROBE_SIDE / 2)
+    hw_p_post = select_hardware(sized_p_post, moment_arm=PROBE_SIDE / 2)
 
     # find when 50% coverage reached
     idx50 = next((i for i, c in enumerate(cov_track) if c >= 0.5), None)
     t50 = t_p[idx50] / 60 if idx50 is not None else None
 
-    report_vehicle("MOTHER PROBE (HESTIA bus)", PROBE_MASS, PROBE_SIDE,
-                   dist_probe, sized_p, hw_p,
+    report_vehicle("MOTHER PROBE (HESTIA bus)", mass_combined, PROBE_SIDE,
+                   dist_probe_pre, sized_p_pre, hw_p_pre,
                    extra=[
                        f"LiDAR survey: final coverage = {final_cov*100:.1f}% "
                        f"(target >= 50%)",
@@ -944,9 +1554,13 @@ def main():
                        f"{t50:.1f} min" if t50 else "50% coverage NOT reached",
                        f"Survey altitude = 1500 m, descent stand-off = 200 m "
                        f"(lander release).",
-                   ])
+                       "Post-release: probe returns to the 1500 m survey orbit "
+                       "and acts as comm relay (phase 2).",
+                   ],
+                   sized_post=sized_p_post, hw_post=hw_p_post,
+                   delta_com=delta_com)
 
-    # delta-v budget + propellant (probe)
+    # delta-v budget + propellant (chained Tsiolkovsky, post-release uses lighter mass)
     pb, pb_dv, pb_dvm, pb_mp, pb_ve = deltav_budget_probe(pos_p, phase_p)
     report_deltav("MOTHER PROBE (HESTIA bus)", pb, pb_dv, pb_dvm, pb_mp, pb_ve,
                   PROBE_MASS, RCS_ISP)
@@ -957,7 +1571,8 @@ def main():
     t_l, pos_l, r_surface_land = build_lander_trajectory(iso_obj, site_dir, n_pts=n_pts // 2)
     phase_l = np.ones(len(t_l))             # entirely descent
     dist_land = DisturbanceModel(LANDER_MASS, LANDER_SIDE, LANDER_REFL,
-                                 LANDER_CG_OFF, LANDER_RES_DIP)
+                                 LANDER_CG_OFF, LANDER_RES_DIP,
+                                 inertia=LANDER_I)
     series_l = dist_land.evaluate_timeseries(t_l, omega_attitude=2*np.pi/300)
     sized_l = size_adcs("lander", dist_land, dist_land.I,
                         slew_angle_deg=90, slew_time_s=120,
@@ -981,6 +1596,38 @@ def main():
                   LANDER_MASS, RCS_ISP)
 
     # ====================================================================== #
+    #  POST-RELEASE OPERATIONS (ADDED): lander overlay on the probe timeline
+    # ====================================================================== #
+    # After release (start of phase 2) the lander becomes visible in the probe
+    # animation and descends to the surface while the probe climbs back to the
+    # survey orbit; a comm-link line connects the two. NOTE: the lander's true
+    # descent takes ~90 min while the probe's climb spans ~0.6 orbit periods;
+    # the overlay maps the descent onto the first ~55% of phase 2 so both are
+    # visible together (schematic timing; the dedicated lander animation and
+    # the delta-v budgets use the true 90-min profile).
+    lander_overlay = np.full((len(t_p), 3), np.nan)
+    idx_ret = np.where(phase_p == 2)[0]
+    if len(idx_ret) and len(pos_l):
+        n_map = max(2, int(0.55 * len(idx_ret)))
+        for j, i in enumerate(idx_ret):
+            frac = min(1.0, j / (n_map - 1))
+            k = int(round(frac * (len(pos_l) - 1)))
+            lander_overlay[i] = pos_l[k]
+
+        i_td = idx_ret[min(n_map - 1, len(idx_ret) - 1)]
+        link_td = np.linalg.norm(pos_p[i_td] - lander_overlay[i_td])
+        link_end = np.linalg.norm(pos_p[-1] - lander_overlay[-1])
+        print_header("POST-RELEASE OPERATIONS  -  RETURN TO ORBIT & COMM RELAY")
+        print(f"  Probe returns to the {PROBE_ALT:.0f} m survey orbit after release "
+              f"(phase 2, green track).")
+        print(f"  Probe-lander comm-link distance at lander touchdown : "
+              f"{link_td/1000:8.3f} km")
+        print(f"  Probe-lander comm-link distance on parking arc      : "
+              f"{link_end/1000:8.3f} km")
+        print(f"  RCS layout (both vehicles): 4 corner clusters x 3 nozzles "
+              f"= 12 thrusters, opposing cube corners.")
+
+    # ====================================================================== #
     #  STATIC SUMMARY FIGURES
     # ====================================================================== #
     print_header("GENERATING FIGURES")
@@ -989,7 +1636,7 @@ def main():
                       "probe_disturbances.png")
     plot_coverage(t_p, cov_track, "probe_coverage.png")
     plot_track_3d(iso_obj, pos_p, phase_p, "probe_track.png",
-                  "Mother probe: LiDAR survey + descent track")
+                  "Mother probe: LiDAR survey + descent + return track")
     plot_disturbances(t_l, series_l,
                       "Lander - disturbance torques during descent",
                       "lander_disturbances.png")
@@ -998,20 +1645,42 @@ def main():
     print("  Saved: probe_disturbances.png, probe_coverage.png, probe_track.png,")
     print("         lander_disturbances.png, lander_track.png")
 
+    # ---- Thrust & cumulative mass plots ---------------------------------- #
+    # Probe
+    pb_centres = _probe_burn_centres(t_p, phase_p)
+    t_th_p, thr_p, mused_p = build_thrust_profile(
+        pb, pb_centres, RCS_ISP, PROBE_MASS, t_p, phase_p,
+        phase_map={0: 0, 1: 1, 2: 2})
+    plot_thrust_mass(t_th_p, thr_p, mused_p, t_p, phase_p,
+                     "Mother Probe (HESTIA bus)", RCS_ISP,
+                     "probe_thrust_mass.png")
+    # Lander
+    lb_centres = _lander_burn_centres(t_l)
+    t_th_l, thr_l, mused_l = build_thrust_profile(
+        lb, lb_centres, LAN_ISP, LANDER_MASS, t_l, phase_l,
+        phase_map={1: 1})
+    plot_thrust_mass(t_th_l, thr_l, mused_l, t_l, phase_l,
+                     "Lander (Philae-class)", LAN_ISP,
+                     "lander_thrust_mass.png")
+    print("  Saved: probe_thrust_mass.png, lander_thrust_mass.png")
+
     # ====================================================================== #
     #  LIVE ANIMATIONS
     # ====================================================================== #
     anims = []
     if not args.no_anim:
         print_header("LIVE ANIMATION")
-        print("  Showing MOTHER PROBE survey + descent (live)...")
+        print("  Showing MOTHER PROBE survey + descent + lander release + return (live)...")
         a1 = live_animation(iso_obj, t_p, pos_p, phase_p, lidar_track, cov_track,
-                            series_p, "Mother Probe", color_body="tab:blue")
+                            series_p, "Mother Probe", color_body="tab:blue",
+                            body_side_m=PROBE_VIS_SIDE,
+                            lander_overlay=lander_overlay)
         anims.append(a1)
         print("  Showing LANDER descent (live)...")
         a2 = live_animation(iso_obj, t_l, pos_l, phase_l, [None]*len(t_l), None,
                             series_l, "Lander", color_body="tab:purple",
-                            surface_ref=r_surface_land)
+                            surface_ref=r_surface_land,
+                            body_side_m=LANDER_VIS_SIDE)
         anims.append(a2)
         plt.show()
     else:

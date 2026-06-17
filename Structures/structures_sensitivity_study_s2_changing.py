@@ -223,7 +223,7 @@ t_w_list = np.arange(0.05, 0.55, 0.005) # cm
 
 
 # S1_list = np.arange(0.05, 10.5, 0.05) # cm
-S1_list = [3] # cm
+# S1_list = [3] # cm
 # S1_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 10, 20] # cm
 # S2_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7.5,10, 20, 30, 40, 50, 60]
 # S2_list = [0.5]
@@ -283,7 +283,7 @@ print(calculate_mass_for_whole_sc_shielding(3, 0.5, 0.03, 0.1, 0.1, rho_ob, rho_
 mass_grid = np.zeros((len(S2_list), len(t_w_list)))
 
 S1_element = 3 # cm
-S2_element = 0.5 # cm
+# S2_element = 0.5 # cm
 t_ob_element = 0.03 # cm
 t_b_element = 0.1 # cm
 
@@ -291,7 +291,7 @@ v_max = 10
 v_list = np.arange(1.0, v_max+0.1, 1.0) #km/s
 # Find where the value is close to 100
 indices = np.where(np.isclose(v_list, v_max))
-target_value_dc = 0.1 # cm, this is the critical diameter we want to be above for the whole velocity range
+target_value_dc = 0.2 # cm, this is the critical diameter we want to be above for the whole velocity range
 
 # 2. Populate the grid using the indices
 for i, S2_element in enumerate(S2_list):
@@ -309,40 +309,72 @@ plt.figure(figsize=(8, 6))
 mesh = plt.pcolormesh(t_w_list, S2_list, mass_grid, shading='auto', cmap='viridis')
 plt.xlabel('t_w (cm)')
 plt.ylabel('S2 (cm)')
-plt.title('Honeycomb panel mass for changing S2 and t_w for fixed S1 = 3 cm, t_ob = 0.03 cm, t_b = 0.1 cm')
+plt.title('Honeycomb panel mass (space debris of 2mm diameter, 10km/s velocity) for \n changing S2 and t_w for fixed S1 = 3 cm, t_ob = 0.03 cm, t_b = 0.1 cm')
 
 cbar = plt.colorbar(mesh)
 cbar.set_label('Panel mass (kg)')
+
+contours = plt.contour(
+    t_w_list, S2_list, mass_grid, levels=[27.5, 30, 35, 40, 45, 60, 65], colors="white", linewidths=0.8
+)
+# Add inline text labels to the contour lines
+plt.clabel(contours, inline=True, fontsize=8, fmt="%.1f kg", colors="white")
 
 # Optional: because t_w jumps from 10 to 50, a log scale on X might look cleaner
 # plt.xscale('log') 
 
 specific_tw = [0.1, 0.4]
 specific_S2 = [0.5, 0.5]
+point_labels = ["Regular Honeycomb Panel", "Baseplate (unmodified) Honeycomb Panel"]
+point_colors = ["orange", "yellow"]
 
-# Plot the points as bright red, larger dots with a black border
-plt.scatter(
-    specific_tw, 
-    specific_S2, 
-    color='orange', 
-    edgecolor='black', 
-    s=100,                  # Size of the marker
-    zorder=5,               # Ensures the dots sit ON TOP of the heatmap
-    label='Target Points'   # Label for a legend
-)
-
-# Optional: Add text labels next to the dots so you know which is which
-for tw, s2 in zip(specific_tw, specific_S2):
-    plt.text(
-        tw, s2 + 0.5,       # Slightly offset the text vertically so it doesn't overlap
-        f'({tw}, {s2})', 
-        color='orange', 
-        weight='bold', 
-        fontsize=9,
-        ha='center'         # Horizontally center the text over the dot
+for tw, s2, label, color in zip(
+    specific_tw, specific_S2, point_labels, point_colors
+):
+    plt.scatter(
+        tw,
+        s2,
+        color=color,
+        edgecolor="black",
+        s=120,  # Slightly larger size
+        zorder=5,  # Force points to render on top of lines
+        label=label,  # Feeds directly into plt.legend()
     )
 
-plt.show()
+    # Optional: Keep the text coordinates floating just above the dots
+    # plt.text(
+    #     tw,
+    #     s2 + 0.3,
+    #     # f"({tw}, {s2})",
+    #     color="white",
+    #     weight="bold",
+    #     fontsize=9,
+    #     ha="center",
+    # )
+
+# Plot the points as bright red, larger dots with a black border
+# plt.scatter(
+#     specific_tw, 
+#     specific_S2, 
+#     color='orange', 
+#     edgecolor='black', 
+#     s=100,                  # Size of the marker
+#     zorder=5,               # Ensures the dots sit ON TOP of the heatmap
+#     label='Target Points'   # Label for a legend
+# )
+
+# Optional: Add text labels next to the dots so you know which is which
+# for tw, s2 in zip(specific_tw, specific_S2):
+#     plt.text(
+#         tw, s2 + 0.5,       # Slightly offset the text vertically so it doesn't overlap
+#         f'({tw}, {s2})', 
+#         color='orange', 
+#         weight='bold', 
+#         fontsize=9,
+#         ha='center'         # Horizontally center the text over the dot
+#     )
+
+plt.legend(loc="upper right", framealpha=0.9)
 plt.show()
 
 # # Custom stuff:

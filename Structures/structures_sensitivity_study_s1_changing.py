@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # S1 = 3.5 # stand-off between 1st and 2nd bumper [cm]
-S1 = 4 # distance between 1st (outer) and 2nd (inner) bumper [cm]
+S1 = 3 # distance between 1st (outer) and 2nd (inner) bumper [cm]
 S2 = 0 # stand-off between 2nd (inner) bumper and rear wall [cm]
 t_w = 0.15 # equipment cover plate (rear wall) thickness [cm]
 sigma_y_ksi = 37.7 # yield strength of equipment cover plate [ksi], here for R_p0.2 = 260 MPa
@@ -33,6 +33,7 @@ rho_ob = 2.7
 rho_w = 2.7
 rho_honeycomb1 = 0.018 # polyamide - https://www.sciencedirect.com/science/article/pii/S0094576524003874
 rho_honeycomb2 = 0.370 # Al - https://www.sciencedirect.com/science/article/pii/S0094576524003874
+rho_honeycomb3 = 0.037  # modified Alu...?
 
 t_eq_MLI = rho_AD_MLI/rho_ob
 
@@ -76,17 +77,17 @@ funcs = [
 theta = 0
 
 # type 1
-y_S2_0_theta0  = np.piecewise(v, conditions1, funcs, 3.5, 0, vt11, vt21, theta, t_ob, t_b, t_w)
-y_S2_10_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 10, vt11, vt21, theta, t_ob, t_b, t_w)
-y_S2_20_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 20, vt11, vt21, theta, t_ob, t_b, t_w)
-y_S2_30_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 30, vt11, vt21, theta, t_ob, t_b, t_w)
-y_S2_40_theta0 = np.piecewise(v, conditions1, funcs, 3.5, 40, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_0_theta0  = np.piecewise(v, conditions1, funcs, 3, 0, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_10_theta0 = np.piecewise(v, conditions1, funcs, 3, 10, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_20_theta0 = np.piecewise(v, conditions1, funcs, 3, 20, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_30_theta0 = np.piecewise(v, conditions1, funcs, 3, 30, vt11, vt21, theta, t_ob, t_b, t_w)
+y_S2_40_theta0 = np.piecewise(v, conditions1, funcs, 3, 40, vt11, vt21, theta, t_ob, t_b, t_w)
 
 # type 2
-y_S2_0_1_theta0  = np.piecewise(v, conditions2, funcs, 3.5, 0, vt12, vt22, theta, t_ob, t_b, t_w)
-y_S2_10_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 10, vt12, vt22, theta, t_ob, t_b, t_w)
-y_S2_20_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 20, vt12, vt22, theta, t_ob, t_b, t_w)
-y_S2_30_1_theta0 = np.piecewise(v, conditions2, funcs, 3.5, 30, vt12, vt22, theta, t_ob, t_b, t_w)
+y_S2_0_1_theta0  = np.piecewise(v, conditions2, funcs, 3, 0, vt12, vt22, theta, t_ob, t_b, t_w)
+y_S2_10_1_theta0 = np.piecewise(v, conditions2, funcs, 3, 10, vt12, vt22, theta, t_ob, t_b, t_w)
+y_S2_20_1_theta0 = np.piecewise(v, conditions2, funcs, 3, 20, vt12, vt22, theta, t_ob, t_b, t_w)
+y_S2_30_1_theta0 = np.piecewise(v, conditions2, funcs, 3, 30, vt12, vt22, theta, t_ob, t_b, t_w)
 
 
 # theta = 45
@@ -186,16 +187,21 @@ plot_ballistic_limit_5x(v, y_S2_0_theta0, y_S2_10_theta0, y_S2_20_theta0, y_S2_3
 
 # S2 = {0, 10, 20, 30}, type 1, theta = 0deg, S1 = 4 cm
 # plot_ballistic_limit_5x(v, y_S2_0_theta0_S1_4, y_S2_10_theta0_S1_4, y_S2_20_theta0_S1_4, y_S2_30_theta0_S1_4, y_S2_40_theta0_S1_4, labels=['S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
-plt.legend(['S2 = 0 cm, S1 = 3.5 cm', 'S2 = 10 cm, S1 = 3.5 cm', 'S2 = 20 cm, S1 = 3.5 cm', 'S2 = 30 cm, S1 = 3.5 cm', 'S2 = 40 cm, S1 = 3.5 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
+plt.legend(['S2 = 0 cm, S1 = 3 cm', 'S2 = 10 cm, S1 = 3 cm', 'S2 = 20 cm, S1 = 3 cm', 'S2 = 30 cm, S1 = 3 cm', 'S2 = 40 cm, S1 = 3 cm', 'S2 = 0 cm, S1 = 4 cm', 'S2 = 10 cm, S1 = 4 cm', 'S2 = 20 cm, S1 = 4 cm', 'S2 = 30 cm, S1 = 4 cm', 'S2 = 40 cm, S1 = 4 cm'])
 plt.show()
 
 
 # NEED TO QUANTIFY!!! the mass increase for +10cm of S2
 
-v_max = 10
-v_list = np.arange(1.0, v_max+0.1, 1.0) #km/s
+v_max = [10, 15, 20, 25, 30] # km/s
+v_max_value = 10
+# full_mass_list = []
+
+# for v_max_value in v_max:
+
+v_list = np.arange(1.0, v_max_value+0.1, 1.0) #km/s
 # Find where the value is close to 100
-indices = np.where(np.isclose(v_list, v_max))
+indices = np.where(np.isclose(v_list, v_max_value))
 
 # Extract the first match
 if indices[0].size > 0:
@@ -204,6 +210,28 @@ if indices[0].size > 0:
 conditions_optimum = [v_list < vt11, (v_list >= vt11) & (v_list <= vt21), v_list > vt21]
 
 l = 2 # m
+# t_ob_list = [0.03, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10] # cm
+t_ob_list = [0.03]
+# t_b_list = [0.1, 0.15, 0.2, 0.3, 0.5, 1, 0.75, 1.5, 2, 5, 10]
+t_b_list = [0.1]
+# t_w_list = [0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
+t_w_list = np.arange(0.05, 0.55, 0.005) # cm
+# t_w_list = [0.1]
+# t_b_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 0.75, 1.5, 2, 5, 10]
+# t_w_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10, 30, 50]
+# t_w_list = [0.5, 0.75, 1, 1.5, 2, 5, 10]
+
+
+S1_list = np.arange(0.05, 10.5, 0.05) # cm
+# S1_list = [3] # cm
+# S1_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 10, 20] # cm
+# S2_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7.5,10, 20, 30, 40, 50, 60]
+S2_list = [0.5]
+# S2_list = np.arange(0.05, 20.5, 0.05) # cm
+# theta_value = np.radians(0)
+theta=0
+
+critical_diameter_list = [0.01, 0.015, 0.02, 0.03]
 
 def calculate_mass_for_half_whole_and_margin_sc_shielding(S1, S2, t_ob, t_b, t_w, rho_ob, rho_b, side_length, honeycomb1, honeycomb2):
     mass = (t_ob * rho_ob + t_b * rho_b + t_w * rho_ob) # in cm*g/cm^3 = g/cm^2
@@ -218,62 +246,152 @@ def calculate_mass_for_half_whole_and_margin_sc_shielding(S1, S2, t_ob, t_b, t_w
     mass_with_margin = mass_whole*1.1 # add 10% margin for the structure of the shield - fixing components/rods for the plate
     return mass_half, mass_whole, mass_with_margin
 
-# def calculate_mass_for_whole_sc_shielding(S1, S2, t_ob, t_b, t_w, rho_ob, rho_b, side_length):
-#     mass = (t_ob * rho_ob + t_b * rho_b + t_w * rho_ob) # in g/cm^2
-#     mass = 10*mass # convert to kg/m^2
-#     mass = mass * 6*side_length**2 
-#     mass*= 2 # add margin for the structure of the shield - fixing components/rods for the plate
-#     return mass
+def calculate_mass_for_whole_sc_shielding(S1, S2, t_ob, t_b, t_w, rho_ob, rho_b, rho_w, side_length):
+    mass = (t_ob/100 * rho_ob*1000 + t_b/100 * rho_b*1000 + t_w/100 * rho_w*1000)*side_length**2 # in kg
+    mass+= S1/100*side_length**2*rho_honeycomb3*1000
+    mass+= S2/100*side_length**2*rho_honeycomb3*1000 # assumed honeycomb
+    # mass = mass*6
+    # mass = 10*mass # convert to kg/m^2
+    # mass = mass * 6*side_length**2 
+    # mass*= 2 # add margin for the structure of the shield - fixing components/rods for the plate
+    return mass
 
+print(calculate_mass_for_whole_sc_shielding(3, 0.5, 0.03, 0.1, 0.4, rho_ob, rho_b, rho_w, l))
 
-def calculate_optimum(S1_list, S2_list, t_ob_list, t_b_list, t_w_list, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc):
-    for S1_element in S1_list:
-        for S2_element in S2_list:
-            for t_ob_element in t_ob_list:
-                for t_b_element in t_b_list:
-                    for t_w_element in t_w_list:
-                        y = np.piecewise(v_list, conditions_optimum, funcs, S1_element, S2_element, vt11, vt21, theta, t_ob_element, t_b_element, t_w_element)
-                        mass_half_1, mass_whole_1, mass_with_margin_1 = calculate_mass_for_half_whole_and_margin_sc_shielding(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b, l, True, True)
-                        if y[indices[0][0]]>=target_value_dc and mass_with_margin_1 < 200 and (S1_element+S2_element) <= 20:
-                            print(f"S1: {S1_element} cm, S2: {S2_element} cm, t_ob: {t_ob_element} cm, t_b: {t_b_element} cm, t_w: {t_w_element} cm for d_c: {target_value_dc} cm at {v_max}km/s, 1/2 m = {round(mass_half_1, 2)} kg, ", 
-                                  f"m = {round(mass_whole_1, 2)} kg, 1.1m = {round(mass_with_margin_1, 2)} kg")
-                        # Find the velocity at which the critical diameter is equal to the optimum value
-                        # v_optimum = np.interp(optimum_value, y, v_list)
-                        # print(f"S1: {S1} cm, S2: {S2} cm -> Optimum Velocity: {v_optimum:.2f} km/s for Critical Diameter: {optimum_value} cm")
+# for S1_element in S1_list:
+#         for S2_element in S2_list:
+#             for t_ob_element in t_ob_list:
+#                 for t_b_element in t_b_list:
+#                     for t_w_element in t_w_list:
+#                         full_mass_element = calculate_mass_for_whole_sc_shielding(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b, rho_w, l)
+#                         full_mass_list.append(full_mass_element)
 
-t_ob_list = [0.03, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10] # cm
-t_b_list = [0.1, 0.15, 0.2, 0.3, 0.5, 1, 0.75, 1.5, 2, 5, 10]
-t_w_list = [0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10, 30, 50]
-# t_b_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 0.75, 1.5, 2, 5, 10]
-# t_w_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 5, 10, 30, 50]
-# t_w_list = [0.5, 0.75, 1, 1.5, 2, 5, 10]
+# # for S1_element in S1_list:
+# #     for t_w_element in t_w_list:
+# #         full_mass_element = calculate_mass_for_whole_sc_shielding(S1_element, S2_element, t_ob_element, t_b_element, t_w_element, rho_ob, rho_b, rho_w, l)
+# #         full_mass_list.append(full_mass_element)
 
-# t_ob_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50] # cm
-# t_b_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50]
-# t_w_list = [0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1, 1.5, 2, 5, 10, 30, 50]
-S1_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 10, 20, 30, 40, 50, 60, 70] # cm
-S2_list=[0.5, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7.5,10, 20, 30, 40, 50, 60]
-# theta_value = np.radians(0)
-theta=0
-calculate_optimum(S1_list, S2_list, t_ob_list, t_b_list, t_w_list, sigma_y_ksi, rho_p, rho_ob, theta, v_list, target_value_dc=0.1)
+# sc = plt.scatter(t_w_list, S1_list, c=full_mass_list, cmap='viridis', edgecolor='k')
+# # plt.scatter(t_w_list, S1_list, c=full_mass_list, cmap='viridis', s=50)
+# plt.xlabel('t_w')
+# plt.ylabel('S1')
+# plt.title('S1 vs t_w with mass as color')
+# cbar = plt.colorbar(sc)
+# cbar.set_label('mass')
 
-# Custom stuff:
-# Comet Interceptor: S1 = 5cm, S2 = 2.5cm, t_ob = 0.03 cm, t_b = 0.15 cm, t_w = 0.15 cm, theta = 0deg
-y_Comet_Interceptor = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, 0, 0.03, 0.15, 0.15)
-y_ours = np.piecewise(v, conditions1, funcs, 3, 0.5, vt11, vt21, 0, 0.03, 0.1, 0.1)
-y_1 = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, 0, 0.03, 1.5, 4)
-mass_Comet_Interceptor_half, mass_Comet_Interceptor_whole, mass_Comet_Interceptor_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(5, 2.5, 0.03, 0.15, 0.15, rho_ob, rho_b, l, True, True)
-mass_ours_half, mass_ours_whole, mass_ours_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(3, 0.5, 0.03, 0.1, 0.1, rho_ob, rho_b, l, True, True)
-print(f"Comet Interceptor: mass for 1/2 m = {round(mass_Comet_Interceptor_half, 2)} kg, mass for m = {round(mass_Comet_Interceptor_whole, 2)} kg, mass for 1.1m = {round(mass_Comet_Interceptor_with_margin, 2)} kg")
-print(f"Proposed Design: mass for 1/2 m = {round(mass_ours_half, 2)} kg, mass for m = {round(mass_ours_whole, 2)} kg, mass for 1.1m = {round(mass_ours_with_margin, 2)} kg")
-plt.plot(v, y_Comet_Interceptor)
-plt.plot(v, y_ours)
-plt.plot(v, y_1)
-plt.xlabel('Velocity (km/s)')
-plt.ylabel('Critical Diameter (cm)')
-plt.title('Critical Space Debris Diameter vs Velocity for Comet Interceptor vs Proposed Design')
-plt.legend(['Comet Interceptor', 'Proposed Design', 'baseplate'])
-plt.grid()
+# 1. Create an empty 2D grid to hold the mass values (Rows = S1, Columns = t_w)
+mass_grid = np.zeros((len(S1_list), len(t_w_list)))
+
+# S1_element = 3 # cm
+S2_element = 0.5 # cm
+t_ob_element = 0.03 # cm
+t_b_element = 0.1 # cm
+
+v_max = 10
+v_list = np.arange(1.0, v_max+0.1, 1.0) #km/s
+# Find where the value is close to 100
+indices = np.where(np.isclose(v_list, v_max))
+target_value_dc = 0.2 # cm, this is the critical diameter we want to be above for the whole velocity range
+
+# 2. Populate the grid using the indices
+for i, S1_element in enumerate(S1_list):
+    for j, t_w_element in enumerate(t_w_list):
+        y_element = np.piecewise(v_list, conditions_optimum, funcs, S1_element, S2_element, vt11, vt21, theta, t_ob_element, t_b_element, t_w_element)
+        if y_element[indices[0][0]]>=target_value_dc:
+            mass_grid[i, j] = calculate_mass_for_whole_sc_shielding(
+            S1_element, S2_element, t_ob_element, t_b_element, t_w_element, 
+            rho_ob, rho_b, rho_w, l)
+        else:
+            mass_grid[i, j] = np.nan  # or some other value to indicate it's not valid
+
+# 3. Plot using pcolormesh for a perfect 2D heatmap
+plt.figure(figsize=(8, 6))
+mesh = plt.pcolormesh(t_w_list, S1_list, mass_grid, shading='auto', cmap='viridis')
+plt.xlabel('t_w (cm)')
+plt.ylabel('S1 (cm)')
+plt.title('Honeycomb panel mass (space debris of 2mm diameter, 10km/s velocity) for \n changing S1 and t_w and for fixed S2 = 0.5 cm, t_ob = 0.03 cm, t_b = 0.1 cm')
+
+cbar = plt.colorbar(mesh)
+cbar.set_label('Panel mass (kg)')
+
+contours = plt.contour(
+    t_w_list, S1_list, mass_grid, levels=[27.5, 30, 35, 40, 45, 60, 65], colors="white", linewidths=0.8
+)
+# Add inline text labels to the contour lines
+plt.clabel(contours, inline=True, fontsize=8, fmt="%.1f kg", colors="white")
+
+# Optional: because t_w jumps from 10 to 50, a log scale on X might look cleaner
+# plt.xscale('log') 
+
+specific_tw = [0.1, 0.4]
+specific_S1 = [3, 3]
+point_labels = ["Regular Honeycomb Panel", "Baseplate (unmodified) Honeycomb Panel"]
+point_colors = ["orange", "yellow"]
+
+for tw, s1, label, color in zip(
+    specific_tw, specific_S1, point_labels, point_colors
+):
+    plt.scatter(
+        tw,
+        s1,
+        color=color,
+        edgecolor="black",
+        s=120,  # Slightly larger size
+        zorder=5,  # Force points to render on top of lines
+        label=label,  # Feeds directly into plt.legend()
+    )
+
+    # Optional: Keep the text coordinates floating just above the dots
+    # plt.text(
+    #     tw,
+    #     s1 + 0.3,
+    #     # f"({tw}, {s1})",
+    #     color="white",
+    #     weight="bold",
+    #     fontsize=9,
+    #     ha="center",
+    # )
+
+# Plot the points as bright red, larger dots with a black border
+# plt.scatter(
+#     specific_tw, 
+#     specific_S1, 
+#     color='orange', 
+#     edgecolor='black', 
+#     s=100,                  # Size of the marker
+#     zorder=5,               # Ensures the dots sit ON TOP of the heatmap
+#     label='Target Points'   # Label for a legend
+# )
+
+# Optional: Add text labels next to the dots so you know which is which
+# for tw, s1 in zip(specific_tw, specific_S1):
+#     plt.text(
+#         tw, s1 + 0.5,       # Slightly offset the text vertically so it doesn't overlap
+#         f'({tw}, {s1})', 
+#         color='orange', 
+#         weight='bold', 
+#         fontsize=9,
+#         ha='center'         # Horizontally center the text over the dot
+#     )
+
+plt.legend(loc="upper right", framealpha=0.9)
 plt.show()
 
-print(y_ours[v==8])
+# # Custom stuff:
+# # Comet Interceptor: S1 = 5cm, S2 = 2.5cm, t_ob = 0.03 cm, t_b = 0.15 cm, t_w = 0.15 cm, theta = 0deg
+# y_Comet_Interceptor = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, 0, 0.03, 0.15, 0.15)
+# y_ours = np.piecewise(v, conditions1, funcs, 3, 0.5, vt11, vt21, 0, 0.03, 0.1, 0.1)
+# y_1 = np.piecewise(v, conditions1, funcs, 5, 2.5, vt11, vt21, 0, 0.03, 1.5, 4)
+# mass_Comet_Interceptor_half, mass_Comet_Interceptor_whole, mass_Comet_Interceptor_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(5, 2.5, 0.03, 0.15, 0.15, rho_ob, rho_b, l, True, True)
+# mass_ours_half, mass_ours_whole, mass_ours_with_margin = calculate_mass_for_half_whole_and_margin_sc_shielding(3, 0.5, 0.03, 0.1, 0.1, rho_ob, rho_b, l, True, True)
+# print(f"Comet Interceptor: mass for 1/2 m = {round(mass_Comet_Interceptor_half, 2)} kg, mass for m = {round(mass_Comet_Interceptor_whole, 2)} kg, mass for 1.1m = {round(mass_Comet_Interceptor_with_margin, 2)} kg")
+# print(f"Proposed Design: mass for 1/2 m = {round(mass_ours_half, 2)} kg, mass for m = {round(mass_ours_whole, 2)} kg, mass for 1.1m = {round(mass_ours_with_margin, 2)} kg")
+# plt.plot(v, y_Comet_Interceptor)
+# plt.plot(v, y_ours)
+# plt.plot(v, y_1)
+# plt.xlabel('Velocity (km/s)')
+# plt.ylabel('Critical Diameter (cm)')
+# plt.title('Critical Space Debris Diameter vs Velocity for Comet Interceptor vs Proposed Design')
+# plt.legend(['Comet Interceptor', 'Proposed Design', 'baseplate'])
+# plt.grid()
+# plt.show()

@@ -3,20 +3,25 @@ from scipy.interpolate import RegularGridInterpolator
 import matplotlib.pyplot as plt
 import pandas as pd
 
+# === Constants ===
+AVOGADRO        = 6.02214076e23          # 1/mol https://www.nist.gov/si-redefinition/meet-constants
+J_PER_EV        = 1.602176634e-19        # J/eV
+FISSION_MEV     = 169.1e6               # eV (energy per U-235 fission) https://web.archive.org/web/20190505175631/http://www.kayelaby.npl.co.uk/atomic_and_nuclear_physics/4_7/4_7_1.html
+M_U235          = 0.235                  # kg/mol
+STEFAN_BOLTZMANN = 5.670374419e-8        # W/ m^2 / K^4
+RHO_B4C         = 2483.714286           # kg/m3 from sheets
+RHO_BEO         = 3010                  # kg/m3 BeO https://physics.nist.gov/cgi-bin/Star/compos.pl?mode=text&matno=116
+RHO_UO2         = 10963                 # kg/m3 UO2 https://www.sciencedirect.com/science/article/pii/S0022311599002731#aep-section-id20
+RHO_U10MO       = 17200                 # kg/m3 U-10M https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/4702554.pdf
 
 class Reactor:
-    # === Constants ===
-    AVOGADRO        = 6.02214076e23          # 1/mol https://www.nist.gov/si-redefinition/meet-constants
-    J_PER_EV        = 1.602176634e-19        # J/eV
-    FISSION_MEV     = 169.1e6               # eV (energy per U-235 fission) https://web.archive.org/web/20190505175631/http://www.kayelaby.npl.co.uk/atomic_and_nuclear_physics/4_7/4_7_1.html
-    M_U235          = 0.235                  # kg/mol
-    STEFAN_BOLTZMANN = 5.670374419e-8        # W/ m^2 / K^4
 
     def __init__(
         self,
         coolant_inlet_temp,  # K  helium inlet temperature
         core_temp,          # K  peak coolant outlet temperature
         heat,               # W  required thermal power output
+        fuel_type = "U10Mo",           # Fuel type
         enrichment=0.95,    # fraction of U235 in fuel (0–1) 
         burnup=0.15,        # fraction of fuel burned at EoM
         lifetime_s = 315360000 * 2, # operational period before refuel (s); default = 20 year
@@ -28,6 +33,7 @@ class Reactor:
     ):
         self.core_temp         = core_temp
         self.heat_out          = heat
+        self.fuel_type         = fuel_type
         self.enrichment        = enrichment
         self.burnup            = burnup
         self.lifetime_s        = lifetime_s
@@ -41,7 +47,6 @@ class Reactor:
         self.allowable_stress = allowable_stress
 
         # Outputs (filled by sizing methods)
-        self.control_rods      = 0.0   # fraction of core volume
         self.fuel_kg           = 0.0   # kg of total fuel (pebbles)
         self.u235_kg           = 0.0   # kg of fissile U235
         # self.coolant_flow      = 0.0   # kg/s helium mass flow rate
@@ -51,7 +56,15 @@ class Reactor:
                 "cylinder_height_m": 0.0, # m Core Height m
                 "cylinder_volume_m3": 0.0 # m^3 Core volume
             }
-        self.reflector_thickness = 0.0, # Thickness of reflector blades
+        self.reflector_geometry = {
+            "reflector_thickness_m": 0.0, # m Thickness
+            "reflector_volume_m3": 0.0 # m3 Volume
+        }
+        self.control_rods      = {
+            "control_fraction": 0.0,   # fraction of core volume
+            "burnable_volume_m3": 0.0, # m3 volume of burnable poison (control part)
+            "rod_volume_m3": 0.0 # m3 volume of the control rod as a whole
+        }
         self.barrel_thickness = 0.0 # kg of barrel
         self.core_barrel_gap = 0.0 # gas gap between core (reflector) and barrel
         self.reactor_mass = 0.0
@@ -64,9 +77,9 @@ class Reactor:
     # ------------------------------------------------------------------
     def _u235_specific_energy(self):
         """Energy released per kg of U-235 fully fissioned (J/kg)."""
-        e_per_fission = self.FISSION_MEV * self.J_PER_EV            # J per fission event
-        e_per_mol     = e_per_fission * self.AVOGADRO               # J per mol U235
-        return e_per_mol / self.M_U235                              # J per kg U235
+        e_per_fission = FISSION_MEV * J_PER_EV            # J per fission event
+        e_per_mol     = e_per_fission * AVOGADRO               # J per mol U235
+        return e_per_mol / M_U235                              # J per kg U235
     
 
     # def _build_interpolators(self, path):
@@ -140,21 +153,26 @@ class Reactor:
         u235_fissioned          = total_thermal_energy / self.fuel_specific_energy
         self.u235_kg            = u235_fissioned / self.burnup        # loaded at beginning-of-life
         self.u_kg               = self.u235_kg / self.enrichment      # total heavy metal amoun
-        uo2_kg                  = self.u_kg * (235*self.enrichment+238*(1-self.enrichment)+16+16)/(235*self.enrichment+238*(1-self.enrichment))
-
-        uo2_density             = 10963 # kg/m3 https://www.sciencedirect.com/science/article/pii/S0022311599002731#aep-section-id20
-        uo2_vol                 = uo2_kg / uo2_density
         
-        # uMo10_kg                = self.u_kg * (235*self.enrichment+238*(1-self.enrichment)+95.95*10)/(235*self.enrichment+238*(1-self.enrichment))
+        fuel_type = self.fuel_type
+        if fuel_type=="UO2":
+            uo2_kg                  = self.u_kg * (235*self.enrichment+238*(1-self.enrichment)+16+16)/(235*self.enrichment+238*(1-self.enrichment))
+
+            uo2_vol                 = uo2_kg / RHO_UO2 
+
+            self.fuel_kg            = uo2_kg /self.uranium_pebble_fraction     # total fuel mass 
+        
+        elif fuel_type=="U10Mo":
+            uMo10_kg                = self.u_kg / 0.9 
+
+            self.fuel_kg            = uMo10_kg
 
         # uo2_ratio_cermet        = 0.6
         # tungsten_vol            = uo2_vol / 0.6 * 0.4
         # rho_tungsten            = 19300 # kg/m3 https://physics.nist.gov/cgi-bin/Star/compos.pl?mode=text&matno=074
         # tungsten_kg             = tungsten_vol * rho_tungsten 
         
-        self.fuel_kg            = uo2_kg /self.uranium_pebble_fraction     # total fuel mass 
         # self.fuel_kg            = uo2_kg + tungsten_kg
-        # self.fuel_kg            = uMo10_kg
 
         return {
             "u235_specific_energy_MJ_per_kg": self.fuel_specific_energy / 1e6,
@@ -224,22 +242,6 @@ class Reactor:
     #         "volume_flow_m3_per_s": vol_flow,
     #     }
 
-    # ------------------------------------------------------------------
-    def size_control_rods(self, rod_volume_fraction=0.30):
-        """
-        Reserve a fraction of core volume for control/shutdown rods.
-        0.30 is a typical conservative design margin for HTGRs.
-        """
-        self.control_rods = rod_volume_fraction
-        control_rod_density = 2484 # kg/m3 from sheets
-        rod_volume        = self.core_geometry["cylinder_volume_m3"] * rod_volume_fraction
-
-        return {
-            "control_rod_fraction": self.control_rods,
-            "rod_volume_m3":        rod_volume,
-            "active_fuel_volume_m3": self.core_geometry["cylinder_volume_m3"] * (1 - rod_volume_fraction),
-        }
-
     # ----------------------------------------------------------------------------------------------------------
     def size_reflector(self):
         """
@@ -259,11 +261,34 @@ class Reactor:
         V_reflector  = V_total - V_core
         # rho_graphite = 1700.0    # kg/m3  (nuclear grade graphite)
         # rho_reflector = 1530        # kg/m3 http://large.stanford.edu/courses/2016/ph241/tew2/docs/3310868.pdf
-        rho_reflector = 3010 # kg/m3 BeO https://physics.nist.gov/cgi-bin/Star/compos.pl?mode=text&matno=116
+        rho_reflector = RHO_BEO # kg/m3 BeO https://physics.nist.gov/cgi-bin/Star/compos.pl?mode=text&matno=116
         m_reflector  = V_reflector * rho_reflector
 
-        self.reflector_thickness = thickness
+        self.reflector_geometry["reflector_thickness_m"] = thickness
+        self.reflector_geometry["reflector_volume_m3"] = V_reflector
         return {"reflector_thickness_m": thickness, "reflector_mass_kg": m_reflector}
+
+    # ------------------------------------------------------------------
+    def size_control_rods(self, rod_volume_fraction=0.30):
+        """
+        Reserve a fraction of core volume for control/shutdown rods.
+        0.30 is a typical conservative design margin for HTGRs.
+        """
+        self.control_rods["control_fraction"] = rod_volume_fraction
+        poison_density = RHO_B4C # kg/m3 from sheets
+        poison_mass_fraction = 0.007142857143 # from sheets
+        rod_volume        = self.reflector_geometry["reflector_volume_m3"] * rod_volume_fraction
+        self.control_rods["rod_volume_m3"] = rod_volume
+
+        poison_volume = rod_volume * RHO_BEO * poison_mass_fraction / RHO_B4C #m3
+        self.control_rods["burnable_volume_m3"] = poison_volume
+
+        return {
+            "control_rod_fraction": self.control_rods["control_fraction"],
+            "burnable_volume_m3":   poison_volume,
+            "rod_volume_m3":        rod_volume,
+        }
+
 
     # -----------------------------------------------------------------------------------------------------------------------
     def size_core_barrel(self):
@@ -279,8 +304,8 @@ class Reactor:
         gas_thickness_ratio = 0.1
         gas_gap = r_core * gas_thickness_ratio
 
-        r_not_barrel  = r_core + self.reflector_thickness + gas_gap
-        h_not_barrel  = h_core + 2 *( self.reflector_thickness + gas_gap )
+        r_not_barrel  = r_core + self.reflector_geometry["reflector_thickness_m"] + gas_gap
+        h_not_barrel  = h_core + 2 *( self.reflector_geometry["reflector_thickness_m"] + gas_gap )
         V_not_barrel = np.pi * r_not_barrel**2 * h_not_barrel
 
         r_barl  = r_not_barrel + thickness
@@ -293,7 +318,7 @@ class Reactor:
 
         self.core_barrel_gap = gas_gap
         self.barrel_thickness = thickness
-        return {"barrel_thickness_m": thickness, "barrel_mass_kg": m_barrel}
+        return {"barrel_diameter_m": r_barl*2, "barrel_thickness_m": thickness, "barrel_mass_kg": m_barrel}
 
     # ---------------------------------------------------------------------------------------------------------
     def size_pressure_vessel(self):
@@ -304,7 +329,7 @@ class Reactor:
         gas_thickness_ratio = 0.17
         gas_gap = self.core_geometry["cylinder_radius_m"] * gas_thickness_ratio
 
-        r_inner = self.core_geometry["cylinder_radius_m"] + self.reflector_thickness + self.core_barrel_gap + self.barrel_thickness + gas_gap
+        r_inner = self.core_geometry["cylinder_radius_m"] + self.reflector_geometry["reflector_thickness_m"] + self.core_barrel_gap + self.barrel_thickness + gas_gap
 
         P       = self.operating_pressure
         S       = self.allowable_stress      # Pa, from ASME tables at T_vessel
@@ -316,7 +341,7 @@ class Reactor:
         t = max(t, 0.001)
 
         r_outer = r_inner + t
-        h_cyl   = self.core_geometry["cylinder_height_m"] + 2*(self.reflector_thickness+self.core_barrel_gap+self.barrel_thickness+gas_gap)
+        h_cyl   = self.core_geometry["cylinder_height_m"] + 2*(self.reflector_geometry["reflector_thickness_m"]+self.core_barrel_gap+self.barrel_thickness+gas_gap)
 
         # Volume of steel: cylinder shell + 2 hemispherical caps
         V_cyl_shell = np.pi * (r_outer**2 - r_inner**2) * h_cyl
@@ -327,7 +352,7 @@ class Reactor:
         rho_steel   =  8360 # kg/m3 Inconel-617 https://www.aerospacemetals.com/wp-content/uploads/2023/08/Special-Metals-INCONEL%C2%AE-Alloy-617.pdf
         m_vessel    = V_vessel * rho_steel
 
-        return {"outer_diameter_m": 2*r_outer, "height_m": h_cyl+r_outer*2, "wall_thickness_m": t, "vessel_mass_kg": m_vessel}
+        return {"inner_diameter_m": 2*r_inner, "outer_diameter_m": 2*r_outer, "height_m": h_cyl+r_outer*2, "wall_thickness_m": t, "vessel_mass_kg": m_vessel}
 
     # -----------------------------------------------------------------------------------------------------------------
     def size_shield(self):
@@ -339,6 +364,7 @@ class Reactor:
         shield_thickness = 5.8 * self.core_geometry["cylinder_volume_m3"]
         angle = 12 * np.pi/180
         r2 = 0.7
+        r2 = 0.3324
         h2 = r2 / np.tan(angle)
         h1 = h2 - shield_thickness
         r1 = h1 * np.tan(angle)
@@ -356,8 +382,8 @@ class Reactor:
         fuel    = self.size_fuel()
         core    = self.size_core()
         # coolant = self.size_coolant()
-        rods    = self.size_control_rods()
         reflector = self.size_reflector()
+        rods    = self.size_control_rods()
         barrel = self.size_core_barrel()
         vessel = self.size_pressure_vessel()
         reactor_mass = fuel["total_fuel_kg"] + reflector["reflector_mass_kg"] + barrel["barrel_mass_kg"] + vessel["vessel_mass_kg"]
@@ -387,32 +413,38 @@ class Reactor:
             print(f"  Total fuel mass    : {fuel['total_fuel_kg']:.1f} kg")
             print()
             print(f"  -- Core geometry --")
-            print(f"  Core volume           : {core['core_volume_m3']:.2f} m^3")
-            print(f"  Cylinder radius       : {core['cylinder_radius_m']:.2f} m")
-            print(f"  Cylinder height       : {core['cylinder_height_m']:.2f} m")
+            print(f"  Core volume           : {core['core_volume_m3']:.3f} m^3")
+            print(f"  Cylinder radius       : {core['cylinder_radius_m']:.3f} m")
+            print(f"  Cylinder height       : {core['cylinder_height_m']:.3f} m")
             # print()
             # print(f"  -- Helium coolant --")
             # print(f"  Inlet --> outlet Delta_T     : {coolant['delta_T_K']:.0f} K")
             # print(f"  He mass flow          : {coolant['mass_flow_kg_per_s']:.4f} kg/s")
             # print(f"  He volumetric flow    : {coolant['volume_flow_m3_per_s']:.4f} m^3/s")
             print()
+            print(f"  -- Reflectors --")
+            print(f"  Reflector thickness   : {reflector['reflector_thickness_m']:.3f} m")
+            print(f"  Reflector mass    : {reflector['reflector_mass_kg']:.3f} kg")
+            print()
             print(f"  -- Control rods --")
             print(f"  Rod volume fraction   : {rods['control_rod_fraction']*100:.0f}%")
-            print(f"  Active fuel volume    : {rods['active_fuel_volume_m3']:.2f} m^3")
-            print()
-            print(f"  -- Reflectors --")
-            print(f"  Reflector thickness   : {reflector['reflector_thickness_m']:.2f} m")
-            print(f"  Reflector mass    : {reflector['reflector_mass_kg']:.2f} kg")
+            print(f"  Rod volume    : {rods['rod_volume_m3']:.2f} m^3")
             print()
             print(f"  -- Core barrel --")
-            print(f"  Barrel thickness   : {barrel['barrel_thickness_m']:.4f} m")
-            print(f"  Barrel mass    : {barrel['barrel_mass_kg']:.2f} kg")
+            print(f"  Barrel outer diameter    : {barrel["barrel_diameter_m"]:.3f} m")
+            print(f"  Barrel thickness   : {barrel['barrel_thickness_m']:.3f} m")
+            print(f"  Barrel mass    : {barrel['barrel_mass_kg']:.3f} kg")
             print()
             print(f"  -- Pressure vessel --")
+            print(f"  Vessel inner diameter   : {vessel["inner_diameter_m"]:.4f} m")
+            print(f"  Vessel outer diameter   : {vessel['outer_diameter_m']:.4f} m")
+            print(f"  Vessel height   : {vessel['height_m']:.4f} m")
             print(f"  Pressure vessel thickness   : {vessel['wall_thickness_m']:.4f} m")
             print(f"  Vessel mass    : {vessel['vessel_mass_kg']:.2f} kg")
             print()
             print(f"  -- Shield --")
+            print(f"  Shield upper diameter : {shield['top_diameter_m']:.4f} m")
+            print(f"  Shield lower diameter : {shield['bottom_diameter_m']:.4f} m")
             print(f"  Shield thickness   : {shield['shield_thickness_m']:.4f} m")
             print(f"  Shield mass    : {shield['shield_mass_kg']:.2f} kg")
             print()
@@ -422,6 +454,7 @@ class Reactor:
             print("=" * 55)
 
         return total_mass
+    
 
 def uranium_frac_vs_fuel_mass():
     ufrac = np.arange(0.04,0.8,0.1)
@@ -443,16 +476,43 @@ def main():
     # reactor_small = Reactor(1050, 1273, 54000, operating_pressure=2e6, power_density=7.4e6)
     # reactor_small.size_all(print_true=True)
     # print(reactor_small.reactor_mass * 1.85)
-    reactor_small_hp = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density=10.3587374144e6)
-    reactor_small_hp.size_all(print_true=True)
-    print(reactor_small_hp.reactor_mass * 1.85)
-    reactor_small_hp_int = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density="int")
-    reactor_small_hp_int.size_all(print_true=True)
-    print(reactor_small_hp_int.reactor_mass * 1.85)
+    # reactor_small_hp = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density=10.3587374144e6)
+    # reactor_small_hp.size_all(print_true=True)
+    # print(reactor_small_hp.reactor_mass * 1.85)
+    # reactor_small_hp_int = Reactor(1050, 1273, 54000, operating_pressure=4e6, power_density="int")
+    # reactor_small_hp_int.size_all(print_true=True)
+    # print(reactor_small_hp_int.reactor_mass * 1.85)
     # reactor_haleu = Reactor(1050, 1273, 54000, enrichment=0.2, operating_pressure=2e6, power_density=5.8e6)
     # reactor_haleu.size_all(print_true=True)
     # print(reactor_haleu.reactor_mass * 1.85)
+    reactor_final = Reactor(1050, 1273, 23800/0.3973, fuel_type="U10Mo", operating_pressure=4.025e6, power_density="int")
+    reactor_final.size_all(print_true=True)
+    print(reactor_final.fuel_kg/RHO_U10MO)
+    print(55/RHO_U10MO)
+
+    steps = 100
+    thrm_sweep = np.linspace(50000,80000,steps)
+
+    mass_list = np.zeros(steps)
+    for i, W_thrm in enumerate(thrm_sweep):
+        reactor = Reactor(1050, 1273, W_thrm, fuel_type="U10Mo", operating_pressure=4.025e6, power_density="int")
+        fuel, core, rods, reflector, barrel, vessel, reactor_mass = reactor.size_reactor()
+        mass_list[i] = reflector["reflector_mass_kg"]
+    
+
+    fig, ax = plt.subplots(1,1,figsize=(12,8))
+
+    ax.plot(thrm_sweep/1000, mass_list, color="red", label="Total")
+    ax.set_xlabel("Thermal Power Required (kW)")
+    ax.set_ylabel("Reflector Mass (kg)")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 
 if __name__ == "__main__":
+
     main()

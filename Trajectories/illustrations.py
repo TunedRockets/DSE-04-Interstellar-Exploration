@@ -9,10 +9,29 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-# fraction showcase:
-if False:
-    np.random.seed(122)
-    points = np.random.random((20,2))*0.99
+def get_random(seed:int = 122):
+    np.random.seed(seed)
+    N = 30
+    points = np.random.random((N,2))*0.97 # points inside (1,1)
+    return points
+
+
+
+if True: # just points
+    points = get_random()
+    plt.scatter(points[:,0],points[:,1], marker='x', lw=3, color='b')
+    plt.xlabel(r'$\Delta V_i$',fontsize=11)
+    plt.ylabel(r'$\Delta V_r$',fontsize=11)
+    plt.xlim((0,1))
+    plt.ylim((0,1))
+    plt.xticks(ticks=np.arange(0,1.05,0.1),labels='')
+    plt.yticks(ticks=np.arange(0,1.05,0.1),labels='')
+    plt.axis()
+
+    plt.show()
+
+if True: # fraction showcase
+    points = get_random()
     plt.scatter(points[:,0],points[:,1], marker='x', lw=3, color='b')
     plt.xlabel(r'$\Delta V_i$',fontsize=11)
     plt.ylabel(r'$\Delta V_r$',fontsize=11)
@@ -41,15 +60,12 @@ if False:
     plt.plot([design_point[0],design_point[0]],[0,design_point[1]], color='k', lw=1, zorder=-99)
     plt.plot([0,design_point[0]],[design_point[1],design_point[1]], color='k', lw=1, zorder=-99)
     plt.scatter(design_point[0],design_point[1], color="red", marker='o', lw=3, label=f"design point with probability $P={count}/{20}$")
-
     plt.legend()
     plt.show()
 
-
-# specific design optimizer:
-if False:
-    np.random.seed(121)
-    points = np.random.random((10,2))*0.99
+if True: # specific design optimizer
+    
+    points = get_random()
     plt.scatter(points[:,0],points[:,1], marker='x', lw=3, color='b')
     plt.xlabel(r'$\Delta V_i$',fontsize=11)
     plt.ylabel(r'$\Delta V_r$',fontsize=11)
@@ -70,34 +86,34 @@ if False:
     plt.scatter(design_point[0],design_point[1], color="green", marker='s', lw=3)
 
     # moved points:
-    move = np.array((
-        (0.1,0.6),
-        (0.3,0.42),
-        ))
-    plt.plot(move[:,0], move[:,1], color="b", ls='--', lw=1)
-    plt.scatter(move[-1,0], move[-1,1], color='b', marker='x', lw=3)
-     # moved points:
-    move = np.array((
-        (0.6,0.2),
-        (0.48,0.38),
-        ))
-    plt.plot(move[:,0], move[:,1], color="b", ls='--', lw=1)
-    plt.scatter(move[-1,0], move[-1,1], color='b', marker='x', lw=3)
+    if False:
+        move = np.array((
+            (0.1,0.6),
+            (0.3,0.42),
+            ))
+        plt.plot(move[:,0], move[:,1], color="b", ls='--', lw=1)
+        plt.scatter(move[-1,0], move[-1,1], color='b', marker='x', lw=3)
+        # moved points:
+        move = np.array((
+            (0.6,0.2),
+            (0.48,0.38),
+            ))
+        plt.plot(move[:,0], move[:,1], color="b", ls='--', lw=1)
+        plt.scatter(move[-1,0], move[-1,1], color='b', marker='x', lw=3)
 
-    move = np.array((
-        (0.55,0.07),
-        (0.48,0.23),
-        ))
-    plt.plot(move[:,0], move[:,1], color="b", ls='--', lw=1)
-    plt.scatter(move[-1,0], move[-1,1], color='b', marker='x', lw=3)
+        move = np.array((
+            (0.55,0.07),
+            (0.48,0.23),
+            ))
+        plt.plot(move[:,0], move[:,1], color="b", ls='--', lw=1)
+        plt.scatter(move[-1,0], move[-1,1], color='b', marker='x', lw=3)
 
 
     # plt.legend()
     plt.show()
 
-if False:
-    np.random.seed(78091162)
-    points = np.random.random((15,2))*0.99
+if True: # triangle
+    points = get_random()
     plt.scatter(points[:,0],points[:,1], marker='x', lw=3, color='b')
     plt.xlabel(r'$\Delta V_i$',fontsize=11)
     plt.ylabel(r'$\Delta V_r$',fontsize=11)
@@ -106,7 +122,7 @@ if False:
     plt.xticks(ticks=np.arange(0,1.05,0.1),labels='')
     plt.yticks(ticks=np.arange(0,1.05,0.1),labels='')
 
-    design_point = np.array((0.5,0.6))
+    design_point = np.array((0.5,0.45))
     count = len(points[
         (points[:,0] <= design_point[0]) &
         (points[:,1] <= design_point[1]) 
@@ -130,7 +146,6 @@ def argymax(x:list[np.ndarray]): # argmax for the y coordinate
     for i, p in enumerate(x):
         if p[1] > maxx: maxx = p[1]; idx = i
     return idx
-
 
 def study_slice(points:np.ndarray, C:int)->np.ndarray:
     '''study a slice, and add new pivot'''
@@ -161,10 +176,10 @@ def study_slice(points:np.ndarray, C:int)->np.ndarray:
     return np.array(corners)
 
 # optimization stairs
-if False:
-    N = 30
+if True:
     C = 5
-    points = np.random.random((N,2))*0.97 # points inside (1,1)
+    N = 30
+    points = get_random()
     print(f'{N=},{C=}')
 
     corners = study_slice(points, C)
@@ -198,7 +213,7 @@ if False:
     plt.xticks(ticks=np.arange(0,1.05,0.1),labels='')
     plt.yticks(ticks=np.arange(0,1.05,0.1),labels='')
 
-    plt.legend()
+    # plt.legend()
     plt.show()
 
 
@@ -213,7 +228,7 @@ if False:
     df = df[df['ion_res'] >= 0]
     df = df.sort_values('r', ignore_index=True)
 
-    row = df.iloc[-2]
+    row = df.iloc[500]
     td = row['t_p']- row['time_until_periapsis']*jkat.DAY
 
     ISO, trans, ts, te = recreate_ISO_and_intercept(row)
@@ -225,9 +240,53 @@ if False:
     jkat.plot(trans,t_bounds=(ts,te), t=te, color='green', stilts=True)
     jkat.show()
    
+# animated orbits
+if False:
+    
+    from pathlib import Path
+    PATH = Path(__file__).parent / 'out'
+    import subprocess
+    import jkat
+    from jkat.plotting import plot, clf, add_solar_system, set_view_angle
+    from contingency_analysis import study_storage, recreate_ISO_and_intercept
+
+    df = study_storage(12,10,0)
+    df = df[df['ion_res'] >= 0]
+    df = df.sort_values('r', ignore_index=True)
+
+    row = df.iloc[-1]
+    td = row['t_p']- row['time_until_periapsis']*jkat.DAY
+
+    ISO, trans, ts, te = recreate_ISO_and_intercept(row)
+
+    t = 5
+    frames = 15
+
+    times = np.linspace(td, te+jkat.YEAR*2, t*frames+1)[1:]
+    for i,time in tqdm(enumerate(times), desc='making images', total=len(times)):
+        set_view_angle(40,90,1)
+        add_solar_system(time, planets='11111100', symbols=True)
+        jkat.plot(ISO, t_bounds=(td,time), t=time, max_distance=50*jkat.AU, color="purple")
+
+        if time > ts:
+            jkat.plot(trans,t_bounds=(ts,min(time,te)), t=(time if time < te else None), color='green', stilts=True, max_distance=50*jkat.AU)
+        # jkat.show()
+        plt.savefig(PATH / f'{i}p.png', format='png', transparent=None, dpi=150)
+        clf()
+
+    subprocess.run(f'cd {PATH}', shell=True)
+    subprocess.run(f'ffmpeg -i %dp.png -framerate {frames} -i palette.png -filter_complex "paletteuse" out.gif -y'
+                #    '-vf "crop=400:400:80:80'
+                   ,shell=True)
+    for p in Path('.').glob('*p.png'):
+        p.unlink()
+
+
+
+
 
 # cmap of success chance
-if True:
+if False:
     # (pessemistic since trajectories not reoptimized)
     def under(df:pd.DataFrame,vinf, dvion):
         count = 0

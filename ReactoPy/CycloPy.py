@@ -7,7 +7,9 @@ from ReactoPy.ReactorSize import Reactor
 from functools import cache
 
 import matplotlib as mpl
-mpl.use('tkagg')
+import os
+if os.getlogin() != 'kjn':
+    mpl.use('tkagg')
 # Sources:
 
 # https://inldigitallibrary.inl.gov/content/uploads/50/2026/04/Sort_107145.pdf

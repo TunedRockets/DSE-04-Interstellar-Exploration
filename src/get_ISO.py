@@ -14,6 +14,8 @@ from tqdm import tqdm
 from typing import Callable
 from functools import partial
 from multiprocessing import Pool
+import multiprocessing
+multiprocessing.set_start_method('fork')
 import pickle
 from pathlib import Path
 

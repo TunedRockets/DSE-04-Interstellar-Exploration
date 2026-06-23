@@ -8,7 +8,9 @@ from src2.orbit import *
 import numpy as np
 from tqdm import tqdm
 import matplotlib as mpl
-# mpl.use('TkAgg')
+import os
+if os.getlogin() != 'kjn':
+    mpl.use('tkagg')
 import matplotlib.pyplot as plt
 from Propulsion.proper_earth_rdvz_sizer import *
 
@@ -40,37 +42,35 @@ escape_velocity = np.sqrt(2 * mu_earth / r_LEO)
 # ============================================================
 
 def dv_to_vinf(dv, v_circ, v_esc):
-    """
-    Convert impulsive periapsis burn delta-v from circular orbit
-    into resulting hyperbolic excess velocity.
-    """
-
     v_post = v_circ + dv
 
-    if v_post <= v_esc:
-        return 0.0
+    # specific orbital energy at periapsis
+    eps = 0.5 * v_post ** 2 - 0.5 * v_esc ** 2
 
-    return np.sqrt(v_post**2 - v_esc**2)
+    # convert to v_inf (allow negative energy to carry as "deficit")
+    if eps <= 0:
+        return -np.sqrt(-2 * eps)  # signed "deficit"
 
-
-def vinf_to_required_dv(vinf, v_circ, v_esc):
-    """
-    Required impulsive periapsis delta-v to achieve target v∞.
-    """
-
-    return np.sqrt(vinf**2 + v_esc**2) - v_circ
+    return np.sqrt(2 * eps)
 
 
-def combine_vinf_and_dv(vinf_initial, dv, v_esc):
-    """
-    Apply impulsive periapsis burn onto existing hyperbolic trajectory.
-    """
+# def vinf_to_required_dv(vinf, v_circ, v_esc):
+#     """
+#     Required impulsive periapsis delta-v to achieve target v∞.
+#     """
+#
+#     return np.sqrt(vinf**2 + v_esc**2) - v_circ
 
-    v_peri_initial = np.sqrt(vinf_initial**2 + v_esc**2)
 
-    v_peri_final = v_peri_initial + dv
-
-    return np.sqrt(v_peri_final**2 - v_esc**2)
+# def combine_vinf_and_dv(vinf_initial, dv, v_esc):
+#     # convert back to periapsis velocity space
+#     v_peri_initial = np.sqrt(vinf_initial**2 + v_esc**2) if vinf_initial >= 0 else np.sqrt(-(vinf_initial**2) + v_esc**2)
+#
+#     v_peri_final = v_peri_initial + dv
+#
+#     eps = 0.5 * v_peri_final**2 - 0.5 * v_esc**2
+#
+#     return np.sign(eps) * np.sqrt(abs(2 * eps))
 
 
 # ============================================================
@@ -203,45 +203,45 @@ class Stage():
 #                         VEHICLE
 # ============================================================
 
-class Vehicle():
-
-    def __init__(self, StageList):
-
-        self.StageList = StageList
-
-    def get_total_dv(self, payload_mass=0):
-
-        total_dv = 0
-
-        upper_mass = payload_mass
-
-        for stage in reversed(self.StageList):
-
-            start_mass = (
-                stage.dry_mass
-                + stage.max_prop_mass
-                + upper_mass
-            )
-
-            end_mass = (
-                stage.dry_mass
-                + upper_mass
-            )
-
-            stage_dv = get_dv(
-                start_mass,
-                end_mass,
-                stage.Isp
-            )
-
-            total_dv += stage_dv
-
-            upper_mass += (
-                stage.dry_mass
-                + stage.max_prop_mass
-            )
-
-        return total_dv
+# class Vehicle():
+#
+#     def __init__(self, StageList):
+#
+#         self.StageList = StageList
+#
+#     def get_total_dv(self, payload_mass=0):
+#
+#         total_dv = 0
+#
+#         upper_mass = payload_mass
+#
+#         for stage in reversed(self.StageList):
+#
+#             start_mass = (
+#                 stage.dry_mass
+#                 + stage.max_prop_mass
+#                 + upper_mass
+#             )
+#
+#             end_mass = (
+#                 stage.dry_mass
+#                 + upper_mass
+#             )
+#
+#             stage_dv = get_dv(
+#                 start_mass,
+#                 end_mass,
+#                 stage.Isp
+#             )
+#
+#             total_dv += stage_dv
+#
+#             upper_mass += (
+#                 stage.dry_mass
+#                 + stage.max_prop_mass
+#             )
+#
+#         return total_dv
 
 
 # ============================================================
@@ -254,8 +254,10 @@ class Launcher():
         self,
         LEO_payload,
         UpperStage,
-        LEO_payload_altitude=200_000
+        LEO_payload_altitude=200_000, # Assumed when data is not provided in user guides
+        orbital_refill=False
     ):
+        self.orbital_refill = orbital_refill
 
         self.LEO_payload = LEO_payload
         self.UpperStage = UpperStage
@@ -269,15 +271,19 @@ class Launcher():
             2 * mu_earth / r
         )
 
-    def get_vinf_performance(self, payload_mass):
+    def get_dv_performance(self, payload_mass):
 
         remaining_prop_mass = min(
             self.LEO_payload - payload_mass,
             self.UpperStage.max_prop_mass
         )
+        if remaining_prop_mass==self.UpperStage.max_prop_mass:
+            print("Max prop mass reached, upper stage was not used for leo")
+        if self.orbital_refill:
+            remaining_prop_mass = self.UpperStage.max_prop_mass
 
-        if remaining_prop_mass <= 0:
-            return 0.0
+        if remaining_prop_mass < 0:
+            return np.nan
 
         dv = self.UpperStage.get_remaining_dv(
             remaining_prop_mass,
@@ -289,194 +295,264 @@ class Launcher():
             self.ref_LEO_velocity,
             self.ref_escape_velocity
         )
+        # return dv # FUCK FUCK FUCK WE DONT TALK ABOUT THIS
 
-    def get_C3_performance(self, payload_mass):
+    # def get_C3_performance(self, payload_mass):
+    #
+    #     vinf = self.get_vinf_performance(payload_mass)
+    #
+    #     return vinf**2
 
-        vinf = self.get_vinf_performance(payload_mass)
-
-        return vinf**2
-
-    def plot_vinf(
-        self,
-        ax,
-        n=2000,
-        label=None,
-        vinf_threshold=0,
-        kickstage=None
-    ):
-
-        payloads = np.linspace(
-            100,
-            self.LEO_payload * 0.99,
-            n
-        )
-
-        base_payloads = payloads.copy()
-
-        vinf_vals = np.array([
-            self.get_vinf_performance(m)
-            for m in base_payloads
-        ])
-
-        if kickstage is not None:
-            vinf_vals = np.array([
-                self.get_vinf_performance(m+kickstage.total_mass)
-                for m in base_payloads
-            ])
-
-            kick_dv = np.array([
-                kickstage.get_total_dv(m)
-                for m in base_payloads
-            ])
-
-            vinf_vals = np.array([
-                combine_vinf_and_dv(
-                    vinf,
-                    dv,
-                    self.ref_escape_velocity
-                )
-                for vinf, dv in zip(vinf_vals, kick_dv)
-            ])
-
-        mask = vinf_vals > vinf_threshold
-
-        ax.plot(
-            vinf_vals[mask],
-            base_payloads[mask],
-            label=label if label else "Launcher"
-        )
-
-        ax.set_ylabel("Payload Mass [kg]")
-        ax.set_xlabel("V∞ [m/s]")
-        ax.grid(True)
-
-    def plot_C3(
-        self,
-        ax,
-        n=2000,
-        label=None,
-        vinf_threshold=0,
-        kickstage=None
-    ):
-
-        payloads = np.linspace(
-            100,
-            self.LEO_payload * 0.99,
-            n
-        )
-
-        base_payloads = payloads.copy()
-
-        vinf_vals = np.array([
-            self.get_vinf_performance(m)
-            for m in base_payloads
-        ])
-
-        if kickstage is not None:
-            vinf_vals = np.array([
-                self.get_vinf_performance(m+kickstage.total_mass)
-                for m in base_payloads
-            ])
-
-            kick_dv = np.array([
-                kickstage.get_total_dv(m)
-                for m in base_payloads
-            ])
-
-            vinf_vals = np.array([
-                combine_vinf_and_dv(
-                    vinf,
-                    dv,
-                    self.ref_escape_velocity
-                )
-                for vinf, dv in zip(vinf_vals, kick_dv)
-            ])
-
-        c3_vals = vinf_vals**2
-
-        mask = vinf_vals > vinf_threshold
-
-        ax.plot(
-            c3_vals[mask],
-            base_payloads[mask],
-            label=label if label else "Launcher"
-        )
-
-        ax.set_ylabel("Payload Mass [kg]")
-        ax.set_xlabel("C3 [m²/s²]")
-        ax.grid(True)
+    # def plot_vinf(
+    #     self,
+    #     ax,
+    #     n=2000,
+    #     label=None,
+    #     vinf_threshold=0,
+    #     kickstage=None
+    # ):
+    #
+    #     payloads = np.linspace(
+    #         100,
+    #         self.LEO_payload * 0.99,
+    #         n
+    #     )
+    #
+    #     base_payloads = payloads.copy()
+    #
+    #     vinf_vals = np.array([
+    #         self.get_vinf_performance(m)
+    #         for m in base_payloads
+    #     ])
+    #
+    #     if kickstage is not None:
+    #         vinf_vals = np.array([
+    #             self.get_vinf_performance(m+kickstage.total_mass)
+    #             for m in base_payloads
+    #         ])
+    #
+    #         kick_dv = np.array([
+    #             kickstage.get_total_dv(m)
+    #             for m in base_payloads
+    #         ])
+    #
+    #         vinf_vals = np.array([
+    #             combine_vinf_and_dv(
+    #                 vinf,
+    #                 dv,
+    #                 self.ref_escape_velocity
+    #             )
+    #             for vinf, dv in zip(vinf_vals, kick_dv)
+    #         ])
+    #
+    #     mask = vinf_vals > vinf_threshold
+    #
+    #     ax.plot(
+    #         vinf_vals[mask],
+    #         base_payloads[mask],
+    #         label=label if label else "Launcher"
+    #     )
+    #
+    #     ax.set_ylabel("Payload Mass [kg]")
+    #     ax.set_xlabel("V∞ [m/s]")
+    #     ax.grid(True)
+    #
+    # def plot_C3(
+    #     self,
+    #     ax,
+    #     n=2000,
+    #     label=None,
+    #     vinf_threshold=0,
+    #     kickstage=None
+    # ):
+    #
+    #     payloads = np.linspace(
+    #         100,
+    #         self.LEO_payload * 0.99,
+    #         n
+    #     )
+    #
+    #     base_payloads = payloads.copy()
+    #
+    #     vinf_vals = np.array([
+    #         self.get_vinf_performance(m)
+    #         for m in base_payloads
+    #     ])
+    #
+    #     if kickstage is not None:
+    #         vinf_vals = np.array([
+    #             self.get_vinf_performance(m+kickstage.total_mass)
+    #             for m in base_payloads
+    #         ])
+    #
+    #         kick_dv = np.array([
+    #             kickstage.get_total_dv(m)
+    #             for m in base_payloads
+    #         ])
+    #
+    #         vinf_vals = np.array([
+    #             combine_vinf_and_dv(
+    #                 vinf,
+    #                 dv,
+    #                 self.ref_escape_velocity
+    #             )
+    #             for vinf, dv in zip(vinf_vals, kick_dv)
+    #         ])
+    #
+    #     c3_vals = vinf_vals**2
+    #
+    #     mask = vinf_vals > vinf_threshold
+    #
+    #     ax.plot(
+    #         c3_vals[mask],
+    #         base_payloads[mask],
+    #         label=label if label else "Launcher"
+    #     )
+    #
+    #     ax.set_ylabel("Payload Mass [kg]")
+    #     ax.set_xlabel("C3 [m²/s²]")
+    #     ax.grid(True)
 def get_vinf(launcher, kickstages, payload_mass):
     """
     Returns total achievable v_inf [m/s]
     for a payload mass.
     """
-    best_vinf = 0
+    best_vinf = -launcher.ref_escape_velocity
     best_kickstage = None
-    for kickstage in kickstages:
-        if kickstage is None:
-            v_inf = launcher.get_vinf_performance(payload_mass)
-            if v_inf > best_vinf:
-                best_vinf = v_inf
-                best_kickstage = kickstage
-                continue
+    for kick in kickstages:
 
-        # must fit in launcher
-        if payload_mass + kickstage.total_mass > launcher.LEO_payload:
-            v_inf = 0.0
-            if v_inf > best_vinf:
-                best_vinf = v_inf
-                best_kickstage = kickstage
-                continue
 
-        launcher_vinf = launcher.get_vinf_performance(
-            payload_mass + kickstage.total_mass
+
+
+        # Skip impossible masses
+
+        if payload_mass + kick.total_mass > launcher.LEO_payload:
+            continue
+
+        launcher_dv = launcher.get_dv_performance(
+            payload_mass + kick.total_mass
         )
 
-        kick_dv = kickstage.get_total_dv(payload_mass)
 
-        v_inf = combine_vinf_and_dv(
-            launcher_vinf,
-            kick_dv,
-            launcher.ref_escape_velocity
-        )
+
+        kick_dv = kick.get_total_dv(payload_mass)
+
+        v_inf = dv_to_vinf(kick_dv+launcher_dv, launcher.ref_LEO_velocity, launcher.ref_escape_velocity)
         if v_inf > best_vinf:
             best_vinf = v_inf
-            best_kickstage = kickstage
+            best_kickstage = kick
     return best_vinf, best_kickstage
 
-
-def get_payload_for_vinf(
+def plot_get_vinf(
     launcher,
-    kickstage,
-    target_vinf,
-    tol=1e-3
+    kickstages,
+    payload_masses,
+    ax=None,
+    label=None,
+    design_point=None,   # (payload_mass, vinf)
 ):
+    payload_masses = np.asarray(payload_masses)
 
-    low = 0.0
+    v_infs = [
+        get_vinf(launcher, kickstages, m)[0]
+        for m in payload_masses
+    ]
 
-    high = (
-        launcher.LEO_payload
-        if kickstage is None
-        else launcher.LEO_payload - kickstage.total_mass
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.plot(
+        payload_masses,
+        v_infs,
+        # lw=2.5,
+        # marker="o",
+        # ms=4,
+        label=label or launcher.__class__.__name__,
     )
+    ax.set_ylim(bottom=0, top=16000)
+    ax.set_xlabel("Payload Mass [kg]")
+    ax.set_ylabel(r"$V_\infty$ [m/s]")
+    ax.grid(True, alpha=0.3)
 
-    if get_vinf(launcher, kickstage, low) < target_vinf:
-        return None
 
-    while high - low > tol:
+    # ---------------- DESIGN POINT ----------------
+    if design_point is not None:
+        dm, dv = design_point
 
-        mid = 0.5 * (low + high)
+        ax.scatter(
+            dm,
+            dv,
+            color="black",
+            s=20,
+            zorder=20,
+            marker="o",
+            label="Design Parameters"
+        )
 
-        if get_vinf(launcher, kickstage, mid) > target_vinf:
-            low = mid
-        else:
-            high = mid
+        # ---------------- projection lines ----------------
+        ax.axvline(
+            dm,
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            alpha=0.5,
+            zorder=5
+        )
 
-    return low
+        ax.axhline(
+            dv,
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            alpha=0.5,
+            zorder=5
+        )
+
+        # ax.annotate(
+        #     "Preliminary Design",
+        #     (dm, dv),
+        #     textcoords="offset points",
+        #     xytext=(8, 8),
+        #     fontsize=9,
+        #     color="black"
+        # )
+
+    return ax
+#
+# def get_payload_for_vinf(
+#     launcher,
+#     kickstage,
+#     target_vinf,
+#     tol=1e-3
+# ):
+#
+#     low = 0.0
+#
+#     high = (
+#         launcher.LEO_payload
+#         if kickstage is None
+#         else launcher.LEO_payload - kickstage.total_mass
+#     )
+#
+#     if get_vinf(launcher, kickstage, low) < target_vinf:
+#         return None
+#
+#     while high - low > tol:
+#
+#         mid = 0.5 * (low + high)
+#
+#         if get_vinf(launcher, kickstage, mid) > target_vinf:
+#             low = mid
+#         else:
+#             high = mid
+#
+#     return low
 
 # ============================================================
 # REFERENCE STAGES
 # ============================================================
+
+Nothing = Stage(Isp=0, max_prop_mass=0, dry_mass=0)
 
 Helios = Stage(
     Isp=375,
@@ -600,7 +676,8 @@ SLS_Block1_ICPS = Launcher(
 
 Starship_SuperHeavy = Launcher(
     LEO_payload=150_000,
-    UpperStage=StarshipUpper
+    UpperStage=StarshipUpper,
+    orbital_refill=True
 )
 
 Vulcan = Launcher(
@@ -623,119 +700,123 @@ NewGlennLauncher = Launcher(
     UpperStage=NewGlennUpper
 )
 
+VegaC_Launcher = Launcher(
+    LEO_payload=3300,
+    UpperStage=VegaC_AVUM_plus
+)
 # ============================================================
 # SPACECRAFT SIZING
 # ============================================================
-
-def size_spacecraft(
-    bus_mass,
-    launchers,
-    kickstages,
-    total_dv,
-    rdvz_dv,
-    tolerance=0.001,
-    verbose=False
-):
-
-    initial_mass, payload_mass, required_prop, _, _, _ =run_configuration(bus_mass, print_results=False)
-    needed_excess_dv = float(total_dv - rdvz_dv)
-
-
-
-    Space_Craft = Stage(
-        320,
-        required_prop,
-        initial_mass-required_prop
-    )
-
-    wet_mass = initial_mass
-
-    dry_mass = initial_mass - required_prop
-
-    prop_mass = required_prop
-
-    prop_mass_fraction = prop_mass / wet_mass
-
-    viable = []
-
-    for launcher, launcher_name in launchers:
-
-        for kick, kick_name in kickstages:
-
-            m = wet_mass
-
-            if kick is not None:
-                if m+kick.total_mass > launcher.LEO_payload:
-                    continue
-
-                v_inf_launcher = launcher.get_vinf_performance(
-                    m + kick.total_mass
-                )
-
-                kick_dv = kick.get_total_dv(m)
-
-                total_vinf = combine_vinf_and_dv(
-                    v_inf_launcher,
-                    kick_dv,
-                    launcher.ref_escape_velocity
-                )
-
-            else:
-
-                total_vinf = launcher.get_vinf_performance(m)
-
-            margin = total_vinf - needed_excess_dv
-
-            if margin > 0:
-
-                viable.append({
-                    "launcher_name": launcher_name,
-                    "kick_name": kick_name,
-                    "launcher": launcher,
-                    "kickstage": kick,
-                    "margin_m_s": margin
-                })
-
-    viable.sort(
-        key=lambda x: x["margin_m_s"],
-        reverse=True
-    )
-
-    if verbose:
-
-        print("\n========== SPACECRAFT SIZING ==========")
-
-        print(f"Bus mass:      {bus_mass:.1f} kg")
-        # print(f"Tank mass:     {tank_mass:.1f} kg")
-        print(f"Prop mass:     {prop_mass:.1f} kg")
-        print(f"Wet mass:      {wet_mass:.1f} kg")
-        print(f"Prop fraction: {prop_mass_fraction:.4f}")
-
-        print("\n========== VIABLE COMBINATIONS ==========")
-
-        if not viable:
-
-            print("No viable combinations found.")
-
-        else:
-
-            for v in viable:
-
-                print(
-                    f"{v['launcher_name']:25s} + "
-                    f"{v['kick_name']:20s} | "
-                    f"margin: {v['margin_m_s']:.1f} m/s"
-                )
-
-    return {
-        "wet_mass": wet_mass,
-        "dry_mass": dry_mass,
-        "prop_mass": prop_mass,
-        "prop_fraction": prop_mass_fraction,
-        "viable_combinations": viable,
-        "spacecraft": Space_Craft,
-        "payload_mass": payload_mass
-    }
+#
+# def size_spacecraft(
+#     bus_mass,
+#     launchers,
+#     kickstages,
+#     total_dv,
+#     rdvz_dv,
+#     tolerance=0.001,
+#     verbose=False
+# ):
+#
+#     initial_mass, payload_mass, required_prop, _, _, _ =run_configuration(bus_mass, print_results=False)
+#     needed_excess_dv = float(total_dv - rdvz_dv)
+#
+#
+#
+#     Space_Craft = Stage(
+#         320,
+#         required_prop,
+#         initial_mass-required_prop
+#     )
+#
+#     wet_mass = initial_mass
+#
+#     dry_mass = initial_mass - required_prop
+#
+#     prop_mass = required_prop
+#
+#     prop_mass_fraction = prop_mass / wet_mass
+#
+#     viable = []
+#
+#     for launcher, launcher_name in launchers:
+#
+#         for kick, kick_name in kickstages:
+#
+#             m = wet_mass
+#
+#             if kick is not None:
+#                 if m+kick.total_mass > launcher.LEO_payload:
+#                     continue
+#
+#                 v_inf_launcher = launcher.get_vinf_performance(
+#                     m + kick.total_mass
+#                 )
+#
+#                 kick_dv = kick.get_total_dv(m)
+#
+#                 total_vinf = combine_vinf_and_dv(
+#                     v_inf_launcher,
+#                     kick_dv,
+#                     launcher.ref_escape_velocity
+#                 )
+#
+#             else:
+#
+#                 total_vinf = launcher.get_vinf_performance(m)
+#
+#             margin = total_vinf - needed_excess_dv
+#
+#             if margin > 0:
+#
+#                 viable.append({
+#                     "launcher_name": launcher_name,
+#                     "kick_name": kick_name,
+#                     "launcher": launcher,
+#                     "kickstage": kick,
+#                     "margin_m_s": margin
+#                 })
+#
+#     viable.sort(
+#         key=lambda x: x["margin_m_s"],
+#         reverse=True
+#     )
+#
+#     if verbose:
+#
+#         print("\n========== SPACECRAFT SIZING ==========")
+#
+#         print(f"Bus mass:      {bus_mass:.1f} kg")
+#         # print(f"Tank mass:     {tank_mass:.1f} kg")
+#         print(f"Prop mass:     {prop_mass:.1f} kg")
+#         print(f"Wet mass:      {wet_mass:.1f} kg")
+#         print(f"Prop fraction: {prop_mass_fraction:.4f}")
+#
+#         print("\n========== VIABLE COMBINATIONS ==========")
+#
+#         if not viable:
+#
+#             print("No viable combinations found.")
+#
+#         else:
+#
+#             for v in viable:
+#
+#                 print(
+#                     f"{v['launcher_name']:25s} + "
+#                     f"{v['kick_name']:20s} | "
+#                     f"margin: {v['margin_m_s']:.1f} m/s"
+#                 )
+#
+#     return {
+#         "wet_mass": wet_mass,
+#         "dry_mass": dry_mass,
+#         "prop_mass": prop_mass,
+#         "prop_fraction": prop_mass_fraction,
+#         "viable_combinations": viable,
+#         "spacecraft": Space_Craft,
+#         "payload_mass": payload_mass
+#     }
 
 
 # ============================================================
@@ -793,9 +874,11 @@ def plot_launcher_wetmass_feasibility(
             # DIRECT INJECTION
             # -------------------------------------------------
 
-            direct_vinf = launcher.get_vinf_performance(
+            direct_vinf = dv_to_vinf( launcher.get_dv_performance(
                 wet_mass
-            )
+            ),
+            launcher.ref_LEO_velocity,
+            launcher.ref_escape_velocity,)
 
             if direct_vinf >= required_vinf:
 
@@ -815,7 +898,7 @@ def plot_launcher_wetmass_feasibility(
                 if wet_mass + kick.total_mass > launcher.LEO_payload:
                     continue
 
-                launcher_vinf = launcher.get_vinf_performance(
+                launcher_dv =launcher.get_dv_performance(
                     wet_mass + kick.total_mass
                 )
 
@@ -823,11 +906,7 @@ def plot_launcher_wetmass_feasibility(
                     wet_mass
                 )
 
-                total_vinf = combine_vinf_and_dv(
-                    launcher_vinf,
-                    kick_dv,
-                    launcher.ref_escape_velocity
-                )
+                total_vinf = dv_to_vinf( kick_dv+launcher_dv, launcher.ref_LEO_velocity, launcher.ref_escape_velocity )
 
                 if total_vinf >= required_vinf:
 
@@ -1049,198 +1128,198 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 
-def plot_launcher_busmass_feasibility(
-    bus_mass_range,
-    launchers,
-    kickstages,
-    total_dv,
-    rdvz_dv
-):
-
-    launcher_names = [name for _, name in launchers]
-
-    kickstage_names = [name for _, name in kickstages]
-
-    kickstage_name_map = {
-        stage_obj: name
-        for stage_obj, name in kickstages
-    }
-
-    mode_names = kickstage_names  # only kickstages drawn in sub-bars
-
-    # =========================================================
-    # STORAGE
-    # =========================================================
-    availability = {}
-
-    payload_masses = np.zeros(len(bus_mass_range))
-
-    for lname in launcher_names:
-        availability[(lname, "Direct")] = np.zeros(len(bus_mass_range), dtype=bool)
-        for ks in kickstage_names:
-            availability[(lname, ks)] = np.zeros(len(bus_mass_range), dtype=bool)
-
-    # =========================================================
-    # EVALUATION
-    # =========================================================
-    for j, bus_mass in enumerate(bus_mass_range):
-
-        result = size_spacecraft(
-            bus_mass,
-            launchers,
-            kickstages,
-            total_dv,
-            rdvz_dv,
-            verbose=False
-        )
-
-        payload_masses[j] = result["payload_mass"]
-
-        for v in result["viable_combinations"]:
-
-            lname = v["launcher_name"]
-
-            if v["kickstage"] is None:
-                availability[(lname, "Direct")][j] = True
-            else:
-                ks = kickstage_name_map[v["kickstage"]]
-                availability[(lname, ks)][j] = True
-
-    # =========================================================
-    # SORT BY PAYLOAD MASS (IMPORTANT)
-    # =========================================================
-    sort_idx = np.argsort(payload_masses)
-
-    payload_masses = payload_masses[sort_idx]
-
-    for key in availability:
-        availability[key] = availability[key][sort_idx]
-
-    # =========================================================
-    # COLORS
-    # =========================================================
-    cmap = plt.get_cmap("tab20")
-
-    mode_colors = {
-        "Direct": "#006400"
-    }
-
-    for i, ks in enumerate(kickstage_names):
-        mode_colors[ks] = cmap(i)
-
-    # =========================================================
-    # PLOT
-    # =========================================================
-    fig, ax = plt.subplots(figsize=(15, 8))
-
-    launcher_height = 0.8
-    subbar_height = launcher_height / max(len(kickstage_names), 1)
-
-    for i, lname in enumerate(launcher_names):
-
-        base_y = i - launcher_height / 2
-
-        direct = availability[(lname, "Direct")]
-
-        # =====================================================
-        # 1. KICKSTAGES (masked by direct)
-        # =====================================================
-        for m, ks in enumerate(kickstage_names):
-
-            y = base_y + m * subbar_height
-
-            feasible = np.logical_and(
-                availability[(lname, ks)],
-                ~direct
-            )
-
-            start = None
-
-            for j, val in enumerate(feasible):
-
-                if val and start is None:
-                    start = j
-
-                end = (not val or j == len(feasible) - 1) and start is not None
-
-                if end:
-
-                    end_j = j if val and j == len(feasible) - 1 else j - 1
-
-                    x0 = payload_masses[start]
-                    x1 = payload_masses[end_j]
-
-                    ax.broken_barh(
-                        [(x0, x1 - x0)],
-                        (y, subbar_height * 0.9),
-                        facecolors=mode_colors[ks],
-                        alpha=0.7,
-                        zorder=1
-                    )
-
-                    start = None
-
-        # =====================================================
-        # 2. DIRECT (FULL OVERLAY)
-        # =====================================================
-        start = None
-
-        for j, val in enumerate(direct):
-
-            if val and start is None:
-                start = j
-
-            end = (not val or j == len(direct) - 1) and start is not None
-
-            if end:
-
-                end_j = j if val and j == len(direct) - 1 else j - 1
-
-                x0 = payload_masses[start]
-                x1 = payload_masses[end_j]
-
-                ax.broken_barh(
-                    [(x0, x1 - x0)],
-                    (i - launcher_height / 2, launcher_height),
-                    facecolors="#006400",
-                    alpha=0.9,
-                    zorder=10
-                )
-
-                start = None
-
-    # =========================================================
-    # LABELS
-    # =========================================================
-    ax.set_yticks(range(len(launcher_names)))
-    ax.set_yticklabels(launcher_names)
-
-    ax.set_xlabel("Payload Mass [kg]")
-    ax.set_ylabel("Launcher")
-    ax.set_title("Launcher / Kickstage Feasibility vs Payload Mass")
-
-    ax.grid(True, axis="x", linestyle="--", alpha=0.4)
-
-    # =========================================================
-    # LEGEND
-    # =========================================================
-    legend_handles = [
-        Patch(color="#006400", label="Direct Injection")
-    ]
-
-    for ks in kickstage_names:
-        if ks is not "":
-            legend_handles.append(
-                Patch(color=mode_colors[ks], label=ks)
-            )
-
-    ax.legend(handles=legend_handles, loc="upper right")
-
-    ax.set_xlim(payload_masses[0], payload_masses[-1])
-    ax.set_ylim(-0.5, len(launchers) - 0.5)
-
-    plt.tight_layout()
-    plt.show()
+# def plot_launcher_busmass_feasibility(
+#     bus_mass_range,
+#     launchers,
+#     kickstages,
+#     total_dv,
+#     rdvz_dv
+# ):
+#
+#     launcher_names = [name for _, name in launchers]
+#
+#     kickstage_names = [name for _, name in kickstages]
+#
+#     kickstage_name_map = {
+#         stage_obj: name
+#         for stage_obj, name in kickstages
+#     }
+#
+#     mode_names = kickstage_names  # only kickstages drawn in sub-bars
+#
+#     # =========================================================
+#     # STORAGE
+#     # =========================================================
+#     availability = {}
+#
+#     payload_masses = np.zeros(len(bus_mass_range))
+#
+#     for lname in launcher_names:
+#         availability[(lname, "Direct")] = np.zeros(len(bus_mass_range), dtype=bool)
+#         for ks in kickstage_names:
+#             availability[(lname, ks)] = np.zeros(len(bus_mass_range), dtype=bool)
+#
+#     # =========================================================
+#     # EVALUATION
+#     # =========================================================
+#     for j, bus_mass in enumerate(bus_mass_range):
+#
+#         result = size_spacecraft(
+#             bus_mass,
+#             launchers,
+#             kickstages,
+#             total_dv,
+#             rdvz_dv,
+#             verbose=False
+#         )
+#
+#         payload_masses[j] = result["payload_mass"]
+#
+#         for v in result["viable_combinations"]:
+#
+#             lname = v["launcher_name"]
+#
+#             if v["kickstage"] is None:
+#                 availability[(lname, "Direct")][j] = True
+#             else:
+#                 ks = kickstage_name_map[v["kickstage"]]
+#                 availability[(lname, ks)][j] = True
+#
+#     # =========================================================
+#     # SORT BY PAYLOAD MASS (IMPORTANT)
+#     # =========================================================
+#     sort_idx = np.argsort(payload_masses)
+#
+#     payload_masses = payload_masses[sort_idx]
+#
+#     for key in availability:
+#         availability[key] = availability[key][sort_idx]
+#
+#     # =========================================================
+#     # COLORS
+#     # =========================================================
+#     cmap = plt.get_cmap("tab20")
+#
+#     mode_colors = {
+#         "Direct": "#006400"
+#     }
+#
+#     for i, ks in enumerate(kickstage_names):
+#         mode_colors[ks] = cmap(i)
+#
+#     # =========================================================
+#     # PLOT
+#     # =========================================================
+#     fig, ax = plt.subplots(figsize=(15, 8))
+#
+#     launcher_height = 0.8
+#     subbar_height = launcher_height / max(len(kickstage_names), 1)
+#
+#     for i, lname in enumerate(launcher_names):
+#
+#         base_y = i - launcher_height / 2
+#
+#         direct = availability[(lname, "Direct")]
+#
+#         # =====================================================
+#         # 1. KICKSTAGES (masked by direct)
+#         # =====================================================
+#         for m, ks in enumerate(kickstage_names):
+#
+#             y = base_y + m * subbar_height
+#
+#             feasible = np.logical_and(
+#                 availability[(lname, ks)],
+#                 ~direct
+#             )
+#
+#             start = None
+#
+#             for j, val in enumerate(feasible):
+#
+#                 if val and start is None:
+#                     start = j
+#
+#                 end = (not val or j == len(feasible) - 1) and start is not None
+#
+#                 if end:
+#
+#                     end_j = j if val and j == len(feasible) - 1 else j - 1
+#
+#                     x0 = payload_masses[start]
+#                     x1 = payload_masses[end_j]
+#
+#                     ax.broken_barh(
+#                         [(x0, x1 - x0)],
+#                         (y, subbar_height * 0.9),
+#                         facecolors=mode_colors[ks],
+#                         alpha=0.7,
+#                         zorder=1
+#                     )
+#
+#                     start = None
+#
+#         # =====================================================
+#         # 2. DIRECT (FULL OVERLAY)
+#         # =====================================================
+#         start = None
+#
+#         for j, val in enumerate(direct):
+#
+#             if val and start is None:
+#                 start = j
+#
+#             end = (not val or j == len(direct) - 1) and start is not None
+#
+#             if end:
+#
+#                 end_j = j if val and j == len(direct) - 1 else j - 1
+#
+#                 x0 = payload_masses[start]
+#                 x1 = payload_masses[end_j]
+#
+#                 ax.broken_barh(
+#                     [(x0, x1 - x0)],
+#                     (i - launcher_height / 2, launcher_height),
+#                     facecolors="#006400",
+#                     alpha=0.9,
+#                     zorder=10
+#                 )
+#
+#                 start = None
+#
+#     # =========================================================
+#     # LABELS
+#     # =========================================================
+#     ax.set_yticks(range(len(launcher_names)))
+#     ax.set_yticklabels(launcher_names)
+#
+#     ax.set_xlabel("Payload Mass [kg]")
+#     ax.set_ylabel("Launcher")
+#     ax.set_title("Launcher / Kickstage Feasibility vs Payload Mass")
+#
+#     ax.grid(True, axis="x", linestyle="--", alpha=0.4)
+#
+#     # =========================================================
+#     # LEGEND
+#     # =========================================================
+#     legend_handles = [
+#         Patch(color="#006400", label="Direct Injection")
+#     ]
+#
+#     for ks in kickstage_names:
+#         if ks is not "":
+#             legend_handles.append(
+#                 Patch(color=mode_colors[ks], label=ks)
+#             )
+#
+#     ax.legend(handles=legend_handles, loc="upper right")
+#
+#     ax.set_xlim(payload_masses[0], payload_masses[-1])
+#     ax.set_ylim(-0.5, len(launchers) - 0.5)
+#
+#     plt.tight_layout()
+#     plt.show()
 
 
 # ============================================================
@@ -1252,7 +1331,8 @@ def plot_vinf_comparison(
     kickstages,
     payload_min=100,
     payload_max=15000,
-    n=1500
+    n=1500,
+    design_point=None,   # (payload_mass, vinf)
 ):
 
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -1272,7 +1352,7 @@ def plot_vinf_comparison(
                 # ------------------------------------------------
                 if kick is None:
 
-                    vinf = launcher.get_vinf_performance(m)
+                    vinf = launcher.get_dv_performance(m)
 
                 # ------------------------------------------------
                 # WITH KICKSTAGE
@@ -1284,17 +1364,13 @@ def plot_vinf_comparison(
                         vinf_vals.append(np.nan)
                         continue
 
-                    launcher_vinf = launcher.get_vinf_performance(
+                    launcher_dv = launcher.get_dv_performance(
                         m + kick.total_mass
                     )
 
                     kick_dv = kick.get_total_dv(m)
 
-                    vinf = combine_vinf_and_dv(
-                        launcher_vinf,
-                        kick_dv,
-                        launcher.ref_escape_velocity
-                    )
+                    vinf = dv_to_vinf(kick_dv+ launcher_dv, launcher.ref_LEO_velocity, launcher.ref_escape_velocity)
 
                 vinf_vals.append(vinf)
 
@@ -1361,6 +1437,28 @@ def plot_vinf_comparison(
             color="red"
         )
 
+    # ---------------- DESIGN POINT ----------------
+    if design_point is not None:
+        dm, dv = design_point
+
+        ax.scatter(
+            dv,
+            dm,
+            color="black",
+            s=20,
+            marker="o",
+            zorder=50
+        )
+
+        ax.annotate(
+            "Design",
+            (dv, dm),
+            textcoords="offset points",
+            xytext=(10, 10),
+            fontsize=10,
+            color="black"
+        )
+
     # =========================================================
     # FORMATTING
     # =========================================================
@@ -1386,6 +1484,220 @@ def plot_vinf_comparison(
     plt.show()
 
 
+from matplotlib.patches import Patch
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_launcher_vinf_feasibility(
+    fixed_wet_mass,
+    launchers,
+    kickstages,
+    vinf_range,
+    vertical_vinf=None,
+    vertical_label=None,
+    vertical_color="red"
+):
+
+    launcher_names = [name for _, name in launchers]
+    kickstage_names = [name for _, name in kickstages]
+
+    vinf_vals = np.asarray(vinf_range)
+
+    # ---------------------------------------------------------
+    # STORAGE: (launcher, mode) → feasibility over vinf axis
+    # ---------------------------------------------------------
+    availability = {}
+
+    for lname in launcher_names:
+        availability[(lname, "Direct")] = np.zeros(len(vinf_vals), dtype=bool)
+        for ks in kickstage_names:
+            availability[(lname, ks)] = np.zeros(len(vinf_vals), dtype=bool)
+
+    # ---------------------------------------------------------
+    # FEASIBILITY EVALUATION
+    # ---------------------------------------------------------
+    for j, vinf_req in enumerate(vinf_vals):
+
+        for launcher, lname in launchers:
+
+            # -------------------------
+            # DIRECT INJECTION
+            # -------------------------
+            dv_launcher = launcher.get_dv_performance(fixed_wet_mass)
+
+            vinf_direct = dv_to_vinf(
+                dv_launcher,
+                launcher.ref_LEO_velocity,
+                launcher.ref_escape_velocity
+            )
+
+            if vinf_direct >= vinf_req:
+                availability[(lname, "Direct")][j] = True
+
+            # -------------------------
+            # KICKSTAGES
+            # -------------------------
+            for kick, ks_name in kickstages:
+
+                if kick is None:
+                    continue
+
+                if fixed_wet_mass + kick.total_mass > launcher.LEO_payload:
+                    continue
+
+                launcher_dv = launcher.get_dv_performance(
+                    fixed_wet_mass + kick.total_mass
+                )
+
+                kick_dv = kick.get_total_dv(fixed_wet_mass)
+
+                total_vinf = dv_to_vinf(
+                    launcher_dv + kick_dv,
+                    launcher.ref_LEO_velocity,
+                    launcher.ref_escape_velocity
+                )
+
+                if total_vinf >= vinf_req:
+                    availability[(lname, ks_name)][j] = True
+
+    # ---------------------------------------------------------
+    # COLORS
+    # ---------------------------------------------------------
+    cmap = plt.get_cmap("tab20")
+
+    mode_colors = {"Direct": "#006400"}
+    for i, ks in enumerate(kickstage_names):
+        mode_colors[ks] = cmap(i)
+
+    # ---------------------------------------------------------
+    # PLOT
+    # ---------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(15, 8))
+
+    launcher_height = 0.8
+    subbar_height = launcher_height / max(len(kickstage_names), 1)
+
+    for i, lname in enumerate(launcher_names):
+
+        base_y = i - launcher_height / 2
+
+        direct = availability[(lname, "Direct")]
+
+        # -------------------------
+        # KICKSTAGES
+        # -------------------------
+        for m, ks in enumerate(kickstage_names):
+
+            y = base_y + m * subbar_height
+
+            feasible = np.logical_and(
+                availability[(lname, ks)],
+                ~direct
+            )
+
+            start = None
+
+            for j, val in enumerate(feasible):
+
+                if val and start is None:
+                    start = j
+
+                end = (not val or j == len(feasible) - 1) and start is not None
+
+                if end:
+                    end_j = j if val and j == len(feasible) - 1 else j - 1
+
+                    x0 = vinf_vals[start]
+                    x1 = vinf_vals[end_j]
+
+                    ax.broken_barh(
+                        [(x0, x1 - x0)],
+                        (y, subbar_height * 0.9),
+                        facecolors=mode_colors[ks],
+                        alpha=0.7
+                    )
+
+                    start = None
+
+        # -------------------------
+        # DIRECT
+        # -------------------------
+        start = None
+
+        for j, val in enumerate(direct):
+
+            if val and start is None:
+                start = j
+
+            end = (not val or j == len(direct) - 1) and start is not None
+
+            if end:
+                end_j = j if val and j == len(direct) - 1 else j - 1
+
+                x0 = vinf_vals[start]
+                x1 = vinf_vals[end_j]
+
+                ax.broken_barh(
+                    [(x0, x1 - x0)],
+                    (i - launcher_height / 2, launcher_height),
+                    facecolors="#006400",
+                    alpha=0.9,
+                    zorder=10
+                )
+
+                start = None
+
+    # ---------------------------------------------------------
+    # OPTIONAL VERTICAL LINE (now vinf)
+    # ---------------------------------------------------------
+    if vertical_vinf is not None:
+        ax.axvline(vertical_vinf, color=vertical_color, linestyle="--")
+
+        if vertical_label:
+            ax.text(
+                vertical_vinf,
+                len(launchers) - 0.5,
+                vertical_label,
+                rotation=90,
+                color=vertical_color,
+                va="top"
+            )
+
+    # ---------------------------------------------------------
+    # LABELS
+    # ---------------------------------------------------------
+    ax.set_yticks(range(len(launcher_names)))
+    ax.set_yticklabels(launcher_names)
+
+    ax.set_xlabel(r"Required $V_\infty$ [m/s]")
+    ax.set_ylabel("Launcher")
+
+    ax.set_title(
+        f"Launcher Feasibility at Fixed Wet Mass = {fixed_wet_mass:.0f} kg"
+    )
+
+    ax.grid(True, axis="x", linestyle="--", alpha=0.4)
+
+    # ---------------------------------------------------------
+    # LEGEND
+    # ---------------------------------------------------------
+    legend_handles = [
+        Patch(color="#006400", label="Direct Injection")
+    ]
+
+    for ks in kickstage_names:
+        legend_handles.append(
+            Patch(color=mode_colors[ks], label=ks)
+        )
+
+    ax.legend(handles=legend_handles[::-1], loc="upper right")
+
+    ax.set_xlim(vinf_vals[0], vinf_vals[-1])
+    ax.set_ylim(-0.5, len(launchers) - 0.5)
+
+    plt.tight_layout()
+    plt.show()
+
 
 
 # ============================================================
@@ -1395,39 +1707,39 @@ def plot_vinf_comparison(
 if __name__ == "__main__":
     launchers = [
 
-        # (VegaC_Launcher, "Vega C"),
-        #
-        # (Ariane62_Launcher, "Ariane 62"),
-        #
-        # (Falcon9,
-        #  "Falcon 9"),
+        (VegaC_Launcher, "Vega C"),
+
+        (Ariane62_Launcher, "Ariane 62"),
+
+        (Falcon9,
+         "Falcon 9"),
 
         (Ariane64_Launcher, "Ariane 64"),
 
-        # (Starship_SuperHeavy,
-        #  "Starship + Super Heavy"),
-        #
-        # (FalconHeavy_Reusable,
-        #  "Falcon Heavy (Reusable)"),
-        #
-        # (Vulcan,
-        #  "Vulcan Centaur"),
-        #
-        # (NewGlennLauncher,
-        #  "New Glenn"),
+        (Starship_SuperHeavy,
+         "Starship + Super Heavy"),
 
-        # (FalconHeavy_Expendable,
-        #  "Falcon Heavy (Expendable)"),
+        (FalconHeavy_Reusable,
+         "Falcon Heavy (Reusable)"),
+
+        (Vulcan,
+         "Vulcan Centaur"),
+
+        (NewGlennLauncher,
+         "New Glenn"),
         #
-        # (SLS_Block1_ICPS,
-        #  "SLS Block 1 (ICPS)"),
-        #
-        # (SLS_CentaurV,
-        #  "SLS + Centaur V"),
+        (FalconHeavy_Expendable,
+         "Falcon Heavy (Expendable)"),
+
+        (SLS_Block1_ICPS,
+         "SLS Block 1 (ICPS)"),
+
+        (SLS_CentaurV,
+         "SLS + Centaur V"),
     ]
 
     kickstages = [
-
+        #
         (VegaC_Zefiro9, "VegaC Zefiro9"),
 
         (Orion38, "Orion38"),
@@ -1447,12 +1759,62 @@ if __name__ == "__main__":
         (None, "")
     ]
 
+    kickstages_simple = [
+
+        (VegaC_Zefiro9),
+
+        (Orion38),
+
+        (VegaC_AVUM_plus),
+
+        (Star48BV),
+
+        (Star63),
+
+        (Astris),
+
+        (ESC_A),
+
+        (ESCB),
+
+        (Helios),
+
+        CentaurV,
+
+        SLS_ICPS,
+        Nothing
+    ]
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+
+    payload_range = np.linspace(1, 10000, 10000)
+
+    plot_get_vinf(NewGlennLauncher, kickstages_simple, payload_range, ax=ax, label="New Glenn")
+    plot_get_vinf(FalconHeavy_Expendable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Expendable")
+    plot_get_vinf(FalconHeavy_Reusable, kickstages_simple, payload_range, ax=ax, label="Falcon Heavy Reusable")
+    plot_get_vinf(Ariane64_Launcher, kickstages_simple, payload_range, ax=ax, label="Ariane 64")
+    plot_get_vinf(Ariane62_Launcher, kickstages_simple, payload_range, ax=ax, label="Ariane 62")
+    plot_get_vinf(Falcon9, kickstages_simple, payload_range, ax=ax, label="Falcon 9")
+    # plot_get_vinf(VegaC_Launcher, kickstages_simple, payload_range, ax=ax, label="Vega C")
+
+
+    # plot_get_vinf(SLS_CentaurV, kickstages_simple, payload_range, ax=ax, label="SLS CV")
+    # plot_get_vinf(SLS_Block1_ICPS, kickstages_simple, payload_range, ax=ax, label="SLS Block 1")
+    plot_get_vinf(Vulcan, kickstages_simple, payload_range, ax=ax, label="Vulcan", design_point=(2000,12000))
+    # plot_get_vinf(Starship_SuperHeavy, kickstages_simple, payload_range, ax=ax, label="Starship SuperHeavy")
+    # plot_get_vinf(VegaC_Launcher, kickstages_simple, payload_range, ax=ax, label="Vega C")
+
+    ax.set_title("V∞ vs Payload Mass (Launcher Comparison)")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
     plot_vinf_comparison(
         launchers,
         kickstages,
         payload_min=1,
         payload_max=20000,
-        n=2000
+        n=2000,
+        design_point=(2000,12000)
     )
 
 
@@ -1485,11 +1847,20 @@ if __name__ == "__main__":
     # )
 
     plot_launcher_wetmass_feasibility(
-        np.linspace(1, 10000, 1000),
+        np.linspace(1, 5000, 1000),
         launchers,
         kickstages,
-        9500,
-        vertical_wetmass=5352,
+        12000,
+        vertical_wetmass=2000,
         vertical_color='black',
         # vertical_label='Updated Mass Budget'
+    )
+
+    plot_launcher_vinf_feasibility(
+        fixed_wet_mass=2000,
+        launchers=launchers,
+        kickstages=kickstages,
+        vinf_range=np.linspace(0, 18000, 1000),
+        vertical_vinf=12000,
+        # vertical_label="Deep Space Mission"
     )

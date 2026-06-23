@@ -17,7 +17,8 @@ from multiprocessing import Pool
 import os
 from pathlib import Path
 import jkat
-from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launcher, Helios
+from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launcher, Helios, Star63, VegaC_Zefiro9, \
+    VegaC_AVUM_plus, Orion38, FalconHeavy_Reusable, FalconHeavy_Expendable, Starship_SuperHeavy
 
 # import psutil
 #
@@ -26,8 +27,8 @@ from Propulsion.multi_stage_sizer_earth_direct import get_vinf, Ariane64_Launche
 # # P-cores only (typical mapping for 13650HX)
 # p.cpu_affinity(list(range(0, 12)))
 # ==== consts =====
-
-static_mass = 126.3+88.8+100+300
+# 126.3 payload, 88.8 lander, 100 aocs+TT&C, 300 structures, 15+36 extra engine
+static_mass = 126.3+88.8+100+300+(15+36)
 '''[kg] mass of scientific payload, antenna, bus and oter non-varying things'''
 static_power_draw = 1600
 '''[w] static power draw of non-propulsion equipment'''
@@ -36,6 +37,7 @@ static_area = (2.2**2)*m.pi + 2*2
 
 # ion system: (http://large.stanford.edu/courses/2025/ph240/tuckey1/docs/nasa-nov17.pdf)
 Isp_ion = 4220
+# Isp_ion = 3300 # Hall effect option
 '''[s] ion drive isp'''
 guess_dV_inclination = 3000
 
@@ -47,11 +49,15 @@ guess_dV_rdvz = 17_000
 guess_dV_ion = guess_dV_rdvz + guess_dV_inclination
 '''[m/s] total dv required by ion system'''
 Me_ion = 15 + 36 # NEXT thruster mass
+# Me_ion = 2 # Hall effect
 '''[kg] ion engine mass'''
 P_ion = 7400
+# P_ion = 2300 # Hall effect option
 '''[w] power per ion engine'''
 F_ion = 0.235
+# F_ion = 88/1000 # Hall effect option
 '''[N] thrust per ion engine'''
+
 T_max_inclination = 700*jkat.DAY
 '''max time spent on inclination burn'''
 R = 8.31446261815324
@@ -62,9 +68,10 @@ propellant_margin = 2/100
 xenon_tank_pressure = 187*1e5
 xenon_tank_temp = 273.15+20
 xenon_density=xenon_tank_pressure/(R_xenon*xenon_tank_temp)
+print("Xenon density: ", xenon_density)
 
 
-l_ion = 0.05
+l_ion = 0.12
 '''[-] ion tank mass fraction'''
 
 # boost system:
@@ -73,7 +80,7 @@ Isp_boost = 330
 guess_dV_boost = 4_000
 '''[m/s] total dv required by boost system'''
 
-Me_boost = 100
+Me_boost = 00
 '''[kg] boost engine mass'''
 l_boost = 0.05
 '''[-] boost tank mass fraction'''
@@ -109,10 +116,17 @@ areal_density = radiator_areal_density           # kg/m^2
 def dv2mf(dV:float, isp:float, m1:float, l:float)->float:
     '''dv [in km/s], specific impulse, non-tank-mass, 
     structural mass fraction to fuel mass'''
+    l += propellant_margin
     ve = 9.80665 * isp
     e = m.exp(dV/ve)
     mf = m1*(e-1)/(1+l-l*e) # fuel mass
+
+
+
     return mf
+
+
+
 
 
 class Hestia():
@@ -136,7 +150,7 @@ class Hestia():
         self.verbose = verbose
         self.convergence_tolerance = convergence_tolerance
         self.boost_isp = 330 # hypergaulic type engines
-
+        self.static_mass = static_mass
         # the varying variables 
         self.Mass_ion = 51
         '''the ion engines and tanks (not fuel)'''
@@ -213,9 +227,10 @@ class Hestia():
         # check for convergence
         converged = True
         for key, value in var_dict.items():
-
-            if abs(value - self.__dict__[key]) > self.convergence_tolerance:
-                converged = False
+            try:
+                if abs(value - self.__dict__[key]) > self.convergence_tolerance:
+                    converged = False
+            except TypeError: continue # non-comparable variables
         return converged
 
     # property methods are fine as long as there are no side-effects
@@ -303,10 +318,14 @@ class Hestia():
     def size_boost_system(self):
         '''size boost fuel tank and rest'''
 
-        m1 = self.lower_stage_pl_mass + Me_boost
-        mf = dv2mf(self.dV_boost, self.boost_isp, m1, l_boost)
-        self.Mass_boost_fuel = mf
-        self.Mass_boost = Me_boost + (self.Mass_boost_fuel*l_boost  )
+        if self.dV_boost==0:
+            self.Mass_boost_fuel = 0
+            self.Mass_boost = 0
+        else:
+            m1 = self.lower_stage_pl_mass + Me_boost
+            mf = dv2mf(self.dV_boost, self.boost_isp, m1, l_boost)
+            self.Mass_boost_fuel = mf
+            self.Mass_boost = Me_boost + (self.Mass_boost_fuel*l_boost  )
         if self.verbose:
             print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
 
@@ -964,12 +983,17 @@ class Vesta(Hestia):
     (name subject to change. (e.g. find other backronym for hestia))'''
 
 
-    def __init__(self, dV_injection:float, dV_rdvz:float, allowed_dv_boost:float, ion_penalty:float=2, verbose=False, convergence_tolerance=1e-8, min_acceleration:float=0.0002854):
+    def __init__(self, ion_dv:float,
+                 allowed_dv_boost:float, 
+                 ion_penalty:float=2, 
+                 launcher = FalconHeavy_Expendable,
+                 verbose=True, convergence_tolerance=1e-8, 
+                 min_acceleration:float=0.0002854,
+                 min_engines:int = 2):
         '''DV given in M/S!!!'''
 
         
-        self.dV_injection = dV_injection
-        self.dV_rdvz = dV_rdvz
+        self.ion_dv = ion_dv
         self.verbose = verbose
         self.convergence_tolerance = convergence_tolerance
         self.boost_isp = 375 # helios kick stage
@@ -995,13 +1019,18 @@ class Vesta(Hestia):
         self.ion_penalty = ion_penalty
         '''extra cost of the ion stage dv numbers'''
 
+        self.launcher = launcher
+
         self.Area_heatshield = 0 # not used
         self.dV_inclination = 0 # not used
 
-
+        self.static_mass=static_mass
 
         self.min_acceleration = min_acceleration
         '''minimum acceleration required for sizing the Ion system'''
+
+        self.min_engines = min_engines
+        '''minimum number of engines allowed'''
 
         self.boost_included_in_acceleration = False
         '''if acceleration requirements should be calculated with boost stage attached'''
@@ -1012,50 +1041,34 @@ class Vesta(Hestia):
 
     @property
     def vinf(self):
-        return get_vinf(Ariane64_Launcher, Helios, self.lower_stage_wet_mass)
+        v_inf, best_kickstage = get_vinf(self.launcher, [Helios, Star63, VegaC_Zefiro9, VegaC_AVUM_plus, Orion38], self.lower_stage_wet_mass)
+        if self.verbose:
+            print("Best kickstage: ", best_kickstage)
+        return v_inf
     
 
 
     def size_prop_system(self):
-        '''new sizer for direct earth vesta propulsion'''
-        # get no. engines and their mass:
+        '''more deterministic solution'''
 
-
-        # for the injection:
-        vinf = self.vinf
-        injection_dv = max(0, (self.dV_injection - vinf))
-
-        # take into account boost:
-
-        
-        boost_dv = min(self.allowed_dv_boost, injection_dv)
-        injection_dv -= boost_dv
-
-        # boost mass:
-        mf_boost = dv2mf(boost_dv,self.boost_isp, self.lower_stage_pl_mass, l_boost)
-        self.Mass_boost_fuel = mf_boost
-        self.Mass_boost = Me_boost + self.Mass_boost_fuel*l_boost
-        # boost is done
-
-        ion_extra = injection_dv*self.ion_penalty
-
-        ion_dv = self.dV_rdvz + ion_extra
-
+        self.Mass_boost_fuel = 0
+        self.Mass_boost = 0
         # only consider upper stage
         F_need = self.upper_stage_wet_mass*self.a_min_ion
 
         self.Number_ions = m.ceil(F_need/F_ion)
+        self.Number_ions = max(self.Number_ions, self.min_engines)
 
-        mf_ion = dv2mf(ion_dv, Isp_ion, self.lower_stage_pl_mass + self.Number_ions*Me_ion, l_ion)
+        mf_ion = dv2mf(self.ion_dv, Isp_ion, self.lower_stage_pl_mass + self.Number_ions*Me_ion, l_ion)
 
         self.Mass_ion_fuel = mf_ion
         self.Mass_ion = (l_ion*self.Mass_ion_fuel) + self.Number_ions*Me_ion
 
         if self.verbose:
-            print(f"DV: boost dv is: {boost_dv/1000:4.3f} km/s, Ion dv is {ion_extra/1000:4.3f} + {self.dV_rdvz/1000:4.3f} km/s")
-            print(f'boost fuel: {self.Mass_boost_fuel:5.1f} kg, total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
+            print(f'total wet mass: {self.lower_stage_wet_mass:5.1f} kg')
             print(f"ion engine number: {self.Number_ions}"  )
             print(f"Xenon fuel: {self.Mass_ion_fuel} kg")
+            print(f"vinf from launcher: {self.vinf}")
         
 
     def size_ion_system(self):
@@ -1064,10 +1077,13 @@ class Vesta(Hestia):
     def size_boost_system(self):
         pass
 
-
+    # @property
+    # def ion_dv(self):
+    #     return Isp_ion*9.81 * m.log(self.upper_stage_wet_mass/self.upper_stage_dry_mass) 
 
 
     def __repr__(self) -> str:
+        ion_bt =  self.ion_dv/ (self.Number_ions * F_ion / self.upper_stage_wet_mass)
         return (
             '--- Vesta configuration: ---\n'
             f'payload mass: {self.upper_stage_pl_mass:6.1f} kg\n'
@@ -1079,38 +1095,75 @@ class Vesta(Hestia):
             f'boost wet mass: {self.lower_stage_wet_mass:6.1f} kg\n'
             '---\n'
             f'{self.Number_ions} ion engines\n'
-            f'rendezvous burn time: {self.rdvz_burn_time/86_000:3.2f} days\n'
+            f'ion engine burn time (pessemistic): {ion_bt/86000:.2f} days\n'
             f'{self.Power_provided:6.1f} W used from reactor with mass {self.Mass_power_truss:6.1f} kg\n'
+            f'injection V_inf: {self.vinf}, with ion dv: {self.ion_dv}'
         )
 
 
 
 
 
-
 if __name__ == "__main__":
-    SC = Hestia(
-        dV_inclination=3300,
-        dV_rdvz=17000,
-        dV_boost=4000,
-        verbose=True,
-        convergence_tolerance=0.001
+
+    # Sweep ranges
+    isps = np.linspace(3500, 4500, 200)
+    dvs = np.linspace(9000, 11000, 200)
+
+    M = np.zeros((len(dvs), len(isps)))
+
+    for i, dv in enumerate(dvs):
+        for j, isp in enumerate(isps):
+
+            # Temporarily overwrite ion ISP
+            globals()["Isp_ion"] = isp
+
+            sc = Vesta(
+                ion_dv=dv,
+                allowed_dv_boost=0,
+                verbose=False,
+                convergence_tolerance=1e-3
+            )
+
+            try:
+                sc._converge()
+                M[i, j] = sc.lower_stage_wet_mass
+            except:
+                M[i, j] = np.nan
+
+    X, Y = np.meshgrid(isps, dvs)
+
+    plt.figure(figsize=(10, 8))
+
+    # Heatmap
+    pcm = plt.pcolormesh(
+        X,
+        Y,
+        M,
+        shading="auto",
+        cmap="viridis"
     )
 
-    SC._converge()
+    cbar = plt.colorbar(pcm)
+    cbar.set_label("Launch Mass [kg]")
 
-    resolution = 10
-    dVs_incl = np.linspace(1, 3500, resolution)
-    dVs_rdvz = np.linspace(1, 20000, resolution)
-    dVs_boost = np.linspace(1, 7500, resolution)
-    # data = generate_mass_database(dVs_incl, dVs_rdvz, dVs_boost)
-    data = load_mass_database()
-    # plot_interp_heatmap("inclination", 3000)
-    # plot_interp_heatmap("rdvz", 15000)
-    # plot_interp_heatmap("boost", 7500)
-    plot_mass_database(data)
-    plot_mass_database_2(data)
-    #
-    # _test_mass_database(data, n_tests=10, tolerance=1e-2)
-    # _test_interpolator_no_nans(data)
-    # _test_all_grid_points(data)
+    cs = plt.contour(
+        X,
+        Y,
+        M,
+        levels=np.arange(2000, 2200, 50),  # every 100 kg
+        colors="black",
+        linewidths=1
+    )
+
+    plt.scatter(4220, 10000, marker='o', s=50, c='r', label='Design Point')
+
+    plt.clabel(cs, fontsize=8)
+
+    plt.xlabel("Ion Isp [s]")
+    plt.ylabel("Required ΔV [m/s]")
+    plt.legend()
+    # plt.title("Vesta Mass Sensitivity")
+
+    plt.tight_layout()
+    plt.show()
